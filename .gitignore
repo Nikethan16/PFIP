@@ -1,0 +1,115 @@
+# ==========================================================================
+# PFIP .gitignore
+# ==========================================================================
+
+# --- Secrets / environment ---
+.env
+.env.*.local
+*.key
+*.pem
+*.crt
+*.session       # Telethon session files NEVER commit
+/backend/pfip/ingest/telegram/*.session*
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+
+# --- Node / Next.js ---
+node_modules/
+.next/
+out/
+build/
+dist/
+.swc/
+.turbo/
+*.tsbuildinfo
+.pnpm-store/
+.npm
+.eslintcache
+.yarn-integrity
+
+# --- IDE ---
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# --- Docker ---
+docker-compose.override.yml
+
+# --- Logs ---
+*.log
+logs/
+backend/logs/
+frontend/logs/
+
+# --- Data / large artifacts ---
+data/
+backups/
+*.sqlite
+*.db
+*.db-journal
+mlruns/
+mlartifacts/
+
+# --- Model weights / large files ---
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.onnx
+*.gguf
+
+# --- Notebooks checkpoints ---
+.ipynb_checkpoints/
+
+# --- Knowledge base source material ---
+# Books ingested into Qdrant are likely copyrighted — do not commit source
+/data/kb_sources/
+*.epub
+*.mobi
+*.pdf
+
+# --- Claude / Cowork workspaces (if dev happens inside) ---
+.claude/

@@ -1,0 +1,66 @@
+# Keep Docker build context small. The backend Dockerfile copies pyproject/requirements
+# first, then the pfip/ module, then `COPY . .` for alembic/tests/scripts.
+# Everything below is either huge, host-specific, or secret — never ship it into the image.
+
+# Virtualenvs (the big one — backend/.venv is ~1.5GB+)
+.venv/
+venv/
+env/
+ENV/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage*
+htmlcov/
+*.egg-info/
+
+# Build artifacts
+build/
+dist/
+wheels/
+*.egg
+
+# Tests & fixtures (backend/tests is large with sample CSVs; not needed at runtime)
+# Keep alembic (migrations) — Dockerfile relies on `COPY . .` to include them.
+tests/fixtures/*.csv
+tests/fixtures/*.xlsx
+tests/fixtures/*.parquet
+tests/__pycache__/
+
+# Model / data artifacts that may land next to the backend during dev
+mlruns/
+mlartifacts/
+*.sqlite
+*.db
+*.db-journal
+data/
+backups/
+logs/
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node (shouldn't be here but guard anyway)
+node_modules/
+.next/
+
+# Secrets — .env lives at the repo root and is injected via env_file in compose,
+# but guard in case a stray copy exists.
+.env
+.env.*
+*.session*
+*.pem
+*.key

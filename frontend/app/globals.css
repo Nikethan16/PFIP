@@ -1,0 +1,151 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* shadcn/ui CSS variables (slate base color). */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Prevent horizontal scroll on mobile regardless of child misbehaviour. */
+  html,
+  body {
+    overflow-x: hidden;
+  }
+}
+
+/* ---------- Minimal syntax highlighting for rehype-highlight ---------- */
+/* Keeps the bundle lean; we don't ship a whole highlight.js theme. */
+.hljs {
+  color: hsl(var(--foreground));
+  background: transparent;
+}
+.hljs-comment,
+.hljs-quote {
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-title,
+.hljs-section,
+.hljs-doctag,
+.hljs-type,
+.hljs-name,
+.hljs-strong {
+  color: rgb(139 92 246); /* violet-500 */
+}
+.hljs-string,
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet {
+  color: rgb(16 185 129); /* emerald-500 */
+}
+.hljs-attr,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-class .hljs-title {
+  color: rgb(59 130 246); /* blue-500 */
+}
+.hljs-regexp,
+.hljs-link {
+  color: rgb(236 72 153); /* pink-500 */
+}
+.hljs-built_in,
+.hljs-builtin-name {
+  color: rgb(245 158 11); /* amber-500 */
+}
+.hljs-meta {
+  color: hsl(var(--muted-foreground));
+}
+.hljs-deletion {
+  background: rgb(254 226 226);
+}
+.hljs-addition {
+  background: rgb(209 250 229);
+}
+.dark .hljs-deletion {
+  background: rgba(239 68 68 / 0.15);
+}
+.dark .hljs-addition {
+  background: rgba(16 185 129 / 0.15);
+}
+
+/* Tiny utility used by the correlation heatmap cells. */
+.pfip-heatmap-cell {
+  transition: transform 120ms ease;
+}
+.pfip-heatmap-cell:hover {
+  transform: scale(1.08);
+  z-index: 1;
+}

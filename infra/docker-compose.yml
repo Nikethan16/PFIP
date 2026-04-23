@@ -1,0 +1,176 @@
+version: "3.9"
+
+# PFIP Stage 0 Docker Compose
+# Bring up everything with: docker compose -f infra/docker-compose.yml --env-file .env up -d
+# Tear down with:            docker compose -f infra/docker-compose.yml down
+# All services run locally; no data leaves the machine except where user configures it.
+
+name: pfip
+
+networks:
+  pfip-net:
+    driver: bridge
+
+volumes:
+  timescale_data:
+  redis_data:
+  qdrant_data:
+  prefect_data:
+  mlflow_data:
+  ollama_data:
+  uptime_kuma_data:
+
+services:
+  # -------- Core data layer --------
+  timescaledb:
+    image: timescale/timescaledb:2.15.2-pg16
+    container_name: pfip-timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pfip}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pfip_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-pfip}
+      TS_TUNE_MAX_CONNS: "50"
+    ports:
+      - "${TIMESCALEDB_PORT:-5432}:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    networks: [pfip-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pfip} -d ${POSTGRES_DB:-pfip}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: pfip-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks: [pfip-net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:v1.9.3
+    container_name: pfip-qdrant
+    restart: unless-stopped
+    ports:
+      - "${QDRANT_HTTP_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks: [pfip-net]
+
+  # -------- Orchestration --------
+  prefect:
+    image: prefecthq/prefect:2.19-python3.12
+    container_name: pfip-prefect
+    restart: unless-stopped
+    command: ["prefect", "server", "start", "--host", "0.0.0.0"]
+    environment:
+      PREFECT_API_URL: http://prefect:4200/api
+      PREFECT_SERVER_API_HOST: 0.0.0.0
+    ports:
+      - "${PREFECT_PORT:-4200}:4200"
+    volumes:
+      - prefect_data:/root/.prefect
+    networks: [pfip-net]
+
+  # -------- ML registry --------
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.14.0
+    container_name: pfip-mlflow
+    restart: unless-stopped
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+    ports:
+      - "${MLFLOW_PORT:-5000}:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    networks: [pfip-net]
+
+  # -------- Local LLM --------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: pfip-ollama
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks: [pfip-net]
+    # NOTE: on first run, shell into the container and pull the models:
+    #   docker exec -it pfip-ollama ollama pull mistral:7b-instruct
+    #   docker exec -it pfip-ollama ollama pull nomic-embed-text
+
+  # -------- Observability --------
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: pfip-uptime-kuma
+    restart: unless-stopped
+    ports:
+      - "${UPTIME_KUMA_PORT:-3001}:3001"
+    volumes:
+      - uptime_kuma_data:/app/data
+    networks: [pfip-net]
+
+  # -------- PFIP app services --------
+  # Backend API (FastAPI). Built from ../backend. Dev command mounts source for hot reload.
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: pfip-backend
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pfip}:${POSTGRES_PASSWORD:-pfip_dev}@timescaledb:5432/${POSTGRES_DB:-pfip}
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      OLLAMA_HOST: http://ollama:11434
+      PREFECT_API_URL: http://prefect:4200/api
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ../backend:/app
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [pfip-net]
+
+  # Frontend (Next.js). Built from ../frontend. Dev command mounts source for hot reload.
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: pfip-frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-8000}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-dev-change-me}
+      NEXTAUTH_URL: http://localhost:${FRONTEND_PORT:-3000}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    networks: [pfip-net]

@@ -1,0 +1,231 @@
+# PFIP Contracts
+
+Canonical contracts that both backend and frontend must implement identically. Any change here propagates to both sides. Backend owns Pydantic definitions (`/backend/pfip/core/contracts.py`); frontend mirrors them as TypeScript (`/frontend/lib/contracts.ts`).
+
+---
+
+## 1. Core Enums
+
+### Market
+```
+BTC_USD | ETH_USD | SOL_USD | BNB_USD        # crypto
+SPY | QQQ | DIA | VTI                         # US ETFs + any ticker
+NIFTY50 | NIFTY500 | SENSEX | any .NS/.BO     # Indian
+USDINR | EURUSD | GBPUSD                      # FX
+```
+
+### Source
+`coinbase | kraken | bybit | okx | yfinance | stooq | jugaad | amfi | frankfurter | rbi | fred | sec_edgar`
+
+### Regime
+`bull_trend | bear_trend | sideways | high_volatility | accumulation | distribution`
+
+### HoldingCategory
+`equity | etf | mutual_fund | ppf | epf | nps | fd | sgb | gsec | bond | crypto_exchange | crypto_self_custody | cash`
+
+### SignalDirection
+`BUY | HOLD | SELL`
+
+---
+
+## 2. Typed Signal Contract (the seam between M4 and M7)
+
+```python
+class Signal(BaseModel):
+    direction: SignalDirection
+    confidence: int  # 0–100
+    horizon_hours: int
+    drivers: list[Driver]           # top 5 supporting
+    counter_arguments: list[Driver]  # top 3 against
+    regime: Regime
+    model_name: str
+    model_version: str
+    asset: str  # e.g. "BTC-USD"
+    generated_at: datetime  # UTC
+```
+
+```python
+class Driver(BaseModel):
+    feature: str
+    contribution: float  # SHAP value or equivalent
+```
+
+The agent (M7) reads signals but cannot mutate them. Validation is strict; unknown fields rejected.
+
+---
+
+## 3. OHLCV Row (stored in TimescaleDB hypertable)
+
+```sql
+CREATE TABLE ohlcv (
+    time        TIMESTAMPTZ NOT NULL,
+    symbol      TEXT         NOT NULL,
+    market      TEXT         NOT NULL,
+    source      TEXT         NOT NULL,
+    timeframe   TEXT         NOT NULL,   -- '1m' | '5m' | '1h' | '1d'
+    open        NUMERIC(20, 8) NOT NULL,
+    high        NUMERIC(20, 8) NOT NULL,
+    low         NUMERIC(20, 8) NOT NULL,
+    close       NUMERIC(20, 8) NOT NULL,
+    volume      NUMERIC(30, 8) NOT NULL,
+    PRIMARY KEY (time, symbol, source, timeframe)
+);
+SELECT create_hypertable('ohlcv', 'time');
+```
+
+---
+
+## 4. Fundamentals Row (PIT-aware, per Section 4.6)
+
+```sql
+CREATE TABLE fundamentals (
+    as_of_date  DATE NOT NULL,     -- date data was first available
+    report_date DATE NOT NULL,     -- period the data covers
+    symbol      TEXT NOT NULL,
+    field       TEXT NOT NULL,
+    value       NUMERIC,
+    source      TEXT NOT NULL,
+    PRIMARY KEY (as_of_date, symbol, field, source)
+);
+```
+
+Queries MUST filter `as_of_date <= point_in_time_t`. Restatements stored as new rows, not overwrites.
+
+---
+
+## 5. Portfolio Ledger
+
+```sql
+CREATE TABLE holdings (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    category        TEXT NOT NULL,          -- HoldingCategory enum
+    symbol          TEXT,
+    isin            TEXT,
+    broker          TEXT,
+    account_id      TEXT,
+    acquired_at     TIMESTAMPTZ NOT NULL,
+    qty             NUMERIC NOT NULL,
+    cost_basis_inr  NUMERIC NOT NULL,
+    cost_basis_ccy  TEXT DEFAULT 'INR',
+    fx_rate         NUMERIC,                 -- for US stocks etc
+    is_self_custody BOOLEAN DEFAULT FALSE,
+    notes           TEXT,
+    closed_at       TIMESTAMPTZ,
+    exit_price_inr  NUMERIC
+);
+
+CREATE TABLE portfolio_tx (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    holding_id   UUID REFERENCES holdings(id),
+    time         TIMESTAMPTZ NOT NULL,
+    kind         TEXT NOT NULL,   -- BUY | SELL | DIVIDEND | INTEREST | TRANSFER | FEE | TDS
+    qty          NUMERIC,
+    price        NUMERIC,
+    amount_inr   NUMERIC NOT NULL,
+    fx_rate      NUMERIC,
+    tax_withheld NUMERIC DEFAULT 0,
+    note         TEXT
+);
+```
+
+The `shadow_portfolio_ledger` is a mirror of the above schema; identical columns, separate table name.
+
+---
+
+## 6. REST API Routes (FastAPI)
+
+All routes are prefixed `/api/v1`.
+
+### Health
+- `GET /health` → `{ "status": "ok", "time": "..." }`
+- `GET /health/deep` → checks TimescaleDB + Redis + Qdrant + Ollama
+
+### Auth
+- `POST /auth/login` → `{ token, expiresAt }`
+- `POST /auth/refresh`
+- `GET /auth/me` → current user
+
+### Assets & market data
+- `GET /assets/{symbol}/candles?timeframe=1d&since=ISO&until=ISO` → `OHLCV[]`
+- `GET /assets/{symbol}/features?as_of=ISO` → feature dict
+- `GET /assets/{symbol}/news?since=ISO&limit=50` → `NewsItem[]`
+- `GET /assets/{symbol}/regime` → `{ regime, since, confidence }`
+
+### Watchlist
+- `GET /watchlist` → `WatchlistItem[]`
+- `POST /watchlist` → add
+- `DELETE /watchlist/{id}`
+
+### Signals
+- `GET /signals?asset=BTC-USD&since=ISO` → `Signal[]`
+- `GET /signals/latest` → most recent per asset
+
+### Portfolio
+- `GET /portfolio/holdings` → `Holding[]`
+- `POST /portfolio/holdings` → add manual
+- `POST /portfolio/import` (multipart CSV) → { imported, rejected, errors }
+- `GET /portfolio/summary` → { total_inr, p&l, exposure_by_category, drawdown }
+
+### Shadow portfolio
+- `GET /shadow/holdings`
+- `GET /shadow/vs-actual` → compared metrics
+
+### Calibration
+- `GET /calibration/latest` → Brier/ECE/reliability per model
+
+### Tax
+- `GET /tax/summary?fy=2026-27`
+- `GET /tax/schedule-fa?fy=2026-27`
+- `GET /tax/form-67?fy=2026-27`
+- `POST /tax/import/{broker}` (CSV)
+
+### Agent / chat
+- `POST /agent/chat` (SSE streaming) → token stream
+- `GET /agent/morning-brief?date=YYYY-MM-DD` → rendered markdown
+
+### Journal
+- `GET /journal/entries`
+- `POST /journal/entries` (with pre-trade checklist required)
+- `POST /journal/entries/{id}/close` (post-mortem required)
+
+---
+
+## 7. SSE Streaming Format
+
+For `/agent/chat` and `/signals/stream`:
+
+```
+event: token
+data: {"text": "..."}
+
+event: source
+data: {"type": "kb" | "news" | "db", "id": "...", "title": "..."}
+
+event: signal
+data: { ...Signal object... }
+
+event: done
+data: {}
+```
+
+---
+
+## 8. Error Format (RFC 7807 style)
+
+```json
+{
+  "type": "about:blank",
+  "title": "Validation failed",
+  "status": 422,
+  "detail": "...",
+  "instance": "/api/v1/..."
+}
+```
+
+---
+
+## 9. Time Handling
+
+All timestamps in DB: `TIMESTAMPTZ`, stored as UTC.
+All API responses: ISO-8601 with timezone (`2026-04-21T10:30:00Z`).
+Frontend renders in IST by default (`Asia/Kolkata`), user-configurable later.

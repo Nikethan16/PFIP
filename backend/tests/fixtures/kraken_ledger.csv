@@ -1,0 +1,5 @@
+txid,refid,time,type,subtype,aclass,asset,amount,fee,balance
+LAAAA,RBBBB,2024-07-10 09:00:00,trade,,currency,XXBT,0.01,0.0001,0.01
+LBBBB,RBBBB,2024-07-10 09:00:00,trade,,currency,ZUSD,-600.00,0.00,400.00
+LCCCC,RCCCC,2025-02-15 15:30:00,trade,,currency,XXBT,-0.005,0.0001,0.005
+LDDDD,RCCCC,2025-02-15 15:30:00,trade,,currency,ZUSD,475.00,0.00,875.00

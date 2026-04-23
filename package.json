@@ -1,0 +1,34 @@
+{
+  "name": "pfip",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PFIP — Personal Financial Intelligence Platform. Root-level script runner convenience for Windows users who prefer `pnpm run <script>` over GNU Make.",
+  "scripts": {
+    "up": "node scripts/run.js up",
+    "down": "node scripts/run.js down",
+    "stop": "node scripts/run.js stop",
+    "restart": "node scripts/run.js restart",
+    "ps": "node scripts/run.js ps",
+    "logs": "node scripts/run.js logs",
+    "logs:backend": "node scripts/run.js logs-backend",
+    "logs:frontend": "node scripts/run.js logs-frontend",
+    "health": "node scripts/run.js health",
+    "shell:backend": "node scripts/run.js shell-backend",
+    "shell:db": "node scripts/run.js shell-db",
+    "migrate": "node scripts/run.js migrate",
+    "ingest:btc": "node scripts/run.js ingest-btc",
+    "pull:models": "node scripts/run.js pull-models",
+    "test": "node scripts/run.js test",
+    "test:backend": "node scripts/run.js test-backend",
+    "test:frontend": "node scripts/run.js test-frontend",
+    "lint": "node scripts/run.js lint",
+    "format": "node scripts/run.js format",
+    "backup": "node scripts/run.js backup",
+    "restore-drill": "node scripts/run.js restore-drill"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "author": "Suresh Sahoo",
+  "license": "UNLICENSED"
+}

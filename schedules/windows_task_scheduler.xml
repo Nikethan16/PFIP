@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PFIP — Windows Task Scheduler export TEMPLATE.
+
+  This file documents the two host-level scheduled tasks managed outside
+  Prefect (because they need to work even when the Docker stack is down).
+
+  Placeholders to replace before importing via `schtasks.exe /Create /XML`:
+
+    {{REPO_ROOT}}   absolute path to the PFIP_app root (e.g., C:\Users\suresh\pfip_app)
+    {{USER_SID}}    the current user SID (get from:  whoami /user)
+
+  Encoding note:
+    - This file is committed as UTF-8 so it is readable in git diffs and
+      validates as plain XML.
+    - Windows Task Scheduler expects UTF-16 LE on import. When importing
+      manually, convert first. From PowerShell:
+        $xml = Get-Content .\schedules\windows_task_scheduler.xml -Raw
+        $xml -replace 'encoding="UTF-8"', 'encoding="UTF-16"' |
+          Out-File .\schedules\_temp.xml -Encoding unicode
+        schtasks /Create /XML .\schedules\_temp.xml /TN PFIP-Nightly-Backup
+      The preferred path is `register_windows_tasks.ps1`, which handles this.
+-->
+<Tasks xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+
+  <!-- ================================================================== -->
+  <!-- 1) Nightly backup — daily at 03:15 local                            -->
+  <!-- ================================================================== -->
+  <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+    <RegistrationInfo>
+      <URI>\PFIP-Nightly-Backup</URI>
+      <Description>PFIP nightly backup: pg_dump + Qdrant snapshots + MLflow mirror + retention.</Description>
+      <Author>PFIP</Author>
+    </RegistrationInfo>
+    <Triggers>
+      <CalendarTrigger>
+        <StartBoundary>2026-01-01T03:15:00</StartBoundary>
+        <Enabled>true</Enabled>
+        <ScheduleByDay>
+          <DaysInterval>1</DaysInterval>
+        </ScheduleByDay>
+      </CalendarTrigger>
+    </Triggers>
+    <Principals>
+      <Principal id="Author">
+        <UserId>{{USER_SID}}</UserId>
+        <LogonType>S4U</LogonType>
+        <RunLevel>HighestAvailable</RunLevel>
+      </Principal>
+    </Principals>
+    <Settings>
+      <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+      <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+      <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+      <AllowHardTerminate>true</AllowHardTerminate>
+      <StartWhenAvailable>true</StartWhenAvailable>
+      <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+      <IdleSettings>
+        <StopOnIdleEnd>false</StopOnIdleEnd>
+        <RestartOnIdle>false</RestartOnIdle>
+      </IdleSettings>
+      <AllowStartOnDemand>true</AllowStartOnDemand>
+      <Enabled>true</Enabled>
+      <Hidden>false</Hidden>
+      <RunOnlyIfIdle>false</RunOnlyIfIdle>
+      <DisallowStartOnRemoteAppSession>false</DisallowStartOnRemoteAppSession>
+      <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>
+      <WakeToRun>true</WakeToRun>
+      <ExecutionTimeLimit>PT2H</ExecutionTimeLimit>
+      <Priority>7</Priority>
+    </Settings>
+    <Actions Context="Author">
+      <Exec>
+        <Command>powershell.exe</Command>
+        <Arguments>-NoProfile -ExecutionPolicy Bypass -File "{{REPO_ROOT}}\scripts\backup.ps1" -Force</Arguments>
+        <WorkingDirectory>{{REPO_ROOT}}</WorkingDirectory>
+      </Exec>
+    </Actions>
+  </Task>
+
+  <!-- ================================================================== -->
+  <!-- 2) Quarterly restore drill — first Saturday of Jan/Apr/Jul/Oct      -->
+  <!-- at 10:00 local                                                      -->
+  <!-- ================================================================== -->
+  <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+    <RegistrationInfo>
+      <URI>\PFIP-Quarterly-RestoreDrill</URI>
+      <Description>PFIP quarterly restore-from-backup drill: first Saturday of Jan/Apr/Jul/Oct.</Description>
+      <Author>PFIP</Author>
+    </RegistrationInfo>
+    <Triggers>
+      <CalendarTrigger>
+        <StartBoundary>2026-01-01T10:00:00</StartBoundary>
+        <Enabled>true</Enabled>
+        <ScheduleByMonthDayOfWeek>
+          <Weeks>
+            <Week>1</Week>
+          </Weeks>
+          <DaysOfWeek>
+            <Saturday />
+          </DaysOfWeek>
+          <Months>
+            <January />
+            <April />
+            <July />
+            <October />
+          </Months>
+        </ScheduleByMonthDayOfWeek>
+      </CalendarTrigger>
+    </Triggers>
+    <Principals>
+      <Principal id="Author">
+        <UserId>{{USER_SID}}</UserId>
+        <LogonType>S4U</LogonType>
+        <RunLevel>HighestAvailable</RunLevel>
+      </Principal>
+    </Principals>
+    <Settings>
+      <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+      <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+      <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+      <AllowHardTerminate>true</AllowHardTerminate>
+      <StartWhenAvailable>true</StartWhenAvailable>
+      <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+      <AllowStartOnDemand>true</AllowStartOnDemand>
+      <Enabled>true</Enabled>
+      <Hidden>false</Hidden>
+      <WakeToRun>true</WakeToRun>
+      <ExecutionTimeLimit>PT2H</ExecutionTimeLimit>
+      <Priority>7</Priority>
+    </Settings>
+    <Actions Context="Author">
+      <Exec>
+        <Command>powershell.exe</Command>
+        <Arguments>-NoProfile -ExecutionPolicy Bypass -File "{{REPO_ROOT}}\scripts\restore_drill.ps1" -Force</Arguments>
+        <WorkingDirectory>{{REPO_ROOT}}</WorkingDirectory>
+      </Exec>
+    </Actions>
+  </Task>
+
+</Tasks>
