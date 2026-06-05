@@ -33,7 +33,14 @@ from sqlalchemy import select
 
 from pfip.core.contracts import Holding, HoldingCategory, PortfolioSummary
 from pfip.models.holdings import HoldingRow
+from pfip.models.journal import JournalRow
 from pfip.models.portfolio_tx import PortfolioTxRow
+
+# Marker stored in ``JournalRow.notes`` to tie an auto-created post-mortem stub
+# back to the holding it was opened for. Lets ``close_holding`` stay
+# idempotent — re-closing (or a partial then full close) reuses the same entry
+# instead of spawning a duplicate post-mortem.
+_HOLDING_POST_MORTEM_MARKER = "[auto-post-mortem holding="
 
 
 # ---------------------------------------------------------------------------
@@ -211,7 +218,10 @@ class PortfolioService:
             qty: optional partial close quantity. None ⇒ close all.
 
         Returns:
-            ``{holding: Holding, sell_tx: {...}, post_mortem_required: True}``
+            ``{holding: Holding, sell_tx: {...}, post_mortem_required: True,
+            journal_entry_id: str}``. The journal entry is a pre-filled
+            post-mortem stub the UI opens so the mandatory reflection is one
+            click away (audit finding H4).
         """
         when = when or datetime.now(tz=timezone.utc)
         stmt = select(HoldingRow).where(HoldingRow.id == holding_id)
@@ -268,6 +278,18 @@ class PortfolioService:
         self.db.add(tx)
         await self.db.commit()
         await self.db.refresh(row)
+
+        # Create (or reuse) the linked post-mortem journal stub so the UI can
+        # open the dialog with a real journal entry id (audit finding H4).
+        realized_pnl_inr = (proceeds_total - Decimal(str(row.cost_basis_inr))).quantize(
+            Decimal("0.01")
+        )
+        journal_id = await self._ensure_post_mortem_stub(
+            row,
+            close_date=when,
+            realized_pnl_inr=realized_pnl_inr,
+        )
+
         return {
             "holding": Holding.model_validate(row),
             "sell_tx": {
@@ -278,8 +300,51 @@ class PortfolioService:
                 "amount_inr": str(proceeds_total),
             },
             "post_mortem_required": True,
+            "journal_entry_id": str(journal_id),
             "note": "Post-mortem is MANDATORY within 24h before the next trade in this asset.",
         }
+
+    async def _ensure_post_mortem_stub(
+        self,
+        holding: HoldingRow,
+        *,
+        close_date: datetime,
+        realized_pnl_inr: Decimal,
+    ) -> UUID:
+        """Create — or reuse — the post-mortem journal stub for a closed holding.
+
+        Idempotent: keyed on a marker embedded in ``JournalRow.notes`` so a
+        partial-then-full close (or an accidental re-close) maps to a single
+        post-mortem entry rather than spawning duplicates.
+        """
+        marker = f"{_HOLDING_POST_MORTEM_MARKER}{holding.id}]"
+        existing = await self.db.execute(
+            select(JournalRow).where(JournalRow.notes.is_not(None))
+        )
+        for entry in existing.scalars().all():
+            if entry.notes and marker in entry.notes:
+                return entry.id
+
+        symbol = holding.symbol or holding.isin or "—"
+        thesis = (
+            f"Auto-created on close of holding {holding.id} ({symbol}). "
+            "Fill in the post-mortem: was the thesis right, did you follow the plan, "
+            "what worked, what didn't, and the lesson for next time."
+        )
+        stub = JournalRow(
+            symbol=symbol,
+            direction="SELL",
+            thesis=thesis,
+            pre_trade_checklist={},
+            notes=(
+                f"{marker} closed_at={close_date.isoformat()} "
+                f"realized_pnl_inr={realized_pnl_inr}"
+            ),
+        )
+        self.db.add(stub)
+        await self.db.commit()
+        await self.db.refresh(stub)
+        return stub.id
 
     # --- Analytics ---
 

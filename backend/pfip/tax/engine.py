@@ -19,13 +19,13 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Any
 
 from pfip.core.contracts import PortfolioTx, PortfolioTxKind
-from pfip.tax.fx_cost_basis import convert_to_inr
+from pfip.tax.fx_cost_basis import RateCache, convert_to_inr
 from pfip.tax.indian_rules import (
     DEBT_MF_SLAB_REGIME_START,
     DEDUCTION_LIMITS_INR,
@@ -188,6 +188,26 @@ def _tx_date(tx: PortfolioTx | dict) -> date:
     return datetime.fromisoformat(str(t)).date()
 
 
+def _tx_sort_key(tx: PortfolioTx | dict) -> float:
+    """Full-resolution, tz-safe ordering key for FIFO.
+
+    Sorting only by ``date`` (see :func:`_tx_date`) leaves same-day BUY/SELL
+    ordering non-deterministic, which can mis-assign FIFO lots intraday. We
+    sort by the full timestamp here, normalizing everything to a UTC epoch
+    float so naive and tz-aware datetimes never get compared directly.
+    """
+    t: Any = tx.time if hasattr(tx, "time") else tx["time"]
+    if isinstance(t, datetime):
+        dt = t
+    elif isinstance(t, date):
+        dt = datetime(t.year, t.month, t.day)
+    else:
+        dt = datetime.fromisoformat(str(t))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.timestamp()
+
+
 def _tx_qty(tx: PortfolioTx | dict) -> Decimal:
     q = tx.qty if hasattr(tx, "qty") else tx.get("qty")
     return Decimal("0") if q is None else Decimal(str(q))
@@ -259,8 +279,9 @@ def classify_capital_gains(
     lots: dict[str, deque[Lot]] = {}
     events: list[CGEvent] = []
 
-    # Sort tx ascending by time so FIFO is correct.
-    ordered = sorted(tx_list, key=_tx_date)
+    # Sort tx ascending by full timestamp so FIFO is correct, including
+    # deterministic intraday (same-day BUY-then-SELL) ordering.
+    ordered = sorted(tx_list, key=_tx_sort_key)
 
     for tx in ordered:
         kind = _tx_kind(tx)
@@ -478,6 +499,7 @@ def compute_schedule_fa(
     fy: str,
     *,
     db: Any | None = None,
+    rate_cache: RateCache | None = None,
 ) -> list[ScheduleFARow]:
     """Build Schedule FA rows for an FY.
 
@@ -508,14 +530,14 @@ def compute_schedule_fa(
         if daily:
             peak_date = max(daily, key=lambda d: daily[d])
             peak_usd = daily[peak_date]
-            peak_inr = convert_to_inr(peak_usd, "USD", peak_date, db=db)
+            peak_inr = convert_to_inr(peak_usd, "USD", peak_date, db=db, rate_cache=rate_cache)
         else:
             peak_usd = Decimal("0")
             peak_inr = Decimal("0")
 
         closing_usd = Decimal(str(h.get("closing_balance_usd", 0)))
         closing_inr = (
-            convert_to_inr(closing_usd, "USD", end, db=db)
+            convert_to_inr(closing_usd, "USD", end, db=db, rate_cache=rate_cache)
             if closing_usd
             else Decimal("0")
         )
@@ -542,6 +564,7 @@ def compute_form_67(
     slab_rate: Decimal = Decimal("0.30"),
     *,
     db: Any | None = None,
+    rate_cache: RateCache | None = None,
 ) -> list[Form67Row]:
     """Build Form 67 rows for US dividend income.
 
@@ -558,8 +581,8 @@ def compute_form_67(
         wht_usd = Decimal(str(d.get("tax_withheld_usd", usd * US_DIVIDEND_WHT_RATE)))
         fx = d.get("fx_rate")
         if fx is None:
-            inr = convert_to_inr(usd, "USD", on, db=db)
-            wht_inr = convert_to_inr(wht_usd, "USD", on, db=db)
+            inr = convert_to_inr(usd, "USD", on, db=db, rate_cache=rate_cache)
+            wht_inr = convert_to_inr(wht_usd, "USD", on, db=db, rate_cache=rate_cache)
         else:
             fx = Decimal(str(fx))
             inr = (usd * fx).quantize(Decimal("0.01"))
