@@ -30,6 +30,7 @@ from pfip.portfolio.allocation import (
     suggestions_to_dict,
     tactical_adjust,
 )
+from pfip.portfolio.marking import build_marking, fetch_return_series
 from pfip.portfolio.risk_manager import RiskManager
 from pfip.portfolio.service import (
     HoldingNotFoundError,
@@ -145,6 +146,7 @@ async def close_holding(
         "holding": result["holding"].model_dump(mode="json"),
         "sell_tx": result["sell_tx"],
         "post_mortem_required": True,
+        "journal_entry_id": result["journal_entry_id"],
         "disclaimer": DISCLAIMER,
     }
 
@@ -158,16 +160,46 @@ async def close_holding(
 async def summary(db: DbSession, _user: CurrentUser) -> PortfolioSummary:
     """Aggregate portfolio summary (contracts.PortfolioSummary).
 
-    Mark-to-market is currently cost-basis since live prices aren't wired yet.
+    Marked to market using the latest OHLCV close per symbol (USD assets
+    converted via the ``fx_rates`` table). Holdings we can't confidently price
+    fall back to cost basis — see ``GET /portfolio/marking`` for coverage.
     """
     svc = PortfolioService(db)
-    return await svc.portfolio_summary()
+    holdings = await svc.list_holdings(active=True)
+    marking = await build_marking(db, holdings)
+    return await svc.portfolio_summary(mark_prices=marking.mark_prices)
+
+
+@router.get("/marking")
+async def marking(db: DbSession, _user: CurrentUser) -> dict:
+    """Mark-to-market coverage: which holdings are live-priced vs cost-basis.
+
+    Lets the UI show a freshness/coverage indicator and explains why any
+    holding fell back to cost basis (no_price / unknown_currency / no_fx_rate).
+    """
+    svc = PortfolioService(db)
+    holdings = await svc.list_holdings(active=True)
+    result = await build_marking(db, holdings)
+    return {
+        "as_of": result.as_of.isoformat() if result.as_of else None,
+        "usdinr": str(result.usdinr) if result.usdinr is not None else None,
+        "marked": result.marked,
+        "unmarked": result.unmarked,
+        "mark_prices_inr": {k: str(v) for k, v in result.mark_prices.items()},
+        "coverage": {
+            "marked": len(result.marked),
+            "total": len(result.marked) + len(result.unmarked),
+        },
+        "disclaimer": DISCLAIMER,
+    }
 
 
 @router.get("/exposure")
 async def exposure(db: DbSession, _user: CurrentUser) -> dict:
     svc = PortfolioService(db)
-    exp = await svc.exposure_by_category()
+    holdings = await svc.list_holdings(active=True)
+    mark_prices = (await build_marking(db, holdings)).mark_prices
+    exp = await svc.exposure_by_category(mark_prices=mark_prices)
     total = sum(exp.values(), Decimal("0"))
     return {
         "total_inr": str(total),
@@ -182,7 +214,9 @@ async def exposure(db: DbSession, _user: CurrentUser) -> dict:
 @router.get("/concentration")
 async def concentration(db: DbSession, _user: CurrentUser) -> dict:
     svc = PortfolioService(db)
-    result = await svc.concentration_score()
+    holdings = await svc.list_holdings(active=True)
+    mark_prices = (await build_marking(db, holdings)).mark_prices
+    result = await svc.concentration_score(mark_prices=mark_prices)
     result["disclaimer"] = DISCLAIMER
     return result
 
@@ -193,18 +227,32 @@ async def correlations(
     _user: CurrentUser,
     window_days: int = Query(90, ge=10, le=365),
 ) -> dict:
-    """Return correlation matrix across open holdings.
+    """Return the correlation matrix across open holdings.
 
-    NOTE: requires a return-series source; in this release we return an
-    empty matrix if none is wired. Callers can POST return series via
-    ``/portfolio/correlations/upload`` (future endpoint).
+    Return series are daily log-returns derived from each symbol's own OHLCV
+    history over ``window_days`` — currency-agnostic, so no FX is involved.
+    Symbols with fewer than 2 bars in the window are dropped; the matrix is
+    empty only if no holding has enough history.
     """
     svc = PortfolioService(db)
-    matrix = await svc.correlation_matrix(window_days=window_days)
+    holdings = await svc.list_holdings(active=True)
+    symbols = sorted({h.symbol for h in holdings if h.symbol})
+    series = await fetch_return_series(db, symbols, window_days)
+    matrix_map = await svc.correlation_matrix(return_series=series, window_days=window_days)
+    # The frontend contract (CorrelationMatrixSchema) expects `symbols: string[]`
+    # plus `matrix: number[][]` aligned to that order — not a nested dict.
+    ordered = list(matrix_map.keys())
+    matrix_2d = [[matrix_map[r].get(c, 0.0) for c in ordered] for r in ordered]
+    note = (
+        "Insufficient price history for any holding in the window."
+        if not matrix_2d
+        else f"Pearson correlation of daily log-returns over {window_days}d."
+    )
     return {
         "window_days": window_days,
-        "matrix": matrix,
-        "note": "Matrix is empty until a return-series provider is wired.",
+        "symbols": ordered,
+        "matrix": matrix_2d,
+        "note": note,
         "disclaimer": DISCLAIMER,
     }
 

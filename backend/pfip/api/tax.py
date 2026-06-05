@@ -44,6 +44,7 @@ from pfip.tax.forms import (
     schedule_cg_json,
     schedule_fa_json,
 )
+from pfip.tax.fx_cost_basis import prefetch_fx_rates
 from pfip.tax.indian_rules import DISCLAIMER, is_vda
 
 router = APIRouter(prefix="/tax", tags=["tax"])
@@ -77,11 +78,23 @@ def _cg_event_to_dict(e: CGEvent) -> dict:
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_enriched_tx(db: Any) -> list[dict]:
-    """Join holdings + portfolio_tx into the dict shape classify_capital_gains expects."""
+async def _fetch_enriched_tx(db: Any, fy: str | None = None) -> list[dict]:
+    """Join holdings + portfolio_tx into the dict shape classify_capital_gains expects.
+
+    When ``fy`` is given, the FY date bounds are pushed into the portfolio_tx
+    SQL query (``time`` column) so we don't full-table-scan and filter in
+    Python. Results are otherwise identical to the unfiltered path.
+    """
     result = await db.execute(select(HoldingRow))
     holdings = {h.id: h for h in result.scalars().all()}
-    tx_result = await db.execute(select(PortfolioTxRow))
+    tx_stmt = select(PortfolioTxRow)
+    if fy is not None:
+        fy_start, fy_end = fy_bounds(fy)
+        tx_stmt = tx_stmt.where(
+            PortfolioTxRow.time >= datetime(fy_start.year, fy_start.month, fy_start.day, tzinfo=timezone.utc),
+            PortfolioTxRow.time <= datetime(fy_end.year, fy_end.month, fy_end.day, 23, 59, 59, tzinfo=timezone.utc),
+        )
+    tx_result = await db.execute(tx_stmt)
     txs = tx_result.scalars().all()
 
     enriched: list[dict] = []
@@ -136,7 +149,7 @@ async def summary(
     has_foreign_assets: bool = Query(False),
 ) -> dict:
     """Full tax snapshot for a fiscal year."""
-    enriched = await _fetch_enriched_tx(db)
+    enriched = await _fetch_enriched_tx(db, fy)
     events = classify_capital_gains(enriched)
     summary = build_tax_summary(
         fy,
@@ -170,7 +183,7 @@ async def summary(
 
 @router.get("/events")
 async def tax_events(db: DbSession, _user: CurrentUser, fy: str = Query(...)) -> dict:
-    enriched = await _fetch_enriched_tx(db)
+    enriched = await _fetch_enriched_tx(db, fy)
     events = classify_capital_gains(enriched)
     start, end = fy_bounds(fy)
     fy_events = [e for e in events if start <= e.sell_date <= end]
@@ -214,7 +227,16 @@ async def schedule_fa(
         for r in rows
     ]
     dividends_usd: list[dict] = []  # future: pull from portfolio_tx kind=DIVIDEND
-    fa_rows = compute_schedule_fa(us_holdings, dividends_usd, fy, db=db)
+    # Pre-fetch FX rates async (AsyncSession can't be queried synchronously
+    # inside the sync tax math). Cover every peak date + the FY end date.
+    start, end = fy_bounds(fy)
+    needs: list[tuple[str, date]] = [("USD", end)]
+    for h in us_holdings:
+        for d in (h.get("daily_balances_usd") or {}):
+            if start <= d <= end:
+                needs.append(("USD", d))
+    rate_cache = await prefetch_fx_rates(db, needs)
+    fa_rows = compute_schedule_fa(us_holdings, dividends_usd, fy, db=db, rate_cache=rate_cache)
     return _wrap(
         {
             "fy": fy,
@@ -268,7 +290,12 @@ async def form_67(
                 "fx_rate": fx,
             }
         )
-    rows = compute_form_67(dividends, Decimal(str(slab_rate)), db=db)
+    # Pre-fetch FX rates async for any dividend lacking an explicit fx_rate.
+    needs = [("USD", d["paid_on"]) for d in dividends if d.get("fx_rate") is None]
+    rate_cache = await prefetch_fx_rates(db, needs)
+    rows = compute_form_67(
+        dividends, Decimal(str(slab_rate)), db=db, rate_cache=rate_cache
+    )
     return _wrap({"fy": fy, **form_67_json(rows)})
 
 
@@ -374,7 +401,35 @@ async def import_broker(
     dry_run: bool = Form(default=True),
 ) -> dict:
     """Tax-focused CSV import — same routing as portfolio but tags asset_class."""
-    payload = await file.read()
+    from pfip.brokers.csv_adapters.router import ADAPTERS
+
+    # Validate broker against the known adapter registry before reading the file.
+    if broker.strip().lower() not in ADAPTERS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "unknown_broker",
+                "message": f"Unknown broker '{broker}'. Supported: {', '.join(sorted(ADAPTERS))}.",
+            },
+        )
+
+    # Enforce a 10 MB upload cap — read in bounded chunks and reject oversize
+    # files with 413 rather than buffering arbitrary input into memory.
+    max_bytes = 10 * 1024 * 1024
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Uploaded file exceeds 10MB limit.",
+            )
+        chunks.append(chunk)
+    payload = b"".join(chunks)
     try:
         result = tax_focused_parse(payload, broker)
     except UnknownSchemaError as exc:
@@ -425,10 +480,142 @@ async def summary_pdf(
     fy: str = Query(...),
     gross_income_inr: Decimal = Query(Decimal("0")),
 ) -> Response:
-    enriched = await _fetch_enriched_tx(db)
+    enriched = await _fetch_enriched_tx(db, fy)
     events = classify_capital_gains(enriched)
     summary = build_tax_summary(fy, events, gross_income=gross_income_inr)
     pdf = build_summary_pdf(summary, events=events)
     # If reportlab isn't installed the helper returns text bytes.
     ct = "application/pdf" if pdf.startswith(b"%PDF") else "text/plain"
     return Response(content=pdf, media_type=ct)
+
+
+# ---------------------------------------------------------------------------
+# /tax/harvest — loss-harvesting suggestions
+# ---------------------------------------------------------------------------
+
+
+class HarvestRequest(BaseModel):
+    """Inputs the UI must supply because they aren't derivable from
+    holdings alone."""
+
+    fy: str
+    realised_stcg_equity_inr: Decimal = Decimal("0")
+    realised_ltcg_equity_inr: Decimal = Decimal("0")
+    realised_debt_gain_inr: Decimal = Decimal("0")
+    marginal_slab_rate: Decimal = Decimal("0.30")
+    surcharge_rate: Decimal = Decimal("0")
+
+
+@router.post("/harvest")
+async def harvest(
+    body: HarvestRequest,
+    db: DbSession,
+    _user: CurrentUser,
+) -> dict[str, Any]:
+    """Return ranked tax-loss harvesting suggestions.
+
+    Pulls open holdings from the `holdings` table, joins to the latest
+    OHLCV price, asks `pfip.tax.harvest.suggest_harvest` to rank.
+
+    VDA/crypto rows are skipped at the source — Indian law gives them
+    no loss set-off.
+    """
+    # Lazy import — harvest module is opt-in.
+    from pfip.tax.harvest import (
+        DISCLAIMER as HARVEST_DISCLAIMER,
+        FYContext,
+        HarvestAssetClass,
+        OpenLot,
+        suggest_harvest,
+    )
+    from pfip.models.ohlcv import OHLCVRow
+
+    fy_start, fy_end = fy_bounds(body.fy)
+    today = date.today()
+
+    # Pull open holdings.
+    rows = (
+        (
+            await db.execute(
+                select(HoldingRow).where(HoldingRow.qty > 0)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    lots: list[OpenLot] = []
+    for r in rows:
+        # Skip VDAs — no harvesting permitted.
+        if is_vda(r.symbol) or getattr(r, "asset_class", "").lower() == "vda":
+            continue
+        # Map asset_class enum string to the harvest enum.
+        ac_str = (getattr(r, "asset_class", "") or "").lower()
+        try:
+            ac = HarvestAssetClass(ac_str)
+        except ValueError:
+            # Unknown / unsupported class → skip rather than guess.
+            continue
+
+        # Pull the latest close price.
+        last_price_q = (
+            await db.execute(
+                select(OHLCVRow.close)
+                .where(OHLCVRow.symbol == r.symbol)
+                .order_by(OHLCVRow.ts.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if last_price_q is None:
+            continue
+        try:
+            current_price = Decimal(str(last_price_q))
+        except Exception:
+            continue
+
+        lots.append(
+            OpenLot(
+                lot_id=str(r.id),
+                symbol=r.symbol,
+                asset_class=ac,
+                qty=Decimal(str(r.qty)),
+                cost_basis_inr_per_unit=Decimal(str(getattr(r, "avg_cost_inr", 0))),
+                acquired_on=getattr(r, "first_acquired_on", today)
+                or today,
+                current_price_inr=current_price,
+            )
+        )
+
+    ctx = FYContext(
+        fy_start=fy_start,
+        fy_end=fy_end,
+        realised_stcg_equity_inr=body.realised_stcg_equity_inr,
+        realised_ltcg_equity_inr=body.realised_ltcg_equity_inr,
+        realised_debt_gain_inr=body.realised_debt_gain_inr,
+        marginal_slab_rate=body.marginal_slab_rate,
+        surcharge_rate=body.surcharge_rate,
+    )
+
+    plan = suggest_harvest(lots=lots, ctx=ctx, today=today)
+
+    return {
+        "disclaimer": HARVEST_DISCLAIMER,
+        "fy": plan.fy,
+        "total_loss_inr": str(plan.total_loss_inr),
+        "total_tax_saved_inr": str(plan.total_tax_saved_inr),
+        "suggestions": [
+            {
+                "lot_id": s.lot_id,
+                "symbol": s.symbol,
+                "asset_class": s.asset_class.value,
+                "term": s.term,
+                "qty": str(s.qty),
+                "loss_inr": str(s.loss_inr),
+                "offsets_against": s.offsets_against,
+                "estimated_tax_saved_inr": str(s.estimated_tax_saved_inr),
+                "warning": s.warning,
+            }
+            for s in plan.suggestions
+        ],
+        "n_lots_evaluated": len(lots),
+    }

@@ -57,6 +57,10 @@ statsmodels==0.14.2
 # --- ML tracking ---
 mlflow==2.14.0
 
+# --- RAG eval (monthly RAGAS run; large transitive deps, kept loose) ---
+ragas>=0.1.10
+datasets>=2.18.0
+
 # --- Deep learning / LLM (for sentiment + embeddings client) ---
 # transformers + torch are large (~2GB); skip here if you only use Docker for ML
 # Uncomment if you want local sentiment classification outside Docker:
@@ -100,6 +104,13 @@ pypdf==4.3.1
 ebooklib==0.18
 langchain-text-splitters==0.2.2
 
+# --- LLM routing (multi-provider) ---
+# LiteLLM is the unified Python interface to 100+ LLM providers (Groq, Gemini,
+# DeepSeek, OpenRouter, NVIDIA NIM, Cohere, Cerebras, Ollama, ...). We wrap it
+# in pfip.agent.router + pfip.agent.llm_client so callers can request a task
+# type + sensitivity and let the router pick a model. See docs/LLM_ROUTING.md.
+litellm==1.50.0
+
 # --- Observability ---
 loguru==0.7.2
 sentry-sdk[fastapi]==2.7.1
@@ -118,6 +129,11 @@ pytest==8.2.2
 pytest-asyncio==0.23.7
 pytest-cov==5.0.0
 hypothesis==6.103.5
+# Real-DB INTEGRATION tests (backend/tests/integration). Spins up a throwaway
+# Postgres via Docker so the SQL layer is actually executed. Tests are marked
+# `@pytest.mark.integration` and skip cleanly when Docker is unavailable, so this
+# dep is only exercised in CI (or locally when Docker is running).
+testcontainers[postgres]==4.7.2
 ruff==0.5.0
 black==24.4.2
 mypy==1.10.0

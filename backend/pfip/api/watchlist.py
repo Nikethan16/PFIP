@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
@@ -42,13 +42,14 @@ async def add_watchlist(
     return WatchlistItem.model_validate(row)
 
 
-@router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{item_id}", response_class=Response, status_code=status.HTTP_204_NO_CONTENT)
 async def delete_watchlist(
     item_id: UUID, db: DbSession, _user: CurrentUser
-) -> None:
+) -> Response:
     """Remove a symbol from the watchlist."""
     row = await db.get(WatchlistRow, item_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
     await db.delete(row)
     await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

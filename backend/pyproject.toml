@@ -103,6 +103,9 @@ exclude = ["alembic/versions/"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "-ra -q"
+markers = [
+    "integration: real-DB tests requiring Docker/testcontainers or a provided DATABASE_URL (skipped otherwise)",
+]
 
 [tool.uv]
 # uv uses this file as the source of truth for dependencies.
