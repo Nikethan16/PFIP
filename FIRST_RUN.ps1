@@ -30,6 +30,19 @@ function Ok($msg)   { Write-Host "  [OK]   $msg" -ForegroundColor Green }
 function Warn($msg) { Write-Host "  [WARN] $msg" -ForegroundColor Yellow }
 function Fail($msg) { Write-Host "  [FAIL] $msg" -ForegroundColor Red; exit 1 }
 
+# Run a native command (docker, python, etc.) without letting its stderr halt the script.
+# Pipes output to host (not pipeline) so the function's return is just the exit code.
+function Invoke-Native($cmd) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        cmd /c "$cmd 2>&1" | Out-Host
+        return $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+}
+
 # ---------- 1. Preflight ----------
 Section "Step 1/8 - Preflight"
 
@@ -77,12 +90,12 @@ if ($elapsed -ge $timeout) { Fail "TimescaleDB did not become healthy in $timeou
 
 # ---------- 4. Run migrations ----------
 Section "Step 4/8 - Running Alembic migrations"
-docker exec pfip-backend alembic upgrade head 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Warn "Migration failed on first try; waiting 5s for backend to be ready and retrying..."
-    Start-Sleep -Seconds 5
-    docker exec pfip-backend alembic upgrade head
-    if ($LASTEXITCODE -ne 0) { Fail "Migrations failed twice. Check: docker logs pfip-backend" }
+$ec = Invoke-Native "docker exec pfip-backend alembic upgrade head"
+if ($ec -ne 0) {
+    Warn "Migration failed on first try (exit=$ec); waiting 10s for backend to be ready and retrying..."
+    Start-Sleep -Seconds 10
+    $ec = Invoke-Native "docker exec pfip-backend alembic upgrade head"
+    if ($ec -ne 0) { Fail "Migrations failed twice. Check: docker logs pfip-backend" }
 }
 Ok "Migrations applied"
 
@@ -120,11 +133,11 @@ Probe "Frontend"                  "http://localhost:3000/"
 
 # ---------- 7. Ingest first BTC data ----------
 Section "Step 7/8 - Ingest 5y of BTC daily OHLCV from Coinbase"
-docker exec pfip-backend python -m pfip.prefect.flows.ingest_btc_daily 2>&1
-if ($LASTEXITCODE -eq 0) {
+$ec = Invoke-Native "docker exec pfip-backend python -m pfip.prefect.flows.ingest_btc_daily"
+if ($ec -eq 0) {
     Ok "BTC ingest complete. Dashboard will have real data."
 } else {
-    Warn "BTC ingest hit an error. You can retry later with: .\scripts\ingest_btc.ps1"
+    Warn "BTC ingest hit an error (exit=$ec). You can retry later with: .\scripts\ingest_btc.ps1"
 }
 
 # ---------- 8. Open browser + print login ----------

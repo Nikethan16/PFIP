@@ -28,11 +28,13 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-pfip}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pfip_dev}
+      # FIX 6-infra: required secret — fail loudly if unset instead of using a known-bad default.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       POSTGRES_DB: ${POSTGRES_DB:-pfip}
       TS_TUNE_MAX_CONNS: "50"
+    # FIX 12: bind to loopback only so Postgres is not exposed on the LAN.
     ports:
-      - "${TIMESCALEDB_PORT:-5432}:5432"
+      - "127.0.0.1:${TIMESCALEDB_PORT:-5432}:5432"
     volumes:
       - timescale_data:/var/lib/postgresql/data
     networks: [pfip-net]
@@ -47,8 +49,9 @@ services:
     container_name: pfip-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
+    # FIX 12: bind to loopback only.
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     networks: [pfip-net]
@@ -62,12 +65,27 @@ services:
     image: qdrant/qdrant:v1.9.3
     container_name: pfip-qdrant
     restart: unless-stopped
+    # FIX 12: bind to loopback only.
     ports:
-      - "${QDRANT_HTTP_PORT:-6333}:6333"
-      - "${QDRANT_GRPC_PORT:-6334}:6334"
+      - "127.0.0.1:${QDRANT_HTTP_PORT:-6333}:6333"
+      - "127.0.0.1:${QDRANT_GRPC_PORT:-6334}:6334"
     volumes:
       - qdrant_data:/qdrant/storage
     networks: [pfip-net]
+    # FIX 17a: healthcheck. The qdrant image (debian-slim) ships no curl/wget/python,
+    # but Debian base images include bash, whose built-in /dev/tcp can do a raw HTTP
+    # GET against the readiness endpoint (/readyz, available in qdrant >=1.9).
+    # Passes only on an HTTP 200 status line.
+    healthcheck:
+      test:
+        - "CMD"
+        - "bash"
+        - "-c"
+        - "exec 3<>/dev/tcp/127.0.0.1/6333; printf 'GET /readyz HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; head -n 1 <&3 | grep -q '200'"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   # -------- Orchestration --------
   prefect:
@@ -78,11 +96,20 @@ services:
     environment:
       PREFECT_API_URL: http://prefect:4200/api
       PREFECT_SERVER_API_HOST: 0.0.0.0
+    # FIX 12: bind to loopback only.
     ports:
-      - "${PREFECT_PORT:-4200}:4200"
+      - "127.0.0.1:${PREFECT_PORT:-4200}:4200"
     volumes:
       - prefect_data:/root/.prefect
     networks: [pfip-net]
+    # FIX 17a: healthcheck. The prefect image bundles python3; probe the server's
+    # own health endpoint (GET :4200/api/health) with a stdlib one-liner.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:4200/api/health', timeout=4).status==200 else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # -------- ML registry --------
   mlflow:
@@ -95,22 +122,42 @@ services:
       --port 5000
       --backend-store-uri sqlite:////mlflow/mlflow.db
       --artifacts-destination /mlflow/artifacts
+    # FIX 12: bind to loopback only.
     ports:
-      - "${MLFLOW_PORT:-5000}:5000"
+      - "127.0.0.1:${MLFLOW_PORT:-5000}:5000"
     volumes:
       - mlflow_data:/mlflow
     networks: [pfip-net]
+    # FIX 17a: healthcheck. The mlflow image is python-based; probe the server's
+    # health endpoint (GET :5000/health) with a stdlib one-liner.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=4).status==200 else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # -------- Local LLM --------
   ollama:
-    image: ollama/ollama:latest
+    # FIX 18: pin a concrete version instead of :latest for reproducible builds.
+    image: ollama/ollama:0.30.4
     container_name: pfip-ollama
     restart: unless-stopped
+    # FIX 12: bind to loopback only.
     ports:
-      - "${OLLAMA_PORT:-11434}:11434"
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
     volumes:
       - ollama_data:/root/.ollama
     networks: [pfip-net]
+    # FIX 17a: healthcheck. The ollama image bundles the `ollama` CLI, which talks
+    # to the local server; `ollama list` returns non-zero if the server isn't up.
+    # start_period is generous because model load / first start can be slow.
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     # NOTE: on first run, shell into the container and pull the models:
     #   docker exec -it pfip-ollama ollama pull mistral:7b-instruct
     #   docker exec -it pfip-ollama ollama pull nomic-embed-text
@@ -120,8 +167,9 @@ services:
     image: louislam/uptime-kuma:1
     container_name: pfip-uptime-kuma
     restart: unless-stopped
+    # FIX 12: bind to loopback only.
     ports:
-      - "${UPTIME_KUMA_PORT:-3001}:3001"
+      - "127.0.0.1:${UPTIME_KUMA_PORT:-3001}:3001"
     volumes:
       - uptime_kuma_data:/app/data
     networks: [pfip-net]
@@ -137,14 +185,17 @@ services:
     env_file:
       - ../.env
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pfip}:${POSTGRES_PASSWORD:-pfip_dev}@timescaledb:5432/${POSTGRES_DB:-pfip}
+      # FIX 6-infra: the DB password embedded in DATABASE_URL is required — fail
+      # loudly if unset rather than silently using the known-bad pfip_dev default.
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pfip}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@timescaledb:5432/${POSTGRES_DB:-pfip}
       REDIS_URL: redis://redis:6379/0
       QDRANT_URL: http://qdrant:6333
       MLFLOW_TRACKING_URI: http://mlflow:5000
       OLLAMA_HOST: http://ollama:11434
       PREFECT_API_URL: http://prefect:4200/api
+    # FIX 12: bind to loopback only.
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
     volumes:
       - ../backend:/app
     depends_on:
@@ -153,6 +204,15 @@ services:
       redis:
         condition: service_healthy
     networks: [pfip-net]
+    # FIX 17a: healthcheck. The backend image (python:3.12-slim) installs curl and
+    # bundles python; probe the FastAPI liveness route (all routers are mounted
+    # under /api/v1, so the health endpoint is /api/v1/health).
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
 
   # Frontend (Next.js). Built from ../frontend. Dev command mounts source for hot reload.
   frontend:
@@ -162,11 +222,19 @@ services:
     container_name: pfip-frontend
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-8000}
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-dev-change-me}
+      # Browser-side: must use localhost (host port mapping)
+      NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-8000}/api/v1
+      # Server-side (NextAuth credentials provider, server components): must use
+      # the Docker service name. localhost from inside the frontend container
+      # points to the frontend itself, not backend.
+      BACKEND_URL: http://backend:8000/api/v1
+      # FIX 6-infra: required secret — fail loudly if unset instead of falling back
+      # to the publicly-known dev-change-me default.
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET must be set in .env}
       NEXTAUTH_URL: http://localhost:${FRONTEND_PORT:-3000}
+    # FIX 12: bind to loopback only.
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
     volumes:
       - ../frontend:/app
       - /app/node_modules
@@ -174,3 +242,11 @@ services:
     depends_on:
       - backend
     networks: [pfip-net]
+    # FIX 17a: healthcheck. The node:20-alpine image ships wget (busybox); probe
+    # the Next.js dev server on :3000. --spider just checks reachability.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
