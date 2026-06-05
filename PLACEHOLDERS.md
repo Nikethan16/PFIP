@@ -4,6 +4,76 @@
 
 ---
 
+## Priority 0 — Post-audit action items (added 2026-06-04)
+
+These came out of the full security/correctness audit. The code fixes are done;
+these specific steps need **you** because they involve secrets, a package install,
+or a product decision. Nothing here blocks the app from running in dev.
+
+### 0.1 Apply the Next.js security bump (REQUIRED — 1 command)
+`frontend/package.json` was bumped `next` and `eslint-config-next` `14.2.5 → 14.2.35`
+(patches a critical middleware auth-bypass + dev-server info-leak). The lockfile was
+**not** updated because pnpm wasn't available during the fix. Run:
+```powershell
+cd frontend
+pnpm install            # refreshes pnpm-lock.yaml + pulls next@14.2.35
+pnpm typecheck; pnpm lint   # verify the frontend edits (middleware, zod schemas, a11y) type-check
+```
+- [ ] `pnpm install` run, `next@14.2.35` resolved.
+- [ ] `pnpm typecheck` and `pnpm lint` pass.
+
+### 0.2 Secrets are now MANDATORY (fail-loud, no more silent dev defaults)
+`infra/docker-compose.yml` no longer falls back to the publicly-known
+`NEXTAUTH_SECRET=dev-change-me` / `POSTGRES_PASSWORD=pfip_dev`. Compose now **refuses
+to start** if these are unset, and the backend (`core/config.py`) raises on boot if
+`APP_ENV != dev` and any auth secret is still a default. Make sure `.env` has real
+values (per §1.2 below). To get the stricter boot-time check in production, also set:
+- [ ] `NEXTAUTH_SECRET` set to a real 32-byte value in `.env` (see §1.2).
+- [ ] `POSTGRES_PASSWORD` set to a real value in `.env` (and matched inside `DATABASE_URL`).
+- [ ] (When deploying for real) set `APP_ENV=prod` in `.env` to activate fail-loud secret validation.
+
+### 0.3 Error tracking (OPTIONAL but recommended)
+A Sentry hook is now wired in `api/main.py` — it activates only if `SENTRY_DSN` is set,
+and is a no-op otherwise. `sentry-sdk[fastapi]` is pinned in `requirements.txt`.
+- [ ] Fill `SENTRY_DSN` in `.env` (free tier — see §2 list) to get unhandled-exception alerts.
+
+### 0.4 Ollama image was pinned (verify the version suits you)
+`ollama/ollama:latest → ollama/ollama:0.30.4` for reproducibility. If you need a
+different Ollama version, edit `infra/docker-compose.yml` and re-pull.
+- [ ] Confirm `0.30.4` is acceptable, or change the pin.
+
+### 0.5 One finding left as YOUR decision (not auto-fixed)
+- [ ] **Unwired agent modules** — `agent/intent.py`, `agent/embedder.py`, `agent/reranker.py`
+  are not in the live chat path, so the reranker (documented as the top RAG-quality lever)
+  is never applied. NOT auto-wired because the reranker sends the query to Cohere — it touches
+  the privacy boundary I just hardened, and I can't test the live agent path here. Decide:
+  wire them in (with sensitivity gating), or delete them.
+
+### 0.5b Mark-to-market + correlations are now LIVE — operational notes
+`/portfolio/summary` is now real mark-to-market, `/portfolio/correlations` returns a real
+matrix, and `/exposure` + `/concentration` use live prices. A new `GET /portfolio/marking`
+reports coverage (which holdings are live-priced vs cost-basis, the USD/INR used, and why any
+holding fell back). For these to show real numbers:
+- [ ] **Ingest OHLCV** for your held symbols (the dashboards mark to the latest close).
+- [ ] **Populate the `fx_rates` table** (USD→INR) — required to value USD assets (crypto/US
+  equities). Without it, USD holdings safely fall back to cost basis and appear under
+  `unmarked: [{reason: "no_fx_rate"}]` in `/portfolio/marking` (never a wrong rupee figure).
+- [ ] **Sanity-check the rupee figures** against a known holding once real data is in — the
+  valuation logic is unit-tested, but I couldn't validate against your live OHLCV here.
+- Optional UI: wire a small "X/Y live-priced, as of …" badge from `GET /portfolio/marking`.
+
+### 0.5c Still honest stubs (stage-gated, not wired)
+- [ ] `/assets/{symbol}/features|news|regime` and Schedule FA peak-balance approximation —
+  implement when you reach the relevant stage.
+
+### 0.6 Recommended: prove the integration-test gap is closed
+All 452 backend tests run against a fake DB — the SQL layer (the bug class that broke
+tax-harvest/changes-today) is never executed end-to-end. A regression test for the specific
+`OHLCVRow.ts` bug was added, but a real-DB integration suite is still missing.
+- [ ] (Bigger task) Add testcontainers/CI-Postgres integration tests for the tax DB joins and OHLCV queries.
+
+---
+
 ## Priority 1 — Required before first run
 
 ### 1.1 Install prerequisites (Windows)

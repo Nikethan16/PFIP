@@ -46,6 +46,9 @@ docker version
 docker compose -f infra/docker-compose.yml pull
 
 # 3. Start the stack detached
+#    NEXTAUTH_SECRET and POSTGRES_PASSWORD are mandatory (compose uses ${VAR:?} and aborts
+#    if either is unset). All host ports bind to 127.0.0.1 (loopback) — nothing on the LAN.
+#    After pulling new code, run `pnpm install` in frontend/ first (Next bump + middleware).
 docker compose -f infra/docker-compose.yml --env-file .env up -d
 
 # 4. Wait ~60 seconds, then status

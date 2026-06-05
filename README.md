@@ -15,6 +15,7 @@ See the full product plan (Sections 1 & 12) for mission, stages, and roadmap.
 - Progress tracker: `../PFIP_v0.5/tracker.md`
 - Placeholders & open decisions: `./PLACEHOLDERS.md`
 - Contracts (backend + frontend must implement identically): `./docs/CONTRACTS.md`
+- Changelog (what changed, newest first): `./docs/CHANGELOG.md`
 - Runbooks: `./docs/runbooks/`
 - Onboarding (for future-Suresh): `./docs/ONBOARDING.md`
 
@@ -52,23 +53,31 @@ cd PFIP_app
 
 # 2. Copy env template and fill critical secrets
 Copy-Item .env.example .env
-notepad .env   # fill NEXTAUTH_SECRET, PFIP_USER_PASSWORD_HASH, FRED_API_KEY, FINNHUB_API_KEY
+notepad .env   # fill NEXTAUTH_SECRET, POSTGRES_PASSWORD, PFIP_USER_PASSWORD_HASH, FRED_API_KEY, FINNHUB_API_KEY
+#   NEXTAUTH_SECRET and POSTGRES_PASSWORD are now MANDATORY — compose uses ${VAR:?...}
+#   and aborts at startup if either is unset (no insecure dev defaults anymore).
 
 # 3. Generate a NextAuth secret
 [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Max 256 } | ForEach-Object { [byte]$_ }))
 
-# 4. Bring the stack up
+# 4. (Frontend deps) After pulling new code, install frontend packages — required after the
+#    Next.js bump + new middleware/Zod schemas landed in the 2026-06-04 audit.
+cd frontend; pnpm install; cd ..
+
+# 5. Bring the stack up
 docker compose -f infra/docker-compose.yml --env-file .env up -d
 
-# 5. Pull local LLM models (one-time, ~4 GB)
+# 6. Pull local LLM models (one-time, ~4 GB)
 docker exec -it pfip-ollama ollama pull mistral:7b-instruct
 docker exec -it pfip-ollama ollama pull nomic-embed-text
 
-# 6. Verify
+# 7. Verify
 docker compose -f infra/docker-compose.yml ps
 ```
 
-Open in the browser:
+All host ports bind to `127.0.0.1` (loopback) — the compose file maps them as
+`127.0.0.1:PORT:PORT`, so nothing is reachable from the LAN. Open in the browser
+(localhost only):
 
 - Frontend dashboard: http://localhost:3000
 - Backend OpenAPI UI: http://localhost:8000/docs
@@ -161,6 +170,7 @@ All commands assume PowerShell from the repo root (`PFIP_app/`).
 | List service status        | `docker compose -f infra/docker-compose.yml ps`                                          |
 | Shell into backend         | `docker exec -it pfip-backend bash`                                                      |
 | Run backend tests          | `docker exec -it pfip-backend uv run pytest`                                             |
+| Install frontend deps      | `cd frontend; pnpm install` (run after pulling — Next bump + new middleware/schemas)     |
 | Run frontend tests         | `docker exec -it pfip-frontend pnpm test`                                                |
 | Alembic migrate            | `docker exec -it pfip-backend uv run alembic upgrade head`                               |
 | Ingest BTC (one-shot)      | `docker exec -it pfip-backend uv run python -m pfip.ingest.crypto.btc_daily`             |

@@ -138,7 +138,10 @@ All routes are prefixed `/api/v1`.
 
 ### Health
 - `GET /health` → `{ "status": "ok", "time": "..." }`
-- `GET /health/deep` → checks TimescaleDB + Redis + Qdrant + Ollama
+- `GET /health/deep` → checks CORE deps (TimescaleDB, Redis) + OPTIONAL deps (Qdrant,
+  Ollama, cloud LLM). Returns `{ status, ready, ... }` where `status` is `"ok"` (all up) /
+  `"degraded"` (core up, an optional dep down — e.g. Ollama offline on a local run) /
+  `"down"` (a core dep down), and `ready` is a boolean.
 
 ### Auth
 - `POST /auth/login` → `{ token, expiresAt }`
@@ -164,7 +167,37 @@ All routes are prefixed `/api/v1`.
 - `GET /portfolio/holdings` → `Holding[]`
 - `POST /portfolio/holdings` → add manual
 - `POST /portfolio/import` (multipart CSV) → { imported, rejected, errors }
-- `GET /portfolio/summary` → { total_inr, p&l, exposure_by_category, drawdown }
+- `GET /portfolio/summary` → { total_inr, p&l, exposure_by_category, drawdown, ... }
+  **Marked to market:** holdings valued at the latest OHLCV close per symbol, USD assets
+  converted to INR via the `fx_rates` table. Correctness-by-abstention — any holding whose
+  price currency can't be resolved, or USD holding with no FX rate, falls back to cost basis
+  (never a wrong rupee figure). `/portfolio/exposure` and `/portfolio/concentration` use the
+  same live prices.
+- `GET /portfolio/marking` → mark-to-market coverage:
+  ```
+  {
+    "as_of": "2026-06-04T00:00:00Z" | null,
+    "usdinr": "83.21" | null,                 // string-encoded Decimal
+    "marked": string[],                        // symbols priced live
+    "unmarked": [{ "symbol": "...", "reason": "no_price" | "unknown_currency" | "no_fx_rate" }],
+    "mark_prices_inr": { "<symbol>": "<inr price, string Decimal>" },
+    "coverage": { "marked": int, "total": int },
+    "disclaimer": "..."
+  }
+  ```
+- `GET /portfolio/correlations?window_days=90` → real Pearson correlation matrix of daily
+  log-returns from each symbol's own OHLCV history over the window (currency-agnostic, no FX
+  involved). `window_days` is clamped to 10–365. Response shape (matches the frontend
+  `CorrelationMatrixSchema`):
+  ```
+  {
+    "window_days": 90,
+    "symbols": string[],          // row/column order
+    "matrix": number[][],         // aligned to `symbols`; symbols with <2 bars dropped
+    "note": "...",                // explains an empty matrix when no holding has history
+    "disclaimer": "..."
+  }
+  ```
 
 ### Shadow portfolio
 - `GET /shadow/holdings`

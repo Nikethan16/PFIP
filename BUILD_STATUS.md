@@ -4,6 +4,37 @@
 **Location:** `C:\Users\gaura\OneDrive\Desktop\PFIP_app\`
 **State:** Full monorepo with 321 code files; real working implementations (not just placeholders) for every module the plan calls for in v0.5.
 
+> **Update 2026-06-04 — security & correctness audit.** An audit pass shipped a batch of
+> security/correctness fixes plus two new portfolio features. Highlights below; the full,
+> grouped list is in `docs/CHANGELOG.md`.
+>
+> - **Security:** every host port now binds to `127.0.0.1` (loopback) in compose;
+>   `NEXTAUTH_SECRET`/`POSTGRES_PASSWORD` are fail-loud (`${VAR:?}`, no insecure defaults);
+>   a config validator raises on default secrets when `APP_ENV != "dev"`; Sentry is now
+>   actually wired (was documented-only); `/assets/*` endpoints require auth; `/tax/import`
+>   has a 10 MB cap + broker validation; non-root containers + prod/dev Docker targets;
+>   Next.js 14.2.5 → 14.2.35 + `frontend/middleware.ts` route auth + CSP/security headers.
+> - **Privacy:** the chat agent structurally forces local-only LLM routing whenever holdings
+>   are in the prompt — holdings never reach a cloud LLM even on a classifier miss.
+> - **Correctness:** fixed the `OHLCVRow.ts`-vs-`.time` AttributeError (synonym) that had
+>   broken `/tax/harvest`, `/changes-today`, the agent price tool, `market_close`, and 3
+>   Prefect flows; async-correct FX cost-basis reading the `fx_rates` table; FY filter pushed
+>   into SQL; FIFO sorts by full timestamp; calibration NaN-mask fix; `/health/deep` now
+>   reports `ok`/`degraded`/`down` + `ready`; explicit LLM timeout; Windows ₹/cp1252 write
+>   crash fixed (utf-8).
+> - **New features:** `/portfolio/summary`, `/exposure`, `/concentration` are now **real
+>   mark-to-market** (latest OHLCV close, USD→INR via `fx_rates`, cost-basis fallback by
+>   abstention); `/portfolio/correlations` returns a **real** Pearson matrix; **new**
+>   `GET /portfolio/marking` reports MTM coverage. Logic in `backend/pfip/portfolio/marking.py`.
+> - **Tests:** 477 backend tests — 471 passing, 1 skipped (LightGBM), 5 failing only because
+>   `litellm` isn't installed in the local venv (it's pinned + present in Docker). Added
+>   `test_ohlcv_columns.py` and `test_marking.py`.
+> - **ML status (honest):** regime/backtest/calibration/features are real & scheduled, but
+>   **live per-asset signal generation is intentionally NOT enabled** — the
+>   `signals_generate_daily` flow isn't deployed (so the `signals` table stays empty), the
+>   `FEATURE_ML_SIGNALS` flag is dead, and the walk-forward trainer needs ~3y/756+ bars per
+>   asset that a fresh install lacks. See `docs/CHANGELOG.md` "Known state".
+
 ---
 
 ## What works right now (no keys needed)
@@ -23,7 +54,7 @@ These run as soon as `docker compose up` is happy:
 - **Prediction markets** — Polymarket + Kalshi read APIs — no keys.
 - **Self-custody BTC** — mempool.space for any BTC address you add.
 - **Tax engine** — full Indian rules: STCG/LTCG classifier with FIFO + 31-Jan-2018 grandfathering; VDA 30% + 1% TDS; Schedule FA; Form 67 DTAA credit; 80C optimiser; old-vs-new regime comparison; surcharge cliff detection; ITR form recommendation; dividend slab treatment.
-- **Portfolio engine** — P&L (weighted avg cost basis), exposure by category, historical VaR 95%/99%, Herfindahl concentration, 90-day correlation matrix, trailing-30d Sharpe, peak drawdown.
+- **Portfolio engine** — mark-to-market valuation (latest OHLCV close per symbol; USD→INR via the `fx_rates` table; cost-basis fallback by abstention when currency/FX can't be resolved), P&L, exposure by category, historical VaR 95%/99%, Herfindahl concentration, real Pearson correlation matrix of daily log-returns, trailing-30d Sharpe, peak drawdown. `GET /portfolio/marking` reports which holdings are live-priced vs cost-basis and why.
 - **Risk manager** — pre-trade 10-item Appendix B checklist, drawdown HALT at 20%, correlation guard at 0.7, Van Tharp position sizing, daily 2-new-positions cap.
 - **CSV import adapters** — Zerodha, ICICIdirect, Groww, INDmoney, Vested, WazirX, CoinDCX, Binance, Coinbase, Kraken. 10 brokers, pinned schemas, route auto-detected on upload.
 - **Regime detection** — HMM via hmmlearn, trained per market on 3y trailing. Deterministic state-to-regime mapping. Persists to MLflow.
@@ -167,7 +198,7 @@ When you come back, answer these four so Stage 1 can start cleanly:
 
 9. **PIT column is populated, but deep historical PIT fundamentals for Indian stocks are thin.** US side is fine (SEC EDGAR has everything since the 90s). India backtests beyond 3-4 years may have restated-data bias; acknowledged in the plan's risk register.
 
-10. **Frontend correlation matrix endpoint** needs a real return-series computation on the backend; the hook exists but returns empty until the portfolio service is hooked to the feature store.
+10. ~~**Frontend correlation matrix endpoint** needs a real return-series computation on the backend.~~ **Fixed 2026-06-04.** `/portfolio/correlations` now returns a real Pearson matrix of daily log-returns from each symbol's own OHLCV history (`{ window_days, symbols, matrix, note, disclaimer }`). Empty only when no holding has ≥2 bars of history in the window.
 
 ---
 

@@ -1,0 +1,996 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>PFIP — System Architecture</title>
+<style>
+  :root {
+    --navy: #0b1c30;
+    --teal: #006b5f;
+    --ink: #1f2937;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --bg: #f8f9ff;
+
+    --ingest-bg: #fff7ed;
+    --ingest-ring: #f97316;
+    --ingest-fg: #c2410c;
+
+    --signal-bg: #eef2ff;
+    --signal-ring: #6366f1;
+    --signal-fg: #4338ca;
+
+    --query-bg: #ecfdf5;
+    --query-ring: #10b981;
+    --query-fg: #047857;
+
+    --tax-bg: #faf5ff;
+    --tax-ring: #a855f7;
+    --tax-fg: #7e22ce;
+
+    --alert-bg: #fef2f2;
+    --alert-ring: #ef4444;
+    --alert-fg: #b91c1c;
+
+    --backtest-bg: #fffbeb;
+    --backtest-ring: #f59e0b;
+    --backtest-fg: #b45309;
+
+    --data-bg: #f0f9ff;
+    --data-ring: #0ea5e9;
+    --data-fg: #0369a1;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  body { padding: 32px 24px 48px; }
+  .page { max-width: 1320px; margin: 0 auto; }
+  h1 { text-align: center; color: var(--teal); font-size: 28px; margin: 0 0 6px; font-weight: 700; letter-spacing: -0.01em; }
+  .subtitle { text-align: center; color: var(--muted); font-size: 13px; margin: 0 0 24px; }
+  .legend { text-align: center; color: var(--muted); font-size: 12px; margin-bottom: 28px; }
+  .legend .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #fff; border: 1px solid var(--line); margin: 0 4px 4px; font-size: 11px; }
+
+  .pipeline {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 22px;
+  }
+  .pipeline h2 { font-size: 16px; margin: 0 0 4px; color: var(--navy); }
+  .pipeline .pipeline-meta { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+
+  .flow {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .step {
+    display: grid;
+    grid-template-columns: 36px 1fr;
+    gap: 12px;
+    align-items: stretch;
+  }
+  .step-num {
+    background: var(--step-ring);
+    color: #fff;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+    margin-top: 8px;
+    margin-left: 4px;
+  }
+  .step-card {
+    background: var(--step-bg);
+    border-left: 3px solid var(--step-ring);
+    border-radius: 10px;
+    padding: 10px 14px;
+  }
+  .step-card .title { font-weight: 700; color: var(--step-fg); font-size: 13.5px; margin: 0 0 3px; }
+  .step-card .meta { font-size: 11.5px; color: var(--muted); margin-bottom: 4px; }
+  .step-card ul { margin: 4px 0 0; padding-left: 18px; font-size: 12.2px; line-height: 1.55; }
+  .step-card ul li { margin: 1px 0; }
+  .step-card code { background: rgba(15, 23, 42, 0.05); padding: 0 4px; border-radius: 3px; font-size: 11.5px; }
+
+  .ingest   { --step-bg: var(--ingest-bg);   --step-ring: var(--ingest-ring);   --step-fg: var(--ingest-fg); }
+  .signal   { --step-bg: var(--signal-bg);   --step-ring: var(--signal-ring);   --step-fg: var(--signal-fg); }
+  .query    { --step-bg: var(--query-bg);    --step-ring: var(--query-ring);    --step-fg: var(--query-fg); }
+  .tax      { --step-bg: var(--tax-bg);      --step-ring: var(--tax-ring);      --step-fg: var(--tax-fg); }
+  .alert    { --step-bg: var(--alert-bg);    --step-ring: var(--alert-ring);    --step-fg: var(--alert-fg); }
+  .backtest { --step-bg: var(--backtest-bg); --step-ring: var(--backtest-ring); --step-fg: var(--backtest-fg); }
+  .data     { --step-bg: var(--data-bg);     --step-ring: var(--data-ring);     --step-fg: var(--data-fg); }
+
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; line-height: 1.4; background: rgba(0,0,0,0.04); color: var(--ink); margin-right: 4px; }
+  .pill.k { background: #f1f5f9; color: var(--muted); font-family: ui-monospace, monospace; font-size: 11px; }
+  .pill.warn { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+
+  .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 22px; }
+
+  .stack-card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 14px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+  .stack-card .title { color: var(--navy); font-weight: 700; margin: 0 0 4px; font-size: 14px; }
+  .stack-card .meta { font-size: 11.5px; color: var(--muted); }
+  .stack-card table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
+  .stack-card th, .stack-card td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  .stack-card th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+  .key-numbers {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 22px;
+  }
+  .key-numbers h3 { font-size: 13px; margin: 0 0 8px; color: var(--navy); }
+  .knb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+  .knb {
+    background: var(--bg);
+    border-radius: 8px;
+    padding: 8px 10px;
+    border-left: 3px solid var(--teal);
+  }
+  .knb .v { font-weight: 700; color: var(--teal); font-size: 15px; }
+  .knb .k { font-size: 11px; color: var(--muted); line-height: 1.3; }
+
+  .overview {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 22px;
+  }
+  .overview h2 { font-size: 16px; margin: 0 0 12px; color: var(--navy); }
+  .overview pre {
+    background: #f8fafc;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 11.5px;
+    line-height: 1.5;
+    overflow-x: auto;
+    color: var(--ink);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    margin: 0;
+  }
+
+  .principles {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 22px;
+  }
+  .principles h3 { font-size: 13px; margin: 0 0 10px; color: var(--navy); }
+  .principles ol { margin: 0; padding-left: 22px; font-size: 12.5px; line-height: 1.6; }
+  .principles ol li { margin: 3px 0; }
+  .principles strong { color: var(--teal); }
+
+  footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
+  footer code { background: #eef2ff; color: #3730a3; padding: 1px 6px; border-radius: 4px; font-size: 11px; }
+
+  @media print { body { background: #fff; } .pipeline, .stack-card, .key-numbers, .overview, .principles { box-shadow: none; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>PFIP — System Architecture</h1>
+  <p class="subtitle">Personal Financial Intelligence Platform · single-user · self-hosted · paper-trading only in v1 · seven pipelines · all data stays on the user's machine except where the user adds a cloud LLM key</p>
+  <p class="legend">
+    <span class="badge" style="background: var(--ingest-bg); border-color: var(--ingest-ring); color: var(--ingest-fg)">Ingestion (offline, Prefect)</span>
+    <span class="badge" style="background: var(--signal-bg); border-color: var(--signal-ring); color: var(--signal-fg)">ML signal (offline)</span>
+    <span class="badge" style="background: var(--backtest-bg); border-color: var(--backtest-ring); color: var(--backtest-fg)">Backtest + calibration (offline)</span>
+    <span class="badge" style="background: var(--query-bg); border-color: var(--query-ring); color: var(--query-fg)">Chat agent (online, SSE)</span>
+    <span class="badge" style="background: var(--tax-bg); border-color: var(--tax-ring); color: var(--tax-fg)">Tax engine (on-demand)</span>
+    <span class="badge" style="background: var(--alert-bg); border-color: var(--alert-ring); color: var(--alert-fg)">Alerts (outbound)</span>
+    <span class="badge" style="background: var(--data-bg); border-color: var(--data-ring); color: var(--data-fg)">Stateful component</span>
+  </p>
+
+  <!-- ───────────────────────────────── KEY NUMBERS -->
+  <div class="key-numbers">
+    <h3>Tuning constants — at-a-glance</h3>
+    <div class="knb-grid">
+      <div class="knb"><div class="v">~50 sources</div><div class="k">Free data adapters · crypto / US / India / MFs / macro / news / on-chain</div></div>
+      <div class="knb"><div class="v">3-state / 4-state HMM</div><div class="k">Regime detector · bull / bear / sideways (+ high-vol) · hmmlearn primary, quantile fallback</div></div>
+      <div class="knb"><div class="v">≥ 65 confidence</div><div class="k">Signal floor · below → HOLD · enforced in <code>SignalRow</code></div></div>
+      <div class="knb"><div class="v">3y / 21d / 5d</div><div class="k">Walk-forward window / step / embargo (López de Prado CPCV)</div></div>
+      <div class="knb"><div class="v">1 000 iterations</div><div class="k">Monte Carlo block bootstrap per backtest</div></div>
+      <div class="knb"><div class="v">0.15 ECE / 2 months</div><div class="k">Auto-suspend threshold — Brier-calibration breach for 2 consecutive monthly reports</div></div>
+      <div class="knb"><div class="v">10% / 20% / 0.7 / 2</div><div class="k">Risk caps · position size · drawdown halt · max pair-correlation · daily new positions</div></div>
+      <div class="knb"><div class="v">5% → 10% → 25% → 100%</div><div class="k">Pre-commitment capital ladder · 4 weeks per tier with all gates green</div></div>
+      <div class="knb"><div class="v">10 alerts / hour</div><div class="k">Telegram rate cap · INFO digested · CRITICAL bypasses quiet hours</div></div>
+      <div class="knb"><div class="v">23:00–07:00 IST</div><div class="k">Quiet hours · INFO/WARN suppressed · CRITICAL still fires</div></div>
+      <div class="knb"><div class="v">0.70 faithfulness floor</div><div class="k">RAGAS regression alarm · monthly eval over 50-Q held-out set</div></div>
+      <div class="knb"><div class="v">0.5% threshold</div><div class="k">Cross-source price reconciliation · daily · Telegram WARN on divergence</div></div>
+      <div class="knb"><div class="v">1% anomaly ratio</div><div class="k">IsolationForest daily scan over <code>log_return / range_pct / gap_pct / volume_z</code></div></div>
+      <div class="knb"><div class="v">±2% / annually</div><div class="k">ITR calibration drill · engine must reproduce filed numbers within ±2%</div></div>
+      <div class="knb"><div class="v">₹1 lakh exemption</div><div class="k">Equity LTCG annual exemption · honored in loss-harvesting math</div></div>
+    </div>
+  </div>
+
+  <!-- ───────────────────────────────── OVERVIEW -->
+  <div class="overview">
+    <h2>System overview — one diagram, every box</h2>
+<pre>┌────────────────────────────────────────────────────────────────────────────────┐
+│  Browser · Next.js 14 App Router · TypeScript · Tailwind · Slate &amp; Teal       │
+│  shadcn/ui · Tremor · Recharts · TanStack Query · NextAuth (single-user)      │
+│  14 routes · /, /watchlist, /signals, /portfolio, /tax, /tax/harvest,         │
+│  /chat, /journal, /calibration, /ops/sources, /ops/schedules,                 │
+│  /ops/models, /settings, /login                                                │
+└──────────────────────────────────────┬─────────────────────────────────────────┘
+                                       │ HTTPS · JWT cookie
+┌──────────────────────────────────────▼─────────────────────────────────────────┐
+│  FastAPI backend · Python 3.10 async · 67 routes                              │
+│  Routers: assets · auth · agent · calibration · changes_today · health         │
+│           journal · model_registry · portfolio · schedules · setup             │
+│           shadow · signals · tax · watchlist                                   │
+│  Pydantic v2 typed contracts · SQLAlchemy 2 + Alembic                          │
+└──┬───────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┬─────────────┘
+   │       │       │       │       │       │       │       │       │
+┌──▼───┐ ┌─▼────┐ ┌▼─────┐ ┌▼────┐ ┌▼────┐ ┌▼────┐ ┌▼────┐ ┌▼────┐ ┌▼─────────┐
+│Time- │ │Qdrant│ │Redis │ │Ollama││MLflow││Prefect│Sentry│ │Uptime│ │Telegram │
+│scale │ │ KB + │ │alerts││local ││metric││ flows │ APM  │ │Kuma  │ │  API    │
+│OHLCV │ │ news │ │ rate ││ LLM  ││ +    ││ + cron│ free │ │ pings│ │ outbound│
+│hyper-│ │vector│ │ caps ││PERSO-││artif-││       │ tier │ │      │ │ alerts  │
+│table │ │  s   │ │ +    ││ NAL  ││ act  ││       │      │ │      │ │         │
+│      │ │      │ │digest││sensit││store ││       │      │ │      │ │         │
+│      │ │      │ │queue ││ ivity││      ││       │      │ │      │ │         │
+└──────┘ └──────┘ └──────┘ └──────┘└──────┘└───────┘└──────┘ └──────┘ └─────────┘
+   ▲                                                  │
+   │                                                  │ on-cron triggers
+   │                                                  ▼
+   │                                          ┌───────────────┐
+   │                                          │ Ingest flows  │
+   │                                          │ ~50 adapters  │
+   │                                          │ (free sources)│
+   │                                          └───────────────┘
+   │                                                  │
+   └──────────────────────────────────────────────────┘
+                       (writes via SQLAlchemy)</pre>
+  </div>
+
+  <!-- ───────────────────────────────── DESIGN PRINCIPLES -->
+  <div class="principles">
+    <h3>Non-negotiable design principles (the why behind every box)</h3>
+    <ol>
+      <li><strong>Trust through transparency.</strong> Every number cites its source. Every model's confidence is shown next to the prediction. The freshness dot on every KPI is the most-clicked widget.</li>
+      <li><strong>Honest about uncertainty.</strong> Empty states say <em>why</em> they're empty ("not yet ingested" vs "ingested but failing"). No fake numbers, no placeholder graphs.</li>
+      <li><strong>Privacy boundary is hard.</strong> Holdings + tax data never leave the machine via cloud LLMs. The router pins <code>Sensitivity.PERSONAL</code> prompts to local Ollama, period.</li>
+      <li><strong>No auto-execution, ever.</strong> v1 is paper-trading. The LLM produces recommendations the user evaluates. No broker integration places orders. This is architectural, not feature-flagged.</li>
+      <li><strong>The pre-commitment ladder is the safety belt.</strong> You cannot move from paper to 5% capital without 3 months of validated paper performance + a signed file + zero risk-rule breaches.</li>
+      <li><strong>Reproducibility.</strong> Every monetary write carries the FX rate used. Every model artifact carries its <code>alembic_revision</code>. Every backtest is seeded.</li>
+      <li><strong>Don't build for what hasn't happened.</strong> Failure-pattern clustering is heuristic until 50 closed entries exist. Trained model selector deferred until 12 months of labels exist.</li>
+    </ol>
+  </div>
+
+  <!-- ───────────────────────────────── INGESTION PIPELINE -->
+  <div class="pipeline">
+    <h2>1. Ingestion pipeline — runs in Prefect on cron per adapter</h2>
+    <p class="pipeline-meta">Trigger: per-adapter cron (e.g. <code>0 1 * * *</code> for daily OHLCV, <code>*/15 * * * *</code> for news) · Prefect flow: <code>ingest_&lt;source&gt;_&lt;cadence&gt;</code> in <code>pfip/prefect/flows/</code></p>
+
+    <div class="flow">
+      <div class="step">
+        <div class="ingest step-num">1</div>
+        <div class="ingest step-card">
+          <p class="title">Compute idempotency key</p>
+          <p class="meta"><code>pfip.ingest._common.idempotency.make_batch_key</code></p>
+          <ul>
+            <li>SHA-256 of <code>(source, symbol, start, end, timeframe, extra)</code> with JSON-sorted extras</li>
+            <li>Stored on <code>source_health.last_batch_key</code> — second run with same key is a no-op</li>
+            <li>Survives retries, container restarts, manual re-triggers</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="ingest step-num">2</div>
+        <div class="ingest step-card">
+          <p class="title">Fetch — per-source adapter <span class="pill k">async</span></p>
+          <p class="meta">Each adapter is one async function with a uniform shape — never raises into the orchestrator</p>
+          <ul>
+            <li><b>Crypto</b> · ccxt (Coinbase / Kraken / Bybit / OKX) · public API, no key needed for OHLCV</li>
+            <li><b>US equity</b> · yfinance + Stooq fallback · SEC EDGAR for fundamentals</li>
+            <li><b>Indian equity</b> · jugaad-data + NSE/BSE bhavcopy</li>
+            <li><b>MFs</b> · AMFI daily NAV CSV (authoritative)</li>
+            <li><b>FX</b> · RBI reference rates primary · Frankfurter (ECB) fallback · 7-day business-day step-back</li>
+            <li><b>News</b> · 10+ RSS feeds · GDELT · arXiv q-fin · Bluesky (atproto, no key)</li>
+            <li><b>On-chain</b> · mempool.space (BTC) · Etherscan (ETH, key in <code>.env</code>)</li>
+            <li><b>Macro</b> · FRED + DBnomics + World Bank + MOSPI</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="ingest step-num">3</div>
+        <div class="ingest step-card">
+          <p class="title">Validate — pandera schema check before insert</p>
+          <ul>
+            <li>Column type + range checks (no negative volumes, no out-of-order timestamps, etc.)</li>
+            <li>Validation failures get logged + the batch is dropped rather than partially written</li>
+            <li>Schema-version pin recorded so we can detect contract drift later</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="ingest step-num">4</div>
+        <div class="ingest step-card">
+          <p class="title">Upsert — write to TimescaleDB hypertable</p>
+          <p class="meta">Single OHLCV hypertable indexed on <code>(symbol, source, timeframe, ts)</code></p>
+          <ul>
+            <li>Conflict resolution: latest write wins on the natural key — adapter that retries is safe</li>
+            <li>Hypertable chunks by <code>ts</code> (default 7 days) for fast time-range queries</li>
+            <li>FX-converted equivalents computed at write time via <code>convert_to_inr</code> when source ccy ≠ INR</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="ingest step-num">5</div>
+        <div class="ingest step-card">
+          <p class="title">Record health — <code>source_health.record_run(source, rows, error=...)</code></p>
+          <ul>
+            <li>One row per adapter · <code>last_run_at</code>, <code>last_success_at</code>, <code>last_rows</code>, <code>consecutive_failures</code></li>
+            <li>Powers freshness dots on every KPI + the <code>/health/sources</code> endpoint + skipped-task watchdog</li>
+            <li>Tolerant of <code>NULL</code> error via SQL cast (fixed an early <code>AmbiguousParameter</code> bug)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="ingest step-num">6</div>
+        <div class="ingest step-card">
+          <p class="title">Daily quality gates (post-ingest)</p>
+          <ul>
+            <li><b>Reconcile</b> · 18:45 UTC · cross-source close prices · flag pairs &gt; 0.5% divergent · Telegram WARN</li>
+            <li><b>Anomaly scan</b> · 00:00 IST · IsolationForest on <code>(log_return, range_pct, gap_pct, volume_z)</code> per symbol · WARN if ratio &gt; 1% · writes JSONL to <code>data/anomaly_log/&lt;date&gt;.jsonl</code></li>
+            <li><b>Skipped-task watchdog</b> · hourly · reads Prefect deployments · WARN if any is &gt; 2× its cadence budget</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────────────────────────────── ML SIGNAL PIPELINE -->
+  <div class="pipeline">
+    <h2>2. ML signal pipeline — runs nightly + on-demand</h2>
+    <p class="pipeline-meta">Trigger: <code>regime-detect-btc-daily</code> at 01:00 UTC · weekly retrainer <code>train-lgbm-per-regime</code> Sat 03:00 UTC · output: <code>SignalRow</code> with drivers + counter-arguments</p>
+
+    <div class="flow">
+      <div class="step">
+        <div class="signal step-num">1</div>
+        <div class="signal step-card">
+          <p class="title">Compute features — wide store keyed by <code>(symbol, ts)</code></p>
+          <p class="meta"><code>pfip/features/technicals.py</code> · 150+ indicators via <code>ta</code> library</p>
+          <ul>
+            <li>RSI / MACD / ATR / BB / Stochastics / etc. — RSI patched to saturate at 100/0 on pure trends (textbook; <code>ta</code> returns NaN otherwise)</li>
+            <li>Returns (1d / 7d / 30d, log + simple) · realized vol (10d / 30d / 90d)</li>
+            <li>Fundamentals ratios (P/E, P/B, D/E, ROE, ROIC, FCF yield) · None-safe on missing inputs</li>
+            <li>Derivatives features for crypto (funding-rate z-score, OI %change, squeeze-setup label) — public ccxt, no key</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="signal step-num">2</div>
+        <div class="signal step-card">
+          <p class="title">Regime detection — HMM per symbol</p>
+          <p class="meta"><code>pfip/regime/hmm_detector.py</code> · Gaussian HMM (hmmlearn) with quantile-band fallback</p>
+          <ul>
+            <li>Fits on 3y trailing log-return series · 3 or 4 states (configurable)</li>
+            <li>States deterministically mapped to <code>{bull_trend, bear_trend, sideways, high_volatility}</code> by mean + std (highest-vol → HV, then min/max mean → bear/bull)</li>
+            <li>Written to <code>regime</code> table with <code>since</code> + <code>confidence</code></li>
+            <li>Survivorship-aware: <code>as_of_universe(rows, target_date)</code> retains delisted-after-target symbols</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="signal step-num">3</div>
+        <div class="signal step-card">
+          <p class="title">Auto-selector — pick the right model for current regime</p>
+          <p class="meta"><code>pfip/signals/auto_selector.py</code> · hand-coded mapping until ≥ 12 months of labels exist for a trained selector</p>
+          <ul>
+            <li><code>bull_trend</code> → <code>lgbm_trend_specialist</code></li>
+            <li><code>sideways</code> → <code>xgb_meanrev_specialist + ttm_short</code></li>
+            <li><code>high_volatility</code> → <code>catboost_riskoff</code> at half size</li>
+            <li><code>accumulation / distribution</code> → full ensemble</li>
+            <li>Manual override available via <code>add_override(symbol, model_id)</code></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="signal step-num">4</div>
+        <div class="signal step-card">
+          <p class="title">Generate prediction — pinned model from the registry</p>
+          <p class="meta">File-backed registry at <code>data/models/&lt;id&gt;/</code> · SHA-256 deduped uploads · <code>pin_model(id, slot)</code> sets the live artifact for <code>(task, regime, horizon)</code></p>
+          <ul>
+            <li><code>LGBMBaselineModel.predict_proba_up(X)</code> → probability of forward up-move at horizon H</li>
+            <li>Confidence floor at 65 — below = HOLD (no signal row written)</li>
+            <li>BUY if P(up) &gt; 0.65 · SELL if P(up) &lt; 0.35 · else HOLD</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="signal step-num">5</div>
+        <div class="signal step-card">
+          <p class="title">Explain — per-prediction SHAP (or permutation fallback)</p>
+          <p class="meta"><code>pfip/signals/explain.py</code> · tries <code>shap</code> (lazy import), falls back to permutation importance</p>
+          <ul>
+            <li>Top-5 signed drivers — positive = pushed prediction up, negative = pulled it down</li>
+            <li>Permutation fallback uses background-median substitution (deterministic, no extra deps)</li>
+            <li>Serialized to JSONB on <code>signals.drivers</code></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="signal step-num">6</div>
+        <div class="signal step-card">
+          <p class="title">Attach news — top-5 supporting + top-3 opposing</p>
+          <p class="meta"><code>pfip/signals/news_attach.py</code> · joins on <code>entity_tickers</code> JSONB column populated by news pipeline</p>
+          <ul>
+            <li>BUY supported by positive-sentiment news, SELL by negative, HOLD by neutral (|s| ≤ 0.2)</li>
+            <li>Ranked by <code>(impact, |sentiment|, recency)</code> over a 48h lookback</li>
+            <li>Counter-arguments surface the strongest opposite-side news</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="signal step-num">7</div>
+        <div class="signal step-card">
+          <p class="title">Persist — <code>SignalRow</code> with all of the above</p>
+          <ul>
+            <li>Stored to <code>signals</code> table with confidence, regime, drivers (JSONB), counter_args, model_name, model_version</li>
+            <li>Surfaces on <code>/signals</code> + emits a Telegram alert (<code>AlertKind.SIGNAL_FIRED</code>) at the configured severity</li>
+            <li>Architectural rule: <b>no signal row ever becomes an order automatically</b> — user evaluates, journals, executes manually</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────────────────────────────── BACKTEST PIPELINE -->
+  <div class="pipeline">
+    <h2>3. Backtest + calibration pipeline — runs weekly + monthly</h2>
+    <p class="pipeline-meta">Backtest: <code>backtest-walk-forward-btc-weekly</code> Sat 02:00 UTC · Calibration: <code>calibration_monthly</code> first Sat 10:00 IST · RAGAS eval: monthly · output: tearsheets + ECE reports + Telegram WARN on regression</p>
+
+    <div class="flow">
+      <div class="step">
+        <div class="backtest step-num">1</div>
+        <div class="backtest step-card">
+          <p class="title">Load historical OHLCV — PIT-aware</p>
+          <p class="meta"><code>pfip/backtest/walk_forward.py</code> · uses survivorship-aware universe (<code>as_of_universe</code>) to avoid look-ahead</p>
+          <ul>
+            <li>Loads the same wide features table the live signal uses — guarantees train/serve parity</li>
+            <li>Filters by <code>as_of_date</code> so retraining on FY-N can never see FY-N+1 data</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="backtest step-num">2</div>
+        <div class="backtest step-card">
+          <p class="title">Walk-forward · 3y / 21d / 5d</p>
+          <ul>
+            <li>3-year training window slides forward in 21-day steps</li>
+            <li>5-day embargo between train + test prevents bar-leak from overlapping forward labels</li>
+            <li>One model per window saves the per-window OOS prediction set into <code>backtest_runs</code></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="backtest step-num">3</div>
+        <div class="backtest step-card">
+          <p class="title">CPCV (López de Prado) — combinatorial purged CV</p>
+          <ul>
+            <li>Builds 20 sets of (train, test) splits with purging + 5-day embargo</li>
+            <li>Robust to the autocorrelation that breaks standard k-fold on time series</li>
+            <li>Produces a path-distribution of Sharpe / Sortino / Calmar that exposes parameter sensitivity</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="backtest step-num">4</div>
+        <div class="backtest step-card">
+          <p class="title">Monte Carlo bootstrap — 1 000 block-bootstrap reorders</p>
+          <ul>
+            <li>Tests whether the strategy's Sharpe is statistically distinguishable from a random reordering</li>
+            <li>Outputs p-value on Sharpe + confidence interval on terminal equity</li>
+            <li>Shuffle test for label-leakage detection runs alongside</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="backtest step-num">5</div>
+        <div class="backtest step-card">
+          <p class="title">Benchmarks + tearsheet</p>
+          <p class="meta"><code>pfip/backtest/tearsheet.py</code> · QuantStats fallback to built-in HTML</p>
+          <ul>
+            <li>Benchmarks: buy-hold · MA 50/200 cross · RSI mean-reversion · risk-parity</li>
+            <li>Stats: Sharpe / Sortino / Calmar / max-DD / CAGR / hit-rate / monthly returns grid / underwater curve</li>
+            <li>Transaction-cost model applied per market (taker/maker spreads + impact)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="backtest step-num">6</div>
+        <div class="backtest step-card">
+          <p class="title">Monthly calibration — Brier + ECE + reliability diagram</p>
+          <p class="meta"><code>pfip/calibration/brier_ece.py</code> · pulls realised labels from <code>signals</code> + <code>ohlcv</code></p>
+          <ul>
+            <li>Computes ECE per model-version over trailing 3 months</li>
+            <li>Auto-suspend rule: ECE &gt; 0.15 for 2 consecutive months → emits <code>suspend</code> event into <code>model_events</code></li>
+            <li>Persists per-model reliability bins to <code>calibration_reports</code> for the <code>/calibration</code> page</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="backtest step-num">7</div>
+        <div class="backtest step-card">
+          <p class="title">Monthly RAGAS eval — KB retrieval quality</p>
+          <p class="meta"><code>pfip/kb/ragas_eval.py</code> · 50-Q held-out set covering Wyckoff / Graham / Taleb / Tharp / Indian tax</p>
+          <ul>
+            <li>Scores faithfulness + answer_relevancy + context_precision per question</li>
+            <li>Logs to MLflow + writes per-question CSV under <code>data/.telemetry/ragas/</code></li>
+            <li>Regression guard: Telegram WARN if faithfulness &lt; 0.70 or drops &gt; 0.10 vs previous run</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────────────────────────────── CHAT AGENT PIPELINE -->
+  <div class="pipeline">
+    <h2>4. Chat agent pipeline — runs per user question over SSE</h2>
+    <p class="pipeline-meta">Trigger: <code>POST /api/v1/chat/stream</code> · Auth: JWT cookie · Returns: SSE stream of tokens + citation list + privacy badge</p>
+
+    <div class="flow">
+      <div class="step">
+        <div class="query step-num">1</div>
+        <div class="query step-card">
+          <p class="title">Classify intent — heuristic regex (no LLM call)</p>
+          <p class="meta"><code>pfip/agent/intent.py</code> · sub-ms · deterministic · 3 buckets</p>
+          <ul>
+            <li><code>DB_QUERY</code> — "how much BTC do I hold", "P&amp;L yesterday", "list signals" → dispatch to tool registry</li>
+            <li><code>RAG_LOOKUP</code> — "what does Wyckoff say about X", "news on RELIANCE" → vector retrieval</li>
+            <li><code>REASONING</code> — "should I buy more ETH", "explain last signal" → full agent graph</li>
+            <li>Priority on tie: DB &gt; RAG &gt; REASONING · sub-2-word inputs fall back to REASONING</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="query step-num">2</div>
+        <div class="query step-card">
+          <p class="title">Tool-call (DB_QUERY branch) — typed registry</p>
+          <p class="meta"><code>pfip/agent/tools.py</code> · 5 tools · each safe-fails to <code>{ok: false}</code></p>
+          <ul>
+            <li><code>get_holdings(asset_class?)</code> · <code>get_current_price(symbol)</code> · <code>get_recent_pnl(days)</code></li>
+            <li><code>get_open_signals(limit)</code> · <code>get_tax_summary(fy)</code></li>
+            <li>Result is JSON-serialised and dropped into the LLM context as a structured tool-call response</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="query step-num">3</div>
+        <div class="query step-card">
+          <p class="title">RAG retrieval (RAG_LOOKUP branch) — Qdrant + citations</p>
+          <p class="meta"><code>pfip/kb/search.py</code> · two collections — <code>kb</code> (books) + <code>news</code></p>
+          <ul>
+            <li>Embeds query via current embedding model (Ollama nomic by default · NVIDIA NIM if keyed)</li>
+            <li>Top-5 chunks above cosine threshold (0.60 KB · 0.55 news)</li>
+            <li>Format citations: <code>[Source: Wyckoff ch.4, p.87]</code> prepended to each chunk before passing to LLM</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="query step-num">4</div>
+        <div class="query step-card">
+          <p class="title">Privacy classifier — choose the LLM destination</p>
+          <p class="meta"><code>pfip/agent/privacy.py</code> · <code>Sensitivity</code> enum drives routing in <code>MultiProviderClient</code></p>
+          <ul>
+            <li><code>PUBLIC</code> — KB queries, market commentary → cloud (Groq → Gemini → DeepSeek → OpenRouter chain)</li>
+            <li><code>SENSITIVE</code> — references the user's portfolio but indirectly → cloud OK if context-redacted</li>
+            <li><code>PERSONAL</code> — holdings / tax / journal text → <b>always local Ollama</b>, full stop</li>
+            <li>Routing decision recorded in the SSE meta event so the UI can show the privacy badge</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="query step-num">5</div>
+        <div class="query step-card">
+          <p class="title">Synthesise + stream — via LiteLLM</p>
+          <p class="meta"><code>pfip/agent/llm_client.py</code> · MultiProviderClient over LiteLLM</p>
+          <ul>
+            <li>Streams tokens via SSE — first token ~300 ms on cloud, ~1 s on local Ollama</li>
+            <li>Walks providers in priority order on failure (<code>LLMAllProvidersFailed</code> on full exhaustion)</li>
+            <li>Final fallback for PERSONAL prompts is local Ollama (<code>llama3.1:8b-instruct</code>)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="query step-num">6</div>
+        <div class="query step-card">
+          <p class="title">Final SSE "done" event — citations + privacy badge</p>
+          <ul>
+            <li>Citation list deduped by (book + chapter + page) or (news URL)</li>
+            <li>Privacy badge: <code>PUBLIC / SENSITIVE / PERSONAL</code> + actual provider hit (e.g. <code>gemini-flash-lite</code> or <code>ollama-local</code>)</li>
+            <li><b>Architectural rule</b>: agent never produces typed signal rows — only conversational text. Signal generation is the ML pipeline's job.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────────────────────────────── TAX PIPELINE -->
+  <div class="pipeline">
+    <h2>5. Tax engine pipeline — on-demand + annual ITR drill</h2>
+    <p class="pipeline-meta">Trigger: <code>GET /tax/summary</code>, <code>POST /tax/harvest</code>, broker CSV upload via <code>POST /tax/import/{broker}</code> · annual drill: <code>annual-itr-drill</code> June 15 · output: STCG/LTCG/VDA summary · Schedule FA · Form 67 · ITR JSON · harvest plan</p>
+
+    <div class="flow">
+      <div class="step">
+        <div class="tax step-num">1</div>
+        <div class="tax step-card">
+          <p class="title">Ingest — 10 broker CSV adapters</p>
+          <p class="meta"><code>pfip/brokers/csv_adapters/&lt;broker&gt;.py</code> · Zerodha, ICICIdirect, Groww, INDmoney, Vested, WazirX, CoinDCX, Binance, Coinbase, Kraken</p>
+          <ul>
+            <li>Each adapter normalises the broker's CSV into a uniform <code>PortfolioTx</code> shape: kind, symbol, qty, price, ccy, ts, fees, tds</li>
+            <li>Persisted to <code>portfolio_tx</code> table with <code>broker</code> column for audit</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="tax step-num">2</div>
+        <div class="tax step-card">
+          <p class="title">FX conversion — every tx tagged with INR equivalent</p>
+          <p class="meta"><code>pfip/tax/fx_cost_basis.py</code> · RBI primary, Frankfurter fallback, 7-day business-day step-back</p>
+          <ul>
+            <li>Resolution order: DB (<code>ohlcv</code> where <code>source='rbi'</code>) → Frankfurter API → 365-day static fallback</li>
+            <li>INR amount quantised to paise (2 decimals)</li>
+            <li>Rate stored alongside amount so reconstruction is exact (no rerunning years later)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="tax step-num">3</div>
+        <div class="tax step-card">
+          <p class="title">Classify capital gains — FIFO lot matcher</p>
+          <p class="meta"><code>pfip/tax/engine.py</code> · <code>classify_capital_gains(tx_rows) → list[CGEvent]</code></p>
+          <ul>
+            <li>FIFO lot consumption per (symbol, asset_class)</li>
+            <li>31-Jan-2018 grandfathering applied to equity LTCG (FMV substitution)</li>
+            <li>Holding-period bucketing per asset class: equity 365d, US stock 730d, debt 1095d, gold 1095d</li>
+            <li>VDA gains tagged separately — Section 115BBH rules apply (no offsetting, no carry-forward)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="tax step-num">4</div>
+        <div class="tax step-card">
+          <p class="title">Compute summary — STCG / LTCG / VDA / dividend / interest</p>
+          <ul>
+            <li>STCG equity @ 15% · LTCG equity @ 10% above ₹1 L exemption</li>
+            <li>VDA @ 30% flat + 1% TDS + no loss set-off (115BBH)</li>
+            <li>Debt MF post-2023 → slab rate</li>
+            <li>Dividend → slab + surcharge cliff check</li>
+            <li>Old vs new regime comparison + optimal regime recommendation</li>
+            <li>80C / 80D / 80CCD(1B) optimizer ranks contributions by marginal tax saved</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="tax step-num">5</div>
+        <div class="tax step-card">
+          <p class="title">Loss harvesting — <code>pfip/tax/harvest.py</code></p>
+          <p class="meta">Note: <b>real bug found + fixed on 2026-05-30</b> — LTCG branch was subtracting the ₹1L exemption from harvested loss instead of taxable pool. Correct formula now: <code>delta = taxable_before − taxable_after</code></p>
+          <ul>
+            <li>Open lots in the red are scored by tax-saving potential against existing realised gains</li>
+            <li>VDA losses <b>never</b> suggested (Section 115BBH)</li>
+            <li>STCG equity loss matches STCG pool first, spills to LTCG (allowed)</li>
+            <li>LTCG savings honor the ₹1L exemption properly</li>
+            <li>Suggestions within 30 days of FY-end carry a re-buy warning chip</li>
+            <li>Surcharge-adjusted rates baked in</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="tax step-num">6</div>
+        <div class="tax step-card">
+          <p class="title">Forms — Schedule FA / Form 67 / Schedule CG / ITR JSON</p>
+          <ul>
+            <li><b>Schedule FA</b> · per-country peak USD balance + INR equivalent + dividends + proceeds (foreign assets)</li>
+            <li><b>Form 67</b> · DTAA Section 90 credit · min(foreign tax paid, Indian tax on same income)</li>
+            <li><b>ITR JSON</b> · Schedule CG + Schedule FA in the income-tax portal's expected shape · CA handoff</li>
+            <li><b>Summary PDF</b> · reportlab · all of the above on one page · disclaimer-stamped</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="tax step-num">7</div>
+        <div class="tax step-card">
+          <p class="title">Annual ITR drill — verify engine matches filed numbers</p>
+          <p class="meta"><code>pfip/prefect/flows/annual_itr_drill.py</code> · June 15 (advance-tax milestone)</p>
+          <ul>
+            <li>Reads <code>data/itr_filed/&lt;FY&gt;.json</code> (user-supplied filed numbers) and recomputes via the engine</li>
+            <li>Tolerance ±2% on every aggregate line — out-of-band → Telegram WARN + markdown report under <code>data/itr_calibration/</code></li>
+            <li>The reconciliation is the canonical "did this engine survive another year" test</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────────────────────────────── ALERTS PIPELINE -->
+  <div class="pipeline">
+    <h2>6. Alerts pipeline — Telegram outbound with quiet hours + rate cap + escalation</h2>
+    <p class="pipeline-meta">Trigger: <code>send_alert(kind, severity, ...)</code> from any module · escalator: <code>escalate-unacked</code> Prefect flow every 30 min · output: Telegram message (or digest, or queued, or suppressed)</p>
+
+    <div class="flow">
+      <div class="step">
+        <div class="alert step-num">1</div>
+        <div class="alert step-card">
+          <p class="title">Render — markdown template per <code>AlertKind</code></p>
+          <p class="meta"><code>pfip/alerts/templates/&lt;kind&gt;.md</code> · <code>{key}</code> substitutions filled from context dict</p>
+          <ul>
+            <li>12 alert kinds: <code>morning_brief</code>, <code>regime_change</code>, <code>signal_fired</code>, <code>risk_breach</code>, <code>drawdown_halt</code>, <code>ingest_failure</code>, <code>calibration_breach</code>, <code>paper_trade_report</code>, <code>post_mortem_required</code>, <code>system_health</code>, <code>weekly_review</code>, <code>custom</code></li>
+            <li>Missing-key tolerance: template variable not in context → render raw (user sees the placeholder, no crash)</li>
+            <li>Title = first heading line · body = the rest</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="alert step-num">2</div>
+        <div class="alert step-card">
+          <p class="title">Severity routing — CRITICAL bypasses everything</p>
+          <ul>
+            <li><code>CRITICAL</code> · bypass quiet hours · bypass rate cap · bypass digest · always send · always escalate further</li>
+            <li><code>WARN</code> · respect quiet hours · subject to rate cap · recorded into <code>alerts:pending_ack</code> for escalation</li>
+            <li><code>INFO</code> · respect quiet hours · respect rate cap · digested (one-per-day batch flush)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="alert step-num">3</div>
+        <div class="alert step-card">
+          <p class="title">Quiet-hours check — 23:00–07:00 IST</p>
+          <p class="meta"><code>_is_quiet_hour(now_utc)</code> · converts to IST + checks the window inclusive of start, exclusive of end</p>
+          <ul>
+            <li>INFO + WARN suppressed → routed to digest queue</li>
+            <li>CRITICAL still fires</li>
+            <li>Kill-switch override: <code>alerts:silenced=1</code> in Redis silences <b>everything</b>, including CRITICAL — manual unlock required</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="alert step-num">4</div>
+        <div class="alert step-card">
+          <p class="title">Rate cap — 10/hour via Redis sliding window</p>
+          <p class="meta"><code>_check_rate_cap(redis)</code> · sorted set keyed by timestamp · ZRANGEBYSCORE check</p>
+          <ul>
+            <li>10 successful sends per hour absolute · drops extras into digest queue rather than 429-ing</li>
+            <li>Cap is per-process — single-host install means it's effectively global</li>
+            <li>Reset by <code>redis-cli DEL alerts:ratecap</code> in incident response</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="alert step-num">5</div>
+        <div class="alert step-card">
+          <p class="title">Send — <code>POST api.telegram.org</code></p>
+          <ul>
+            <li>HTTP POST to <code>/bot{TOKEN}/sendMessage</code> with markdown formatting</li>
+            <li><code>disable_notification: true</code> for INFO (silent on phone)</li>
+            <li>WARN payload recorded in <code>alerts:pending_ack:&lt;id&gt;</code> Redis hash for the escalator</li>
+            <li>Send failures (Telegram 429 / network) get logged + the alert is dropped — alert delivery never breaks the calling flow</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="alert step-num">6</div>
+        <div class="alert step-card">
+          <p class="title">Escalate — WARN → CRITICAL after 2 hours unack</p>
+          <p class="meta"><code>escalate_unacked_warns()</code> in dispatcher · driven by <code>escalate-unacked</code> Prefect flow every 30 min</p>
+          <ul>
+            <li>Scans <code>alerts:pending_ack:*</code> keys · entries older than 120 min get re-sent as CRITICAL with "ESCALATED" prefix</li>
+            <li><code>ack_alert(id)</code> clears a pending entry — wired to a Telegram inline-button callback (future enhancement)</li>
+            <li>Defence against: morning brief fails silently for 3 days, drawdown alert ignored, ingest stops returning data</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────────────────────────────── STACK SUMMARY -->
+  <div class="twocol">
+    <div class="stack-card">
+      <p class="title">Stack — which library does what</p>
+      <table>
+        <thead><tr><th>Layer</th><th>Library / Service</th></tr></thead>
+        <tbody>
+          <tr><td>Frontend framework</td><td>Next.js 14 (App Router · TypeScript)</td></tr>
+          <tr><td>Styling</td><td>Tailwind · shadcn/ui · Tremor · Recharts</td></tr>
+          <tr><td>State / server data</td><td>TanStack Query (React Query v5)</td></tr>
+          <tr><td>Auth</td><td>NextAuth (credentials provider · single user)</td></tr>
+          <tr><td>Backend framework</td><td>FastAPI (Python 3.10 · async)</td></tr>
+          <tr><td>ORM + migrations</td><td>SQLAlchemy 2 + Pydantic v2 + Alembic (8 revisions)</td></tr>
+          <tr><td>Time-series DB</td><td>TimescaleDB (Postgres 16 + hypertables)</td></tr>
+          <tr><td>Vector DB</td><td>Qdrant (kb + news collections)</td></tr>
+          <tr><td>Cache / rate cap</td><td>Redis 7</td></tr>
+          <tr><td>Orchestrator</td><td>Prefect 2 (~15 deployments)</td></tr>
+          <tr><td>Experiment tracking</td><td>MLflow 2.14</td></tr>
+          <tr><td>LLM (cloud chain)</td><td>LiteLLM → Groq · Gemini · DeepSeek · OpenRouter</td></tr>
+          <tr><td>LLM (local · PERSONAL)</td><td>Ollama · <code>llama3.1:8b-instruct</code></td></tr>
+          <tr><td>Embeddings (local)</td><td>nomic-embed-text via Ollama</td></tr>
+          <tr><td>Embeddings (cloud, optional)</td><td>NVIDIA NIM · <code>nv-embedqa-e5-v5</code></td></tr>
+          <tr><td>Reranker (optional)</td><td>Cohere rerank-v3</td></tr>
+          <tr><td>ML libs</td><td>LightGBM · XGBoost · scikit-learn · hmmlearn · SHAP · ragas</td></tr>
+          <tr><td>Tech analysis</td><td><code>ta</code> library (RSI/MACD/ATR/BB/Stoch)</td></tr>
+          <tr><td>Backtesting</td><td>vectorbt (engine) · quantstats (tearsheet)</td></tr>
+          <tr><td>News ingest</td><td>feedparser · atproto (Bluesky) · gdelt2 · arXiv</td></tr>
+          <tr><td>Sentiment</td><td>FinBERT (huggingface) + heuristic fallback</td></tr>
+          <tr><td>Tax PDF generation</td><td>reportlab</td></tr>
+          <tr><td>APM / error tracking</td><td>Sentry (free tier)</td></tr>
+          <tr><td>Uptime monitoring</td><td>Uptime Kuma · per-service pings</td></tr>
+          <tr><td>Alert outbound</td><td>Telegram Bot API · httpx async</td></tr>
+          <tr><td>Frontend transport (chat)</td><td>Server-Sent Events</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="stack-card">
+      <p class="title">Trade-offs the tech lead might probe</p>
+      <table>
+        <thead><tr><th>Decision</th><th>Rationale</th></tr></thead>
+        <tbody>
+          <tr><td>Local Ollama for PERSONAL sensitivity, not "best cloud model"</td><td>Privacy boundary is more important than latency for tax / holdings queries · trade-off: ~5–10× slower first-token on those prompts</td></tr>
+          <tr><td>Heuristic intent classifier, not LLM-per-turn</td><td>Latency · determinism · rules are short · LLM call has 200 ms minimum, regex is sub-ms · trade-off: occasional misclassification on edge phrasing (falls back to REASONING)</td></tr>
+          <tr><td>TimescaleDB (not a separate OHLCV store)</td><td>One DB · same backup story · pgvector handles &lt;10 M rows easily · single auth domain · trade-off: hot-path queries colocate with cold ones</td></tr>
+          <tr><td>File-backed model registry (not MLflow-as-primary)</td><td>Registry is tiny · SHA-256 deduped · filesystem ops are fast · trade-off: pin state lives in a JSON manifest, not a "real" DB — fine for &lt;1 K models</td></tr>
+          <tr><td>JSONL anomaly log (not a DB table)</td><td>Append-only audit data · tail-greppable · no migration on day 1 · trade-off: can't JOIN anomalies to other data — but we don't need to yet</td></tr>
+          <tr><td>Prefect 2 (not Airflow)</td><td>Better-than-Airflow for solo scale · great UI · per-deployment cron + retry · async-native · trade-off: smaller ecosystem of plugins than Airflow</td></tr>
+          <tr><td>Pre-commitment ladder (not "trust the human")</td><td>The biggest losses come from skipping discipline gates · ladder gate is mechanical · cannot be overridden in the UI · trade-off: friction at advancement is the feature</td></tr>
+          <tr><td>Paper-trading only in v1 (no broker integration)</td><td>Architectural — no API client that can call a broker · LLM can never trigger a trade · trade-off: every order is manual entry · feature, not bug</td></tr>
+          <tr><td>FIFO lot matching (not LIFO or "highest tax")</td><td>Indian tax law mandates FIFO for equity · matches the broker's view · simplifies CA reconciliation · trade-off: occasionally not the tax-optimal sale (loss harvesting addresses this)</td></tr>
+          <tr><td>RAG eval monthly, not per-PR</td><td>Eval is expensive · KB doesn't change often · trade-off: regression sits for up to a month — mitigated by faithfulness floor (0.70) being conservative</td></tr>
+          <tr><td>Slate &amp; Teal palette (not pure dark Bloomberg)</td><td>Modern institutional · not neon-trader · not consumer-y · matches "tool for engineers, not retail" persona · trade-off: requires both light + dark mode polish</td></tr>
+          <tr><td>Idempotent ingest keys via SHA-256</td><td>Retries on container restart are common · double-writes corrupt aggregates · SHA is deterministic · trade-off: an extra Redis-ish check before every write</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ───────────────────────────────── PERSISTENCE LAYER -->
+  <div class="pipeline">
+    <h2>7. Persistence layer — what lives where</h2>
+    <p class="pipeline-meta">Three stateful stores · plus filesystem for artifacts &amp; logs · plus Ollama local model weights</p>
+
+    <div class="flow">
+      <div class="step">
+        <div class="data step-num">1</div>
+        <div class="data step-card">
+          <p class="title">TimescaleDB · the source of truth for everything tabular</p>
+          <p class="meta">Postgres 16 + hypertables · 8 Alembic revisions · backup nightly via <code>pg_dump</code> → encrypted off-site</p>
+          <ul>
+            <li><b>Time-series</b>: <code>ohlcv</code> (hypertable), <code>features</code>, <code>signals</code>, <code>regime</code>, <code>calibration_reports</code>, <code>news</code></li>
+            <li><b>Holdings</b>: <code>holdings</code>, <code>portfolio_tx</code>, <code>watchlist</code>, <code>journal</code></li>
+            <li><b>Shadow</b>: <code>shadow_holdings</code>, <code>shadow_portfolio_tx</code></li>
+            <li><b>Ops</b>: <code>source_health</code> (with <code>last_batch_key</code>), <code>model_events</code>, <code>ladder_state</code>, <code>users</code></li>
+            <li>FX rates ingested as <code>ohlcv</code> rows where <code>source='rbi'</code> · double-duty store</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="data step-num">2</div>
+        <div class="data step-card">
+          <p class="title">Qdrant · semantic vectors</p>
+          <p class="meta">Two collections · backup nightly via snapshot API · ~10–50 K vectors at steady state</p>
+          <ul>
+            <li><code>kb</code> · ingested books (Wyckoff, Lefèvre, Graham, Taleb, Dalio, Tharp, Ammous, López de Prado · 20-ish PDFs/EPUBs · target ~5 K chunks)</li>
+            <li><code>news</code> · embedded news articles · 7-day rolling window · ~20 K vectors</li>
+            <li>Both seeded by Ollama nomic-embed-text by default; NVIDIA NIM swappable</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="data step-num">3</div>
+        <div class="data step-card">
+          <p class="title">Redis · ephemeral state</p>
+          <p class="meta">Persistence on (AOF) but treat as cache · backup not required</p>
+          <ul>
+            <li><code>alerts:ratecap</code> sorted set (sliding window)</li>
+            <li><code>alerts:pending_ack:&lt;id&gt;</code> hashes (WARN-escalation queue)</li>
+            <li><code>alerts:silenced</code> flag (kill switch)</li>
+            <li><code>alerts:digest</code> queue (INFO batch)</li>
+            <li>Agent response cache (5-minute TTL)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="data step-num">4</div>
+        <div class="data step-card">
+          <p class="title">Filesystem · artifacts &amp; logs</p>
+          <p class="meta">All under <code>data/</code> at the project root · gitignored · backed up alongside the DB</p>
+          <ul>
+            <li><code>data/models/&lt;id&gt;/</code> — file-backed model registry (pkl/onnx/HF) + manifest.json</li>
+            <li><code>data/anomaly_log/&lt;date&gt;.jsonl</code> — daily IsolationForest output</li>
+            <li><code>data/kb_sources/</code> — user-supplied books (you drop them here)</li>
+            <li><code>data/itr_filed/&lt;FY&gt;.json</code> — user-supplied filed ITR numbers</li>
+            <li><code>data/itr_calibration/&lt;FY&gt;.md</code> — engine-vs-filed reconciliation reports</li>
+            <li><code>data/weekly_reviews/</code>, <code>data/market_close/</code>, <code>data/shadow_rollups/</code> — auto-generated markdown digests</li>
+            <li><code>data/.telemetry/ragas/</code> — RAGAS per-Q CSV per run</li>
+            <li><code>data/backups/pg/</code> + <code>data/backups/qdrant/</code> — local dumps before off-site push</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="data step-num">5</div>
+        <div class="data step-card">
+          <p class="title">Ollama · local model weights</p>
+          <p class="meta">~5 GB on disk · pulled once on first run · no network after that</p>
+          <ul>
+            <li><code>llama3.1:8b-instruct</code> · default chat model for PERSONAL sensitivity</li>
+            <li><code>nomic-embed-text</code> · default embedding model · 768-dim</li>
+            <li>Swappable via <code>OLLAMA_MODEL</code> + <code>OLLAMA_EMBED_MODEL</code> env vars</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="data step-num">6</div>
+        <div class="data step-card">
+          <p class="title">MLflow · experiments &amp; metric history</p>
+          <p class="meta">File-backed store at <code>./mlruns/</code> · web UI at <code>:5000</code></p>
+          <ul>
+            <li>Backtest runs (one per walk-forward window) with full param + metric history</li>
+            <li>RAGAS eval runs with per-Q breakdown CSV as artifact</li>
+            <li>Calibration reports (Brier / ECE per model-version) — duplicated to <code>calibration_reports</code> table for fast UI reads</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Seven pipelines · five stateful stores · ~50 free data sources · ~15 Prefect deployments · 14 routes · 67 API endpoints · 451 backend tests passing
+    <br>v1 paper-trading only · single-user · self-hosted · LLM never decides trades · tax engine never files
+    <br>Project: <code>C:\Users\gaura\OneDrive\Desktop\PFIP_app\</code> · Full handoff: <code>docs/PROJECT_HANDOFF.md</code> · Generated 2026-05-30
+  </footer>
+</div>
+</body>
+</html>

@@ -26,10 +26,52 @@ Each module is a Python package under `/backend/pfip/` and a matching UI surface
 Cross-cutting concerns:
 
 - **Auth:** NextAuth single-user with bcrypt (frontend); JWT verified by FastAPI.
-- **Observability:** Uptime Kuma (service liveness) + Sentry (errors) + LangSmith (LLM traces).
+  `frontend/middleware.ts` gates every route except `/login`, `/api/auth`, and static
+  assets; the `/api/v1/assets/*` endpoints now require an authenticated user.
+- **Observability:** Uptime Kuma (service liveness) + Sentry (errors, now wired in
+  `backend/pfip/api/main.py` when `SENTRY_DSN` is set; no-op otherwise) + LangSmith (LLM
+  traces, optional). A global RFC-7807 exception handler logs server-side and returns a
+  generic `problem+json` body. `/health/deep` separates CORE deps (TimescaleDB, Redis) from
+  OPTIONAL (Qdrant, Ollama, cloud LLM) and reports `ok` / `degraded` / `down` + a `ready`
+  boolean.
 - **Scheduling:** Prefect 2 for all recurring flows (see `docs/SCHEDULED_TASKS.md`).
 - **Safety:** Advisory-only. `FEATURE_LIVE_TRADING=false` hard-wired. Risk caps in
-  `/backend/pfip/portfolio/risk_manager.py`.
+  `/backend/pfip/portfolio/risk_manager.py`. The chat agent structurally forces local-only
+  LLM routing whenever any holding row is in the prompt, so holdings never reach a cloud LLM
+  (see `docs/LLM_ROUTING.md` §5).
+
+---
+
+### ML layer status (be precise about what's live)
+
+The M3–M5 stack is implemented and partly scheduled, but **live per-asset signal generation
+is intentionally NOT enabled** — be careful not to overclaim it:
+
+- **Real & scheduled:** regime detection (HMM, BTC daily), backtesting (walk-forward + CPCV
+  + Monte Carlo + shuffle test, BTC weekly), calibration (Brier/ECE + suspension rules,
+  monthly), technical features (BTC via the legacy `compute_features_flow`). The LightGBM
+  model code (walk-forward training, isotonic calibration, SHAP drivers) is implemented and
+  correct.
+- **Scaffolded but NOT deployed/wired:** the `signals_generate_daily` Prefect flow is not in
+  the deployment, so the `signals` table stays empty and the daily shadow-reconcile reads
+  nothing. The multi-asset `compute_features_daily` flow is also not deployed (only the
+  legacy BTC-only features run).
+- **`FEATURE_ML_SIGNALS`** config flag is defined but checked nowhere (dead; no
+  stage-gating implemented yet).
+- **Why off:** the walk-forward trainer needs ~3 years / 756+ bars of OHLCV history per
+  asset, which a fresh install lacks. It will be wired when enough history exists; enabling
+  it prematurely would produce untrustworthy signals.
+
+### Portfolio valuation (M8)
+
+`/portfolio/summary`, `/exposure`, and `/concentration` are **marked to market** — holdings
+are valued at the latest OHLCV close per symbol, USD assets converted to INR via the
+`fx_rates` table. The valuation is **correctness-by-abstention**: any holding whose price
+currency can't be resolved, or USD holding with no FX rate, falls back to cost basis (never
+a wrong rupee figure). `/portfolio/marking` exposes the coverage (which symbols are
+live-priced vs cost-basis, and why). `/portfolio/correlations` returns a real Pearson matrix
+of daily log-returns from each symbol's own OHLCV history (currency-agnostic). See
+`./CONTRACTS.md` for response shapes. Logic lives in `backend/pfip/portfolio/marking.py`.
 
 ---
 
@@ -44,12 +86,15 @@ Source of truth: `/infra/docker-compose.yml`. All services join the `pfip-net` b
 | `qdrant`        | `qdrant/qdrant:v1.9.3`              | 6333/6334 | KB + news embeddings                                 |
 | `prefect`       | `prefecthq/prefect:2.19-python3.12` | 4200      | Scheduler + UI                                       |
 | `mlflow`        | `ghcr.io/mlflow/mlflow:v2.14.0`     | 5000      | Model registry, metrics, artifacts                   |
-| `ollama`        | `ollama/ollama:latest`              | 11434     | Local LLMs: mistral-7b-instruct + nomic-embed-text   |
+| `ollama`        | `ollama/ollama:0.30.4`              | 11434     | Local LLMs: mistral-7b-instruct + nomic-embed-text   |
 | `uptime-kuma`   | `louislam/uptime-kuma:1`            | 3001      | Per-service liveness dashboard                       |
 | `backend`       | built from `../backend`             | 8000      | FastAPI + Prefect flows + LangGraph agent            |
 | `frontend`      | built from `../frontend`            | 3000      | Next.js 14 dashboard (mobile-first)                  |
 
-All host ports bind to `localhost` by default. See `docs/SECURITY.md` for firewall guidance.
+All host ports bind to `127.0.0.1` (loopback) — the compose file now enforces this
+explicitly with `127.0.0.1:PORT:PORT` mappings, so nothing is published on `0.0.0.0`/the
+LAN. Auth-critical secrets (`NEXTAUTH_SECRET`, `POSTGRES_PASSWORD`) are required via
+`${VAR:?}` and compose aborts if they're unset. See `docs/SECURITY.md` for the full posture.
 
 ---
 

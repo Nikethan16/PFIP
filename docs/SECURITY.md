@@ -36,8 +36,11 @@ Checklist:
 
 ## 2. Windows Defender Firewall
 
-Default stance: block all inbound; allow outbound. Docker Desktop exposes host ports on
-`localhost`, but a misconfigured "Public" profile can leak them onto the LAN.
+Default stance: block all inbound; allow outbound. As of the 2026-06-04 audit, every host
+port mapping in `infra/docker-compose.yml` is bound explicitly to `127.0.0.1:` (loopback),
+so the stack does not publish on `0.0.0.0`/all interfaces even before the firewall rules
+below. The firewall rules are defence-in-depth on top of that, and still matter for a
+misconfigured "Public" Docker/Windows profile.
 
 ```powershell
 # Confirm Defender profile for your active network is Private (not Public)
@@ -65,7 +68,10 @@ Checklist:
 
 Rules of thumb:
 
-- The backend (`8000`) and frontend (`3000`) are **localhost-only**.
+- The backend (`8000`) and frontend (`3000`) are **localhost-only**. The compose file now
+  enforces this by binding every host port to `127.0.0.1:` (postgres 5432, redis 6379,
+  qdrant 6333/6334, prefect 4200, mlflow 5000, ollama 11434, backend 8000, frontend 3000,
+  uptime-kuma 3001) — none are published on all interfaces.
 - Do not port-forward on your router. Do not put them behind a bare public nginx.
 - If you need remote access, use Tailscale (see section 7) — it gives you a WireGuard tunnel
   without opening inbound holes.
@@ -101,6 +107,18 @@ Checklist (when VPS exists):
 ## 5. `.env` handling
 
 The `.env` file holds every API key and the NextAuth secret. Treat it like a password.
+
+**Fail-loud secrets (2026-06-04 audit).** The stack no longer falls open to insecure
+defaults when a secret is missing:
+
+- `NEXTAUTH_SECRET` and `POSTGRES_PASSWORD` are **required** in compose via the
+  `${VAR:?error message}` syntax. If either is unset, `docker compose` aborts at startup
+  with a loud error instead of silently substituting a dev default. The old fail-open
+  defaults (`:-dev-change-me`, `:-pfip_dev`) have been removed.
+- `backend/pfip/core/config.py` has a startup validator: when `APP_ENV != "dev"`, the app
+  **raises** if any auth secret is still a placeholder (`NEXTAUTH_SECRET` empty or
+  `dev-change-me`, `PFIP_USER_PASSWORD_HASH` empty, or `DATABASE_URL` still containing
+  `pfip:pfip_dev`). In dev it logs a loud warning instead of raising.
 
 Rules:
 
@@ -162,7 +180,36 @@ Checklist (optional):
 
 ---
 
-## 8. Quarterly secret rotation — one-page checklist
+## 8. Application & container hardening (2026-06-04 audit)
+
+Beyond the perimeter, the audit pass tightened the app and container surface:
+
+- **Non-root containers.** `backend/Dockerfile` runs as `appuser` (uid 10001) and has
+  multi-stage `prod` / `dev` targets (`dev` is default, keeps `--reload`). `frontend/Dockerfile`
+  got `prod` / `dev` targets and dropped the `|| pnpm install` fallback that defeated
+  lockfile pinning.
+- **Auth on previously-open endpoints.** `/api/v1/assets/*` now require an authenticated
+  user (they were unauthenticated before). `/tax/import` enforces a 10 MB upload cap and
+  validates the broker.
+- **Frontend route protection.** `frontend/middleware.ts` redirects unauthenticated users to
+  `/login` for all routes except `/login`, `/api/auth`, and static assets; `apiFetch` now
+  redirects to `/login` on a 401. Security headers (X-Frame-Options, X-Content-Type-Options,
+  Referrer-Policy, a CSP) are set in `frontend/next.config.mjs`.
+- **Sentry wired.** Backend error tracking is now actually initialized in
+  `backend/pfip/api/main.py` when `SENTRY_DSN` is set (no-op otherwise). A global RFC-7807
+  exception handler logs the full trace server-side and returns a generic `problem+json`
+  body that leaks nothing.
+- **Privacy hardening.** The chat agent now structurally forces local-only routing whenever
+  any holding row is in the prompt, so holdings can never reach a cloud LLM even on a
+  classifier miss. See `docs/LLM_ROUTING.md` §5.
+- **Pinned images / deps.** `ollama/ollama:0.30.4` (was `:latest`); Next.js bumped
+  14.2.5 → 14.2.35 for a critical advisory (run `pnpm install` to apply); `sentry-sdk[fastapi]`
+  pinned in `requirements.txt`. Healthchecks added to qdrant, prefect, mlflow, ollama,
+  backend, and frontend.
+
+---
+
+## 9. Quarterly secret rotation — one-page checklist
 
 Copy this into a ticket each quarter.
 
