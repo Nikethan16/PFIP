@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,6 +25,14 @@ class WatchlistRow(Base):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     added_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    # Survivorship-bias safety: when a symbol delists we keep the row +
+    # mark it. Backtests that filter on a target date must exclude rows
+    # delisted *before* that date (and include rows delisted after). See
+    # `pfip.signals.universe.as_of_universe`.
+    is_delisted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    delisted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     __table_args__ = (UniqueConstraint("symbol", "market", name="uq_watchlist_symbol_market"),)

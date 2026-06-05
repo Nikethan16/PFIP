@@ -138,10 +138,13 @@ def upgrade() -> None:
     op.create_index("ix_kb_ingestions_title", "kb_ingestions", ["title"])
 
     # ------------------------------------------------------------------
-    # model_events — prompt-injection quarantine + model-health events
+    # prompt_injection_events — quarantine + prompt-injection event log.
+    # Name avoids collision with model_events (created in 0003 for model
+    # lifecycle: suspension / reinstatement / retraining). Different purpose,
+    # different schema — different table.
     # ------------------------------------------------------------------
     op.create_table(
-        "model_events",
+        "prompt_injection_events",
         sa.Column(
             "id",
             postgresql.UUID(as_uuid=True),
@@ -166,12 +169,19 @@ def upgrade() -> None:
         sa.Column("quarantined", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_model_events_kind_created", "model_events", ["kind", sa.text("created_at DESC")])
+    op.create_index(
+        "ix_prompt_injection_events_kind_created",
+        "prompt_injection_events",
+        ["kind", sa.text("created_at DESC")],
+    )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_model_events_kind_created", table_name="model_events")
-    op.drop_table("model_events")
+    op.drop_index(
+        "ix_prompt_injection_events_kind_created",
+        table_name="prompt_injection_events",
+    )
+    op.drop_table("prompt_injection_events")
     op.drop_index("ix_kb_ingestions_title", table_name="kb_ingestions")
     op.drop_table("kb_ingestions")
     op.drop_index("ix_agent_sessions_user_id_created", table_name="agent_sessions")
