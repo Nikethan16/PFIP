@@ -18,8 +18,14 @@ from loguru import logger
 from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pfip.agent.llm_client import LLMUnavailable, get_llm_router
+from pfip.agent.llm_client import (
+    ChatMessage,
+    LLMAllProvidersFailed,
+    LLMUnavailable,
+    get_llm_client,
+)
 from pfip.agent.prompts import load as load_prompt
+from pfip.agent.router import Sensitivity, TaskType
 from pfip.agent.sanitizer import sanitize_many
 
 
@@ -204,16 +210,32 @@ async def draft_post_mortem(db: AsyncSession, holding_id: UUID) -> PostMortemDra
 
     try:
         system = load_prompt("post_mortem_drafter")
-        router = get_llm_router()
-        prompt = (
-            f"Holding ID: {holding_id}\n"
-            f"Draft a post-mortem using the template. Context:\n\n{safe_block}\n"
+        client = get_llm_client()
+        messages = [
+            ChatMessage(role="system", content=system),
+            ChatMessage(
+                role="user",
+                content=(
+                    f"Holding ID: {holding_id}\n"
+                    f"Draft a post-mortem using the template. Context:\n\n{safe_block}\n"
+                ),
+            ),
+        ]
+        # Post-mortems concern your real holdings → SENSITIVE. Strict mode
+        # forces local Ollama; non-strict routes to DeepSeek-R1 for best
+        # chain-of-thought analysis on a closed position.
+        md_raw = await client.complete(
+            messages,
+            task=TaskType.POST_MORTEM,
+            sensitivity=Sensitivity.SENSITIVE,
+            max_tokens=2000,
+            temperature=0.2,
         )
-        md = (await router.generate(prompt, system=system)).strip()
+        md = md_raw.strip()
         return PostMortemDraft(
             holding_id=holding_id, markdown=md, used_llm=True, warnings=warnings
         )
-    except LLMUnavailable as exc:
+    except (LLMUnavailable, LLMAllProvidersFailed) as exc:
         warnings.append(f"LLM unavailable: {exc}")
         md = _fallback_markdown(holding, warnings)
         return PostMortemDraft(

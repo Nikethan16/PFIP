@@ -48,8 +48,17 @@ from loguru import logger
 from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pfip.agent.llm_client import ChatMessage, LLMInjectionBlock, LLMUnavailable, get_llm_router
+from pfip.agent.llm_client import (
+    ChatMessage,
+    LLMAllProvidersFailed,
+    LLMInjectionBlock,
+    LLMUnavailable,
+    get_llm_client,
+    get_llm_router,
+)
+from pfip.agent.privacy import classify_sensitivity
 from pfip.agent.prompts import load as load_prompt
+from pfip.agent.router import Sensitivity, TaskType
 from pfip.agent.sanitizer import sanitize_many
 from pfip.kb.search import KBHit, format_citations, search as kb_search, search_news
 
@@ -359,13 +368,44 @@ async def run_agent_stream(
 
     # --- Synthesize + stream ------------------------------------------------
     messages = _build_synthesis_messages(state)
-    router = get_llm_router()
+    # Privacy classification: scan the user query (plus any chat history) for
+    # personal-finance signals. Sensitive → local Ollama (forced when
+    # LLM_PRIVACY_STRICT=true); Public → cloud 70B for speed/quality.
+    #
+    # Two interlocks make this safe against classifier misses:
+    #   1. Feed the user's open-holding symbols into the classifier so an
+    #      owned-ticker mention (e.g. "RELIANCE earnings") flips to SENSITIVE.
+    #   2. Structurally force SENSITIVE whenever ANY holding row was actually
+    #      retrieved into the prompt — holdings must never route to cloud,
+    #      regardless of the text classifier's verdict.
+    holding_symbols = {
+        str(r["symbol"])
+        for r in state.retrieved_db
+        if r.get("kind") == "holding" and r.get("symbol")
+    }
+    history_blob = "\n".join(m.get("content", "") for m in (history or []))
+    sensitivity = classify_sensitivity(
+        user_query + "\n" + history_blob,
+        user_holdings_symbols=holding_symbols or None,
+    )
+    if holding_symbols:
+        # A holding row is in the prompt → hard-pin to local, no override.
+        sensitivity = Sensitivity.SENSITIVE
+    task = TaskType.CHAT_SENSITIVE if sensitivity == Sensitivity.SENSITIVE else TaskType.CHAT_PUBLIC
+    logger.debug(f"[agent] privacy={sensitivity.value} task={task.value}")
+    client = get_llm_client()
     collected: list[str] = []
     try:
-        async for tok in router.stream_chat(messages):
+        async for tok in client.stream(
+            messages,
+            task=task,
+            sensitivity=sensitivity,
+            max_tokens=2000,
+            temperature=0.3,
+        ):
             collected.append(tok)
             yield {"event": "token", "data": json.dumps({"text": tok})}
-    except LLMUnavailable as exc:
+    except (LLMUnavailable, LLMAllProvidersFailed) as exc:
         yield {
             "event": "token",
             "data": json.dumps(

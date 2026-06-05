@@ -31,8 +31,15 @@ from loguru import logger
 from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pfip.agent.llm_client import LLMUnavailable, get_llm_router
+from pfip.agent.llm_client import (
+    ChatMessage,
+    LLMAllProvidersFailed,
+    LLMUnavailable,
+    get_llm_client,
+    get_llm_router,
+)
 from pfip.agent.prompts import load as load_prompt
+from pfip.agent.router import Sensitivity, TaskType
 
 
 # ---------------------------------------------------------------------------
@@ -292,20 +299,43 @@ async def _shadow_vs_actual(db: AsyncSession) -> dict[str, Any]:
 
 
 async def _llm_topline(data_block: str) -> str:
-    """Ask the LLM for a one-line skim summary. Falls back silently if unavailable."""
+    """Ask the LLM for a one-line skim summary. Falls back silently if unavailable.
+
+    Routes via the multi-provider client at ``TaskType.MORNING_BRIEF`` with
+    ``Sensitivity.SENSITIVE`` — the morning brief surfaces user holdings in
+    section 6, so the prose layer must respect the same privacy boundary.
+    Under ``LLM_PRIVACY_STRICT=true`` (default) this pins to local Ollama;
+    set strict=false in your env to route the prose to Groq.
+    """
     try:
-        router = get_llm_router()
         system = load_prompt("morning_brief_system")
-        prompt = (
-            "Below is the structured morning-brief data block. Write ONE short "
-            "opening line (≤ 25 words) summarising the most important move or "
-            "alignment, if any. Cite one source.\n\n"
-            f"{data_block}"
+        client = get_llm_client()
+        messages = [
+            ChatMessage(role="system", content=system),
+            ChatMessage(
+                role="user",
+                content=(
+                    "Below is the structured morning-brief data block. Write ONE short "
+                    "opening line (≤ 25 words) summarising the most important move or "
+                    "alignment, if any. Cite one source.\n\n"
+                    f"{data_block}"
+                ),
+            ),
+        ]
+        text = await client.complete(
+            messages,
+            task=TaskType.MORNING_BRIEF,
+            sensitivity=Sensitivity.SENSITIVE,
+            max_tokens=120,
+            temperature=0.3,
         )
-        return (await router.generate(prompt, system=system)).strip()
-    except (LLMUnavailable, Exception) as exc:  # noqa: BLE001
-        logger.debug(f"LLM topline skipped: {exc}")
+        return text.strip()
+    except (LLMUnavailable, LLMAllProvidersFailed) as exc:
+        logger.debug(f"LLM topline skipped (unavailable): {exc}")
         return "_(LLM unavailable — data-only brief.)_"
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"LLM topline failed: {exc}")
+        return "_(LLM error — data-only brief.)_"
 
 
 # ---------------------------------------------------------------------------

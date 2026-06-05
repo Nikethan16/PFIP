@@ -1,0 +1,398 @@
+{
+  "schema_version": 1,
+  "description": "Held-out Q/A pairs for evaluating the KB chat agent on finance reasoning quality. Run via `python -m pfip.kb.eval`. Each item carries the source book it's grounded in; the agent's answer is graded by RAGAS (faithfulness, answer-relevance, context-recall) + a custom retrieval-citation check.",
+  "items": [
+    {
+      "id": "wyckoff-01",
+      "topic": "Wyckoff method",
+      "source": "Murphy — Technical Analysis of the Financial Markets",
+      "question": "What are the four phases of the Wyckoff accumulation schematic?",
+      "expected_answer": "Phase A (selling climax + automatic rally + secondary test), Phase B (building cause / range trading), Phase C (final test / spring), Phase D (markup begins / signs of strength).",
+      "expected_citations_keywords": ["wyckoff", "accumulation", "phase", "spring"]
+    },
+    {
+      "id": "wyckoff-02",
+      "topic": "Wyckoff method",
+      "source": "Murphy",
+      "question": "What does Wyckoff's 'spring' pattern signal?",
+      "expected_answer": "A spring is a brief penetration of trading-range support that quickly reverses, suggesting smart money is accumulating by shaking out weak holders before markup.",
+      "expected_citations_keywords": ["spring", "accumulation", "support", "shake"]
+    },
+    {
+      "id": "lefevre-01",
+      "topic": "Trading psychology",
+      "source": "Lefèvre — Reminiscences of a Stock Operator",
+      "question": "What is Livermore's core principle about position sizing in trending markets?",
+      "expected_answer": "Pyramid into a winning position — add to positions that are working, never average down on losers. Risk is highest at the initial probe; conviction is earned by the market confirming the thesis.",
+      "expected_citations_keywords": ["pyramid", "average", "loser", "probe"]
+    },
+    {
+      "id": "lefevre-02",
+      "topic": "Trading psychology",
+      "source": "Lefèvre",
+      "question": "Why does Livermore say 'the big money is made in the big swings, not in the in-and-out trading'?",
+      "expected_answer": "Compounding alpha requires riding multi-month/year trends. Frequent trading erodes returns via friction (slippage + commission) and emotional exhaustion. Conviction-based holding through normal pullbacks generates outsized returns over time.",
+      "expected_citations_keywords": ["big swings", "trend", "friction", "conviction"]
+    },
+    {
+      "id": "graham-01",
+      "topic": "Value investing",
+      "source": "Graham — Intelligent Investor",
+      "question": "What is Graham's 'margin of safety'?",
+      "expected_answer": "A discount between an asset's market price and its intrinsic value sufficient to absorb errors in judgment, bad luck, or extreme volatility — typically two-thirds of conservatively-estimated intrinsic value or below.",
+      "expected_citations_keywords": ["margin", "safety", "intrinsic", "discount"]
+    },
+    {
+      "id": "graham-02",
+      "topic": "Value investing",
+      "source": "Graham",
+      "question": "How does Graham distinguish defensive from enterprising investors?",
+      "expected_answer": "Defensive: low-effort, diversified, primarily large blue-chip stocks + investment-grade bonds, accepts market returns. Enterprising: willing to do deep research, look for special situations, mispriced securities, accepts higher work and risk for potentially higher returns.",
+      "expected_citations_keywords": ["defensive", "enterprising", "blue chip", "special situations"]
+    },
+    {
+      "id": "graham-03",
+      "topic": "Value investing",
+      "source": "Graham",
+      "question": "What is Mr. Market in Graham's framework?",
+      "expected_answer": "An emotionally erratic business partner who quotes a price every day for your shares. He is sometimes euphoric and overpays, sometimes despondent and underpays. The intelligent investor uses his moods rather than being led by them — buys when he is fearful, sells when he is euphoric.",
+      "expected_citations_keywords": ["mr market", "emotional", "use", "buy"]
+    },
+    {
+      "id": "taleb-01",
+      "topic": "Tail risk",
+      "source": "Taleb — Black Swan",
+      "question": "What is the difference between Mediocristan and Extremistan in Taleb's framework, and which one financial markets live in?",
+      "expected_answer": "Mediocristan: aggregate phenomena where individual events are bounded (height, weight). Extremistan: a single observation can dwarf the entire historical sample (wealth, market crashes). Financial markets live in Extremistan, meaning Gaussian risk models systematically underestimate tail risk.",
+      "expected_citations_keywords": ["mediocristan", "extremistan", "tail", "gaussian"]
+    },
+    {
+      "id": "taleb-02",
+      "topic": "Tail risk",
+      "source": "Taleb",
+      "question": "Why does Taleb argue Value-at-Risk (VaR) is harmful?",
+      "expected_answer": "VaR gives a false sense of precision about loss boundaries by assuming a known distribution (usually Gaussian). It systematically underestimates the probability of extreme events. Worse, it encourages risk-takers to hide tail exposure inside the confidence interval — selling cheap options that blow up rarely but catastrophically.",
+      "expected_citations_keywords": ["var", "gaussian", "tail", "option", "blow up"]
+    },
+    {
+      "id": "dalio-01",
+      "topic": "Macro / cycles",
+      "source": "Dalio — How the Economic Machine Works",
+      "question": "What are the three main forces driving Dalio's economic machine?",
+      "expected_answer": "Productivity growth (long-term real GDP per capita), short-term debt cycle (5–8 years, expansion + recession), long-term debt cycle (50–75 years, deleveraging events). Productivity is steady; cycles overlay it; deleveraging events define generations.",
+      "expected_citations_keywords": ["productivity", "short-term debt", "long-term debt", "deleveraging"]
+    },
+    {
+      "id": "dalio-02",
+      "topic": "Macro / cycles",
+      "source": "Dalio",
+      "question": "What is 'beautiful deleveraging' according to Dalio?",
+      "expected_answer": "A deleveraging where the four levers — debt restructuring, austerity, wealth transfers, and printing money — are balanced so that nominal GDP growth exceeds nominal debt growth without runaway inflation or deflation. The 1933+ US recovery is the canonical example.",
+      "expected_citations_keywords": ["deleveraging", "beautiful", "lever", "nominal"]
+    },
+    {
+      "id": "tharp-01",
+      "topic": "Position sizing",
+      "source": "Van Tharp — Trade Your Way to Financial Freedom",
+      "question": "What is Van Tharp's expectancy formula?",
+      "expected_answer": "Expectancy = (Win rate × Average win) − (Loss rate × Average loss). A positive-expectancy system is necessary but not sufficient; opportunity (trade frequency) and bet sizing determine actual returns.",
+      "expected_citations_keywords": ["expectancy", "win rate", "loss", "frequency"]
+    },
+    {
+      "id": "tharp-02",
+      "topic": "Position sizing",
+      "source": "Van Tharp",
+      "question": "How does Van Tharp's R-multiple position sizing work?",
+      "expected_answer": "R = initial risk per trade (typically 1% of account). Position size = R ÷ stop distance. All returns are expressed in R-multiples (e.g., a 3R winner). This decouples position sizing from price level and standardises risk across instruments and account sizes.",
+      "expected_citations_keywords": ["r-multiple", "risk", "stop", "position size"]
+    },
+    {
+      "id": "ammous-01",
+      "topic": "Bitcoin fundamentals",
+      "source": "Ammous — The Bitcoin Standard",
+      "question": "What is Bitcoin's stock-to-flow argument and what are its limits?",
+      "expected_answer": "Bitcoin's stock-to-flow (existing supply / annual new supply) rises predictably with each halving, making it monetarily 'harder' than gold over time. Critique: the model treats demand as exogenous, ignores that S2F is a property of the supply schedule alone, and has not held empirically post-2021.",
+      "expected_citations_keywords": ["stock-to-flow", "halving", "scarcity", "demand"]
+    },
+    {
+      "id": "burniske-01",
+      "topic": "Crypto valuation",
+      "source": "Burniske & Tatar — Cryptoassets",
+      "question": "What is INET and how does it differ from traditional DCF for valuing crypto networks?",
+      "expected_answer": "INET (Innovation Network Equation Theory) applies equation-of-exchange MV=PQ to networks where M is total supply, V is velocity, P is average price per unit of utility, Q is annual transaction quantity. Differs from DCF in valuing the *network's* throughput rather than discounted cash flows to equity holders.",
+      "expected_citations_keywords": ["inet", "mv", "velocity", "utility"]
+    },
+    {
+      "id": "parikh-01",
+      "topic": "Indian equities",
+      "source": "Parag Parikh — Stocks to Riches",
+      "question": "What is Parag Parikh's view on FII flows as an indicator for Indian equities?",
+      "expected_answer": "FII flows are noisy short-term and can reverse violently on global risk-off events. Long-term Indian equity returns are domestic-flow-driven (SIPs, EPF, NPS). Heavy reliance on FII inflows to time entries is a mistake; use them as confirming, not causal.",
+      "expected_citations_keywords": ["fii", "domestic", "sip", "risk-off"]
+    },
+    {
+      "id": "mukherjea-01",
+      "topic": "Indian equities",
+      "source": "Saurabh Mukherjea — Coffee Can Investing",
+      "question": "What are the two screens for a Coffee Can portfolio?",
+      "expected_answer": "ROCE ≥ 15% every year for 10 consecutive years, AND revenue growth ≥ 10% every year for 10 consecutive years. Companies passing both are held for a decade untouched.",
+      "expected_citations_keywords": ["roce", "revenue", "coffee can", "decade"]
+    },
+    {
+      "id": "lopezdeprado-01",
+      "topic": "Quant ML",
+      "source": "Marcos López de Prado — Advances in Financial ML",
+      "question": "Why is random train/test split unsafe for financial time-series ML?",
+      "expected_answer": "Returns are temporally autocorrelated and exhibit overlapping label windows. A random split places training samples in the future relative to test samples, leaking information backwards. The honest method is walk-forward with purged + embargoed train/test boundaries to eliminate temporal leakage.",
+      "expected_citations_keywords": ["random split", "leakage", "walk-forward", "embargo"]
+    },
+    {
+      "id": "lopezdeprado-02",
+      "topic": "Quant ML",
+      "source": "López de Prado",
+      "question": "What is the purpose of CPCV (Combinatorial Purged Cross-Validation)?",
+      "expected_answer": "To estimate the distribution of backtest Sharpe ratios under different historical-split orderings, exposing how much of a strategy's apparent edge comes from one lucky training history. Multiple non-overlapping test sets are constructed with purging + embargo. Used to compute the deflated Sharpe ratio.",
+      "expected_citations_keywords": ["cpcv", "deflated", "purge", "embargo"]
+    },
+    {
+      "id": "ilmanen-01",
+      "topic": "Factor premia",
+      "source": "Ilmanen — Expected Returns",
+      "question": "What four cross-asset factor premia does Ilmanen identify as historically positive?",
+      "expected_answer": "Value, carry, momentum, and defensive (low-volatility). They show up across equities, bonds, commodities, and currencies — the universality argues for genuine economic mechanism over data-mined coincidence.",
+      "expected_citations_keywords": ["value", "carry", "momentum", "defensive", "factor"]
+    },
+    {
+      "id": "damodaran-01",
+      "topic": "Valuation",
+      "source": "Damodaran — Narrative and Numbers",
+      "question": "What is Damodaran's framework for connecting narrative to valuation?",
+      "expected_answer": "Each business narrative implies a numeric story: revenue growth rate, operating margin terminal value, and reinvestment rate. The valuation discipline forces narratives to be consistent (e.g., 30% growth + 80% margins + low reinvestment is mathematically impossible long-term). Numbers anchor stories; stories give numbers meaning.",
+      "expected_citations_keywords": ["narrative", "growth", "margin", "reinvestment"]
+    },
+    {
+      "id": "schwager-01",
+      "topic": "Trader psychology",
+      "source": "Schwager — Market Wizards",
+      "question": "What is the most consistent risk-management practice mentioned across the Market Wizards interviews?",
+      "expected_answer": "Hard stop-losses pre-defined before entering a trade, sized so a single loss is < 1–2% of the account. Many wizards use even tighter limits. The discipline is binary: violated stops are the most common cause of blowups.",
+      "expected_citations_keywords": ["stop loss", "1%", "2%", "discipline"]
+    },
+    {
+      "id": "douglas-01",
+      "topic": "Trader psychology",
+      "source": "Mark Douglas — Trading in the Zone",
+      "question": "What are Douglas's 'five fundamental truths' of trading?",
+      "expected_answer": "1) Anything can happen. 2) You don't need to know what will happen next to make money. 3) There is a random distribution between wins and losses for any given set of variables defining an edge. 4) An edge is nothing more than a probabilistic advantage. 5) Every moment in the market is unique.",
+      "expected_citations_keywords": ["five fundamental", "anything can happen", "edge", "probabilistic"]
+    },
+    {
+      "id": "oneil-01",
+      "topic": "Growth investing",
+      "source": "William O'Neil — How to Make Money in Stocks",
+      "question": "What does the CAN SLIM acronym stand for in O'Neil's growth framework?",
+      "expected_answer": "Current quarterly earnings, Annual earnings growth, New (product/service/management), Supply and demand (float), Leader (vs laggard), Institutional sponsorship, Market direction.",
+      "expected_citations_keywords": ["canslim", "earnings", "leader", "institutional"]
+    },
+    {
+      "id": "kaufman-01",
+      "topic": "Systematic trading",
+      "source": "Kaufman — Trading Systems and Methods",
+      "question": "Why does Kaufman emphasise robustness over optimisation in trading systems?",
+      "expected_answer": "Heavily optimised systems overfit historical noise. A robust system performs across multiple markets and time periods with similar parameters. Real-world performance comes from systems that work 'okay' over many regimes rather than 'great' on one historical sample.",
+      "expected_citations_keywords": ["robust", "overfit", "optimization", "regime"]
+    },
+    {
+      "id": "in-tax-01",
+      "topic": "Indian tax",
+      "source": "RBI/SEBI / Income Tax Act",
+      "question": "What is the holding period that distinguishes STCG from LTCG for Indian listed equities?",
+      "expected_answer": "12 months. Listed equities held ≤ 12 months → STCG taxed at 15%. > 12 months → LTCG taxed at 10% on gains exceeding ₹1 lakh per financial year.",
+      "expected_citations_keywords": ["stcg", "ltcg", "12 months", "1 lakh"]
+    },
+    {
+      "id": "in-tax-02",
+      "topic": "Indian tax",
+      "source": "Income Tax Act",
+      "question": "How are gains on debt mutual funds taxed in India post-April 2023?",
+      "expected_answer": "All debt mutual fund gains, regardless of holding period, are taxed at the investor's slab rate (no LTCG indexation benefit). This was changed effective 1 April 2023 under the Finance Act 2023.",
+      "expected_citations_keywords": ["debt", "slab", "2023", "no indexation"]
+    },
+    {
+      "id": "in-tax-03",
+      "topic": "Indian tax",
+      "source": "Income Tax Act",
+      "question": "What is the VDA (Virtual Digital Asset) tax treatment for cryptocurrency in India?",
+      "expected_answer": "Flat 30% tax on gains regardless of holding period. 1% TDS on every transfer. No loss set-off against other income or other crypto. No carry-forward of losses. Applicable since FY 2022–23.",
+      "expected_citations_keywords": ["vda", "30%", "tds", "no loss set-off"]
+    },
+    {
+      "id": "in-tax-04",
+      "topic": "Indian tax",
+      "source": "Income Tax Act",
+      "question": "What is Schedule FA and when is it mandatory in the Indian ITR?",
+      "expected_answer": "Schedule of Foreign Assets — mandatory disclosure of foreign-held assets (US stocks via INDmoney/Vested, foreign bank accounts, foreign mutual funds, foreign property) by Indian residents. Required even if no income arose. Includes peak balance and dividend income during the year.",
+      "expected_citations_keywords": ["schedule fa", "foreign", "peak", "mandatory"]
+    },
+    {
+      "id": "in-tax-05",
+      "topic": "Indian tax",
+      "source": "Income Tax Act",
+      "question": "What is Form 67 and how does it relate to DTAA?",
+      "expected_answer": "Form 67 is the disclosure used to claim a Foreign Tax Credit (FTC) under Section 90 of the Income Tax Act for taxes paid in countries with which India has a Double Tax Avoidance Agreement (DTAA). Filed before the ITR due date. For US dividends, claims credit against the 25% withholding tax.",
+      "expected_citations_keywords": ["form 67", "ftc", "section 90", "dtaa"]
+    },
+    {
+      "id": "in-tax-06",
+      "topic": "Indian tax",
+      "source": "Income Tax Act",
+      "question": "What are the four key surcharge thresholds for Indian individual income tax?",
+      "expected_answer": "Income over ₹50 lakh: 10% surcharge. Over ₹1 crore: 15%. Over ₹2 crore: 25%. Over ₹5 crore: 37%. New tax regime caps surcharge at 25% even for income > ₹5 crore.",
+      "expected_citations_keywords": ["surcharge", "50 lakh", "1 crore", "2 crore", "5 crore"]
+    },
+    {
+      "id": "in-tax-07",
+      "topic": "Indian tax",
+      "source": "Income Tax Act",
+      "question": "What is the difference between the old tax regime and the new tax regime (introduced 2020)?",
+      "expected_answer": "Old: higher slab rates but many deductions allowed (80C, 80D, HRA, LTA, home loan interest). New: lower slab rates but no major deductions. Optimal choice depends on individual's actual deductions — break-even is typically around ₹1.5–2 lakh of deductions.",
+      "expected_citations_keywords": ["old regime", "new regime", "slab", "deduction"]
+    },
+    {
+      "id": "in-mf-01",
+      "topic": "Mutual funds",
+      "source": "AMFI",
+      "question": "What is the difference between an equity-oriented and a debt-oriented mutual fund for tax purposes in India?",
+      "expected_answer": "An equity-oriented fund has ≥ 65% investment in equity throughout the year (per SEBI). It enjoys equity tax treatment (15% STCG, 10% LTCG over ₹1L). Anything below 65% equity is treated as a debt fund — post-2023, taxed at slab rate regardless of holding period.",
+      "expected_citations_keywords": ["65%", "equity-oriented", "debt", "tax treatment"]
+    },
+    {
+      "id": "in-mf-02",
+      "topic": "Mutual funds",
+      "source": "AMFI",
+      "question": "What is the SIP and SWP distinction, and what is XIRR?",
+      "expected_answer": "SIP (Systematic Investment Plan) = recurring purchases. SWP (Systematic Withdrawal Plan) = recurring redemptions. XIRR (Extended Internal Rate of Return) is the IRR formula generalised for irregular cash flows — used to compute the annualised return of an SIP/SWP series.",
+      "expected_citations_keywords": ["sip", "swp", "xirr", "irregular"]
+    },
+    {
+      "id": "in-80c-01",
+      "topic": "Indian tax",
+      "source": "Income Tax Act",
+      "question": "Which deductions fall under Section 80C and what is the limit?",
+      "expected_answer": "Limit: ₹1.5 lakh per FY. Covers ELSS funds, PPF, EPF (employee contribution), NPS Tier 1 (up to 80CCD(1)), life insurance premium, principal repayment on home loan, tax-saver FDs, NSCs, Sukanya Samriddhi, tuition fees for up to 2 children.",
+      "expected_citations_keywords": ["80c", "1.5 lakh", "elss", "ppf", "epf"]
+    },
+    {
+      "id": "in-80ccd-01",
+      "topic": "Indian tax",
+      "source": "Income Tax Act",
+      "question": "What is the additional NPS deduction available under Section 80CCD(1B)?",
+      "expected_answer": "Up to ₹50,000 per FY additional deduction for NPS Tier 1 contributions, OVER and above the 80C cap. So an investor maxing 80C + 80CCD(1B) gets ₹2 lakh of total deduction.",
+      "expected_citations_keywords": ["80ccd(1b)", "50000", "nps", "additional"]
+    },
+    {
+      "id": "in-80d-01",
+      "topic": "Indian tax",
+      "source": "Income Tax Act",
+      "question": "What are the Section 80D health-insurance deduction limits in India?",
+      "expected_answer": "Self/spouse/children: ₹25,000 (₹50,000 if any covered person is a senior citizen). Parents: another ₹25,000 (₹50,000 if a senior). Preventive health check-up: ₹5,000 within these limits. Total max: ₹1 lakh if both you and your parents are seniors.",
+      "expected_citations_keywords": ["80d", "25000", "50000", "senior"]
+    },
+    {
+      "id": "in-ppf-01",
+      "topic": "Indian fixed income",
+      "source": "RBI / India Post",
+      "question": "What is PPF and why is it EEE?",
+      "expected_answer": "Public Provident Fund — 15-year government-backed savings (extendable in 5-yr blocks). Currently 7.1% interest. EEE = Exempt-Exempt-Exempt: contribution gets 80C deduction; interest accrual is tax-free; maturity proceeds are tax-free. Annual contribution cap ₹1.5L.",
+      "expected_citations_keywords": ["ppf", "eee", "15 year", "7.1%"]
+    },
+    {
+      "id": "in-nps-01",
+      "topic": "Indian retirement",
+      "source": "PFRDA",
+      "question": "What is the tax treatment of NPS withdrawals at maturity?",
+      "expected_answer": "60% of corpus can be withdrawn tax-free at age 60. The remaining 40% must be used to buy an annuity (the annuity income is taxed at slab in subsequent years). Partial withdrawals before maturity are tax-free up to 25% of own contributions for specific purposes.",
+      "expected_citations_keywords": ["60%", "40%", "annuity", "tax-free"]
+    },
+    {
+      "id": "in-itr-01",
+      "topic": "Indian tax",
+      "source": "Income Tax Act",
+      "question": "Which ITR form applies to a salaried Indian individual holding US stocks via INDmoney?",
+      "expected_answer": "ITR-2. Salary income alone could use ITR-1, but holding foreign assets (Schedule FA required) triggers ITR-2 mandatorily. If business income is also present, ITR-3 applies instead.",
+      "expected_citations_keywords": ["itr-2", "schedule fa", "foreign asset", "mandatory"]
+    },
+    {
+      "id": "regime-01",
+      "topic": "Market regimes",
+      "source": "Murphy + Kaufman",
+      "question": "How do bull-trend and high-volatility regimes differ from a backtesting perspective?",
+      "expected_answer": "Trend regimes are characterised by serially-correlated returns and persistent direction — momentum strategies dominate. High-volatility regimes show fat-tailed but uncorrelated returns — momentum decays into noise; mean-reversion and risk-off / cash strategies become competitive. Single-model systems blend the two and underperform regime-aware ensembles.",
+      "expected_citations_keywords": ["serial correlation", "momentum", "volatility", "mean reversion"]
+    },
+    {
+      "id": "regime-02",
+      "topic": "Market regimes",
+      "source": "internal: HMM regime model",
+      "question": "What are the three regime states PFIP's HMM classifier emits?",
+      "expected_answer": "bull_trend, sideways, high_volatility. (PFIP uses 3 states by default; some implementations split bull/bear or add accumulation/distribution. See pfip/regime/hmm.py for the current state map.)",
+      "expected_citations_keywords": ["hmm", "bull_trend", "sideways", "high_volatility"]
+    },
+    {
+      "id": "calib-01",
+      "topic": "Calibration",
+      "source": "internal: calibration module",
+      "question": "What does ECE measure for a probabilistic classifier?",
+      "expected_answer": "Expected Calibration Error: the weighted average gap between predicted probabilities and observed frequencies, bucketed by predicted probability. ECE = 0 means perfect calibration; the threshold for auto-suspending a model in PFIP is 0.15.",
+      "expected_citations_keywords": ["ece", "calibration", "buckets", "frequency"]
+    },
+    {
+      "id": "calib-02",
+      "topic": "Calibration",
+      "source": "internal",
+      "question": "Why is Brier score insufficient alone for evaluating a signal model?",
+      "expected_answer": "Brier captures average squared error of probability predictions but doesn't decompose into calibration vs sharpness. A model with high Brier could be poorly calibrated (consistently over-confident) or just lack discrimination (always predicts 50%). Combine Brier + ECE + reliability diagram + KS test for full picture.",
+      "expected_citations_keywords": ["brier", "calibration", "sharpness", "reliability"]
+    },
+    {
+      "id": "ops-01",
+      "topic": "Ops",
+      "source": "internal",
+      "question": "What is PIT discipline in PFIP and why does it matter?",
+      "expected_answer": "Point-in-Time: every fundamental row carries an `as_of_date` field representing when the data became available. ML queries must filter `as_of_date ≤ training_cutoff` to prevent look-ahead bias from restated financials. Without PIT, backtests routinely overestimate Sharpe by 0.3–0.5.",
+      "expected_citations_keywords": ["pit", "as_of_date", "look-ahead", "restated"]
+    },
+    {
+      "id": "ops-02",
+      "topic": "Ops",
+      "source": "internal",
+      "question": "Why is the LLM never allowed to issue a trade signal in PFIP?",
+      "expected_answer": "LLMs hallucinate. A confidently-stated false price target can drive real money loss. Architecturally: signals come from the ML signal layer (LightGBM/XGBoost/CatBoost/HMM-routed); LLMs only render the narrative around the signal. This is an immutable rule, not a configuration option.",
+      "expected_citations_keywords": ["hallucinate", "ml signal", "narrative", "immutable"]
+    },
+    {
+      "id": "ops-03",
+      "topic": "Ops",
+      "source": "internal",
+      "question": "What happens when the drawdown halt triggers?",
+      "expected_answer": "All new positions are blocked. The Telegram alert fires (CRITICAL severity, bypasses quiet hours). Open positions are not auto-closed — only the kill switch closes them. Halt clears only on manual override from Settings → Risk after the user acknowledges the situation.",
+      "expected_citations_keywords": ["drawdown", "halt", "block", "kill switch"]
+    },
+    {
+      "id": "ops-04",
+      "topic": "Ops",
+      "source": "internal",
+      "question": "Where do API keys live and how is the secret-vs-non-secret line drawn in PFIP?",
+      "expected_answer": "All API keys live in .env at the repo root (git-ignored). Public/free-tier read-only keys are low-risk if leaked but still rotated. Anything with billing or write scope (Telegram bot token, future broker API keys) is treated as high-secret. .env is backed up encrypted to an off-machine location.",
+      "expected_citations_keywords": [".env", "git-ignored", "rotate", "encrypted"]
+    },
+    {
+      "id": "ops-05",
+      "topic": "Ops",
+      "source": "internal",
+      "question": "What is the privacy boundary in PFIP's LLM router and what triggers it?",
+      "expected_answer": "Holdings-related and tax-related prompts are pinned to local Ollama; only public-market prompts route to cloud providers. Trigger: the prompt classifier scans for tokens like 'my portfolio', 'my holdings', 'my tax', 'ITR', or specific user symbols/account names. Under strict mode (default), classification to Sensitive is a hard pin — no cloud fallback.",
+      "expected_citations_keywords": ["privacy", "sensitive", "ollama", "strict"]
+    }
+  ]
+}
