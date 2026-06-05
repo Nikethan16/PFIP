@@ -21,8 +21,10 @@ import { EmptyState } from "@/components/shared/empty-state";
 
 interface HoldingsTableProps {
   holdings: Holding[];
-  /** Called when the user clicks "Close" on a row. Triggers the post-mortem dialog. */
+  /** Called when the user clicks "Close" on a row. Triggers the close flow. */
   onClosePosition?: (holding: Holding) => void;
+  /** Id of the holding whose close is currently in flight (disables its button). */
+  closingHoldingId?: string | null;
 }
 
 type SortKey =
@@ -59,6 +61,7 @@ const ALL_CATEGORIES: HoldingCategory[] = [
 export function HoldingsTable({
   holdings,
   onClosePosition,
+  closingHoldingId,
 }: HoldingsTableProps) {
   const [sortKey, setSortKey] = React.useState<SortKey>("market_value_inr");
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
@@ -307,12 +310,17 @@ export function HoldingsTable({
                   </TableCell>
                   <TableCell className="text-right">
                     {onClosePosition && !h.closed_at ? (
+                      // Closing the holding creates a linked post-mortem journal
+                      // stub server-side and returns its id, which the page
+                      // wiring uses to open the post-mortem dialog.
                       <Button
                         size="sm"
                         variant="outline"
+                        disabled={closingHoldingId === h.id}
                         onClick={() => onClosePosition(h)}
+                        title="Close this position and start its post-mortem"
                       >
-                        Close
+                        {closingHoldingId === h.id ? "Closing…" : "Close"}
                       </Button>
                     ) : h.closed_at ? (
                       <Badge variant="secondary" className="text-[10px]">
@@ -376,13 +384,17 @@ export function HoldingsTable({
                   </div>
                 </div>
                 {onClosePosition && !h.closed_at ? (
+                  // See the desktop branch above: close creates the post-mortem
+                  // stub and returns its journal id.
                   <div className="mt-3 flex justify-end">
                     <Button
                       size="sm"
                       variant="outline"
+                      disabled={closingHoldingId === h.id}
                       onClick={() => onClosePosition(h)}
+                      title="Close this position and start its post-mortem"
                     >
-                      Close
+                      {closingHoldingId === h.id ? "Closing…" : "Close"}
                     </Button>
                   </div>
                 ) : null}

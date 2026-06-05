@@ -107,6 +107,56 @@ const config: Config = {
         },
         // Tremor palette
         ...tremorConfig,
+        // -----------------------------------------------------------------
+        // Slate & Teal Institutional tokens — ported from Google Stitch.
+        // These keep the Stitch HTML classes (`bg-surface`, `text-positive`,
+        // etc.) working verbatim when we drop their markup into React.
+        // The shadcn tokens above remain the source of truth for theming.
+        // -----------------------------------------------------------------
+        surface: "#f8f9ff",
+        "surface-dim": "#cbdbf5",
+        "surface-bright": "#f8f9ff",
+        "surface-container-lowest": "#ffffff",
+        "surface-container-low": "#eff4ff",
+        "surface-container": "#e5eeff",
+        "surface-container-high": "#dce9ff",
+        "surface-container-highest": "#d3e4fe",
+        "on-surface": "#0b1c30",
+        "on-surface-variant": "#3c4947",
+        "inverse-surface": "#213145",
+        "inverse-on-surface": "#eaf1ff",
+        outline: "#6c7a77",
+        "outline-variant": "#bbcac6",
+        "primary-container": "#14b8a6",
+        "on-primary-container": "#00423b",
+        "inverse-primary": "#4fdbc8",
+        "secondary-container": "#dae2fd",
+        "on-secondary-container": "#5c647a",
+        positive: "#10b981",
+        negative: "#ef4444",
+        // Status palette (kept semantic so dashboards stay consistent).
+        signal: {
+          buy: "#10b981",
+          sell: "#ef4444",
+          hold: "#f59e0b",
+        },
+      },
+      fontFamily: {
+        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: [
+          "JetBrains Mono",
+          "ui-monospace",
+          "SFMono-Regular",
+          "Menlo",
+          "monospace",
+        ],
+      },
+      width: {
+        "sidebar-width": "220px",
+      },
+      spacing: {
+        gutter: "16px",
+        "component-gap": "12px",
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -121,6 +171,18 @@ const config: Config = {
         "tremor-default": ["0.875rem", { lineHeight: "1.25rem" }],
         "tremor-title": ["1.125rem", { lineHeight: "1.75rem" }],
         "tremor-metric": ["1.875rem", { lineHeight: "2.25rem" }],
+        // Stitch scale.
+        "headline-lg": ["32px", { lineHeight: "40px", letterSpacing: "-0.02em", fontWeight: "600" }],
+        "headline-md": ["24px", { lineHeight: "32px", letterSpacing: "-0.01em", fontWeight: "600" }],
+        "headline-sm": ["18px", { lineHeight: "24px", fontWeight: "600" }],
+        "body-lg": ["16px", { lineHeight: "24px", fontWeight: "400" }],
+        "body-md": ["14px", { lineHeight: "20px", fontWeight: "400" }],
+        "body-sm": ["13px", { lineHeight: "18px", fontWeight: "400" }],
+        "label-md": ["12px", { lineHeight: "16px", fontWeight: "500" }],
+        "label-sm": ["10px", { lineHeight: "14px", letterSpacing: "0.02em", fontWeight: "500" }],
+        "numeric-lg": ["24px", { lineHeight: "32px", fontWeight: "600" }],
+        "numeric-md": ["16px", { lineHeight: "24px", fontWeight: "500" }],
+        "numeric-sm": ["12px", { lineHeight: "16px", fontWeight: "500" }],
       },
       boxShadow: {
         "tremor-input": "0 1px 2px 0 rgb(0 0 0 / 0.05)",

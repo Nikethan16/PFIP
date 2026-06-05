@@ -5,14 +5,19 @@ import * as React from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ReliabilityCard } from "@/components/calibration/reliability-card";
 import { EmptyState } from "@/components/shared/empty-state";
-import { useCalibration, useCalibrationHistory } from "@/lib/api";
+import { PageHeader } from "@/components/shared/page-header";
+import {
+  useCalibration,
+  useCalibrationHistory,
+  type CalibrationHistory,
+} from "@/lib/api";
 
 export default function CalibrationPage() {
   const { data, isLoading, error } = useCalibration();
   const { data: history } = useCalibrationHistory();
 
   const historyByKey = React.useMemo(() => {
-    const map = new Map<string, (typeof history)[number]>();
+    const map = new Map<string, CalibrationHistory>();
     (history ?? []).forEach((h) =>
       map.set(`${h.model_name}@${h.model_version}`, h),
     );
@@ -21,14 +26,10 @@ export default function CalibrationPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Calibration</h1>
-        <p className="text-sm text-muted-foreground">
-          Brier, ECE, and sharpness per model with reliability curves.
-          Lower is better. Models flagged red if ECE &gt; 0.15 for 2 months in
-          a row (auto-suspended).
-        </p>
-      </div>
+      <PageHeader
+        title="Calibration"
+        description="Brier, ECE, and sharpness per model with reliability curves. Lower is better. Models flagged red if ECE > 0.15 for 2 months in a row (auto-suspended)."
+      />
 
       {isLoading ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

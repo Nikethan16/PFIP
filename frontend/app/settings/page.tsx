@@ -24,6 +24,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
+import { PageHeader } from "@/components/shared/page-header";
+import { SourceHealthPanel } from "@/components/settings/source-health-panel";
 import { toast } from "@/components/ui/toast";
 import {
   useUpdateUserSettings,
@@ -85,13 +87,21 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground">
-          Risk limits, tax year, alert preferences, model registry, scheduled
-          tasks.
-        </p>
-      </div>
+      <PageHeader
+        title="Settings"
+        description="Risk limits, tax year, alert preferences, model registry, scheduled tasks."
+        actions={
+          <Button onClick={onSave} disabled={update.isPending} size="sm">
+            {update.isPending ? (
+              <span className="inline-flex items-center gap-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
+              </span>
+            ) : (
+              "Save changes"
+            )}
+          </Button>
+        }
+      />
 
       <Card>
         <CardHeader>
@@ -306,16 +316,32 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <div className="flex justify-end">
-        <Button onClick={onSave} disabled={update.isPending}>
-          {update.isPending ? (
-            <span className="inline-flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" /> Saving…
-            </span>
-          ) : (
-            "Save settings"
-          )}
-        </Button>
+      <Card>
+        <CardHeader>
+          <CardTitle>Source health</CardTitle>
+          <CardDescription>
+            Per-adapter ingest status, updated every 60s. Filter to failing
+            adapters when troubleshooting; the runbooks in{" "}
+            <code>docs/runbooks/</code> cover the recurring failure modes.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SourceHealthPanel />
+        </CardContent>
+      </Card>
+
+      <div className="sticky bottom-4 z-10 flex justify-end">
+        <div className="rounded-lg border bg-background/95 px-3 py-2 shadow-lg backdrop-blur">
+          <Button onClick={onSave} disabled={update.isPending} size="sm">
+            {update.isPending ? (
+              <span className="inline-flex items-center gap-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
+              </span>
+            ) : (
+              "Save settings"
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -2,7 +2,17 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowUpRight, TrendingDown, TrendingUp } from "lucide-react";
+import {
+  ArrowUpRight,
+  Banknote,
+  Bitcoin,
+  ExternalLink,
+  Newspaper,
+  PieChart,
+  ShieldAlert,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react";
 
 import {
   Card,
@@ -21,20 +31,34 @@ import {
 } from "@/components/ui/tabs";
 import { BriefCard } from "@/components/morning-brief/brief-card";
 import { CandleChart } from "@/components/charts/candle-chart";
+import { Sparkline } from "@/components/charts/sparkline";
+import { Kpi } from "@/components/shared/kpi";
 import { RegimeBadge } from "@/components/shared/regime-badge";
+import { SentimentDot } from "@/components/shared/sentiment-dot";
 import { StaleBadge } from "@/components/shared/stale-badge";
 import { EmptyState } from "@/components/shared/empty-state";
+import { WelcomeModal } from "@/components/shared/welcome-modal";
+import { PageHeader } from "@/components/shared/page-header";
+import { FreshnessBadge } from "@/components/shared/freshness-badge";
+import { ChangesTodayCard } from "@/components/dashboard/changes-today-card";
 import {
+  useAssetNews,
   useAssetRegime,
   useCandles,
   usePortfolioSummary,
   useVarPanel,
   useWatchlist,
 } from "@/lib/api";
-import { cn, formatINR, formatPct } from "@/lib/utils";
+import { cn, formatIST, formatINR, formatPct } from "@/lib/utils";
 import type { Timeframe } from "@/lib/contracts";
 
 const PRIMARY_ASSET = "BTC-USD";
+const TRACKED_MARKETS = [
+  { symbol: "BTC-USD", label: "Bitcoin", icon: Bitcoin },
+  { symbol: "ETH-USD", label: "Ethereum", icon: Bitcoin },
+  { symbol: "SPY", label: "S&P 500", icon: PieChart },
+  { symbol: "NIFTY50", label: "Nifty 50", icon: PieChart },
+];
 
 type DashboardTimeframe = "1D" | "1W" | "1M" | "3M" | "1Y";
 
@@ -52,24 +76,108 @@ const TIMEFRAME_MAP: Record<
 export default function DashboardPage() {
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          Good morning. Here&apos;s what changed overnight.
-        </p>
-      </div>
+      <WelcomeModal />
+      <PageHeader
+        title="Dashboard"
+        description="Good morning. Here's what changed overnight."
+      />
 
+      {/* Hero KPI strip */}
+      <HeroKpis />
+
+      {/* Morning brief — hero card */}
       <BriefCard />
 
+      {/* Charts + regime per market */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <BTCCard />
-        <RegimeCard />
+        <RegimeStack />
       </div>
 
+      {/* What changed today — pre-empts "anything worth looking at?" */}
+      <ChangesTodayCard />
+
+      {/* Watchlist + risk */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <WatchlistMoversCard />
         <RiskSnapshotCard />
       </div>
+
+      {/* News feed grid */}
+      <NewsRow />
+    </div>
+  );
+}
+
+// --- Hero KPI strip ---------------------------------------------------------
+
+function HeroKpis() {
+  const { data: summary, isLoading } = usePortfolioSummary();
+  const { data: risk } = useVarPanel();
+  const { data: regime } = useAssetRegime(PRIMARY_ASSET);
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <Kpi
+        label="Net worth (INR)"
+        value={summary ? formatINR(summary.total_inr) : "—"}
+        deltaPct={summary?.pnl_pct ?? null}
+        hint={summary ? `vs cost basis` : null}
+        icon={<Banknote className="h-3.5 w-3.5" />}
+        loading={isLoading}
+        freshness={summary ? "fresh" : undefined}
+      />
+      <Kpi
+        label="Today's P&L"
+        value={risk ? formatINR(risk.day_change_inr) : "—"}
+        deltaPct={risk?.day_change_pct ?? null}
+        icon={<TrendingUp className="h-3.5 w-3.5" />}
+        loading={isLoading}
+        freshness={risk ? "fresh" : undefined}
+      />
+      <Kpi
+        label="BTC regime"
+        value={
+          regime ? (
+            <RegimeBadge regime={regime.regime} size="md" />
+          ) : (
+            "—"
+          )
+        }
+        hint={regime ? `${Math.round(regime.confidence * 100)}% conf` : null}
+        tone="neutral"
+        icon={<Bitcoin className="h-3.5 w-3.5" />}
+        loading={isLoading}
+      />
+      <Kpi
+        label="Drawdown"
+        freshness={
+          summary == null
+            ? undefined
+            : summary.drawdown_pct <= -15
+              ? "failing"
+              : summary.drawdown_pct <= -5
+                ? "stale"
+                : "fresh"
+        }
+        value={summary ? formatPct(summary.drawdown_pct) : "—"}
+        tone={
+          summary == null
+            ? "neutral"
+            : summary.drawdown_pct <= -10
+              ? "down"
+              : summary.drawdown_pct >= 0
+                ? "up"
+                : "neutral"
+        }
+        hint={
+          risk
+            ? `${risk.daily_new_positions_remaining ?? 0} new positions left`
+            : null
+        }
+        icon={<ShieldAlert className="h-3.5 w-3.5" />}
+        loading={isLoading}
+      />
     </div>
   );
 }
@@ -96,17 +204,22 @@ function BTCCard() {
   const first = data?.[0];
   const changePct =
     last && first ? ((last.close - first.close) / first.close) * 100 : null;
+  const positive = (changePct ?? 0) >= 0;
 
   return (
     <Card className="lg:col-span-2">
-      <CardHeader className="flex flex-row items-start justify-between">
+      <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div>
-          <CardTitle>BTC-USD</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Bitcoin className="h-4 w-4 text-amber-500" />
+            BTC-USD
+            <FreshnessBadge sources={["coinbase_ohlcv", "ccxt_BTC_USD"]} />
+          </CardTitle>
           <CardDescription>Spot · past {tf.toLowerCase()}</CardDescription>
         </div>
         {last ? (
           <div className="text-right">
-            <div className="text-lg font-semibold tabular-nums">
+            <div className="font-num text-xl font-semibold tracking-tight">
               {new Intl.NumberFormat("en-US", {
                 style: "currency",
                 currency: "USD",
@@ -116,13 +229,18 @@ function BTCCard() {
             {changePct != null ? (
               <div
                 className={cn(
-                  "text-xs",
-                  changePct >= 0
+                  "flex items-center justify-end gap-1 text-xs font-medium",
+                  positive
                     ? "text-emerald-600 dark:text-emerald-400"
                     : "text-red-600 dark:text-red-400",
                 )}
               >
-                {formatPct(changePct)}
+                {positive ? (
+                  <TrendingUp className="h-3 w-3" />
+                ) : (
+                  <TrendingDown className="h-3 w-3" />
+                )}
+                <span className="font-num">{formatPct(changePct)}</span>
               </div>
             ) : null}
             <StaleBadge updatedAt={last.time} className="mt-1 justify-end" />
@@ -148,7 +266,7 @@ function BTCCard() {
             ) : !data?.length ? (
               <EmptyState
                 title="No candle data"
-                description="The ingestion flow hasn't populated this timeframe yet."
+                description="The ingestion flow hasn't populated this timeframe yet. Run /flows/ingest_market_data from the backend to backfill."
               />
             ) : (
               <CandleChart data={data} />
@@ -160,51 +278,79 @@ function BTCCard() {
   );
 }
 
-// --- Regime card ------------------------------------------------------------
+// --- Regime stack: one row per tracked market with sparkline ----------------
 
-function RegimeCard() {
-  const { data, isLoading, error } = useAssetRegime(PRIMARY_ASSET);
-
+function RegimeStack() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Market regime</CardTitle>
-        <CardDescription>BTC-USD regime classifier</CardDescription>
+        <CardTitle className="text-base flex items-center gap-2">
+          Markets at a glance
+          <FreshnessBadge sources={["regime_hmm_daily"]} />
+        </CardTitle>
+        <CardDescription>Regime + 30-day trend per tracked market.</CardDescription>
       </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <Skeleton className="h-16 w-full" />
-        ) : error ? (
-          <div className="text-xs text-destructive">Regime unavailable.</div>
-        ) : data ? (
-          <div className="space-y-3">
-            <RegimeBadge
-              regime={data.regime}
-              size="md"
-              showConfidence={data.confidence}
-            />
-            <div className="text-xs text-muted-foreground">
-              Since {new Date(data.since).toLocaleDateString()}
-            </div>
-            <div className="text-xs">
-              Confidence:{" "}
-              <span className="font-medium">
-                {Math.round(data.confidence * 100)}%
-              </span>
-            </div>
-            <StaleBadge updatedAt={data.since} />
-          </div>
-        ) : (
-          <div className="text-sm text-muted-foreground">
-            Regime unavailable.
-          </div>
-        )}
+      <CardContent className="space-y-1">
+        {TRACKED_MARKETS.map((m) => (
+          <RegimeStackRow key={m.symbol} symbol={m.symbol} label={m.label} />
+        ))}
       </CardContent>
     </Card>
   );
 }
 
-// --- Watchlist top 3 gainers/losers ----------------------------------------
+function RegimeStackRow({ symbol, label }: { symbol: string; label: string }) {
+  const { data: regime } = useAssetRegime(symbol);
+  const since = React.useMemo(() => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - 30);
+    return d.toISOString();
+  }, []);
+  const { data: candles } = useCandles({
+    symbol,
+    timeframe: "1d",
+    since,
+  });
+  const closes = (candles ?? []).map((c) => c.close);
+  const last = closes[closes.length - 1];
+  const first = closes[0];
+  const change = first && last ? ((last - first) / first) * 100 : null;
+
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover-tile">
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium">{label}</div>
+          <div className="font-mono text-[10px] text-muted-foreground">
+            {symbol}
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <Sparkline values={closes} width={64} height={24} ariaLabel={`${label} 30d`} />
+        <div className="text-right">
+          {regime ? (
+            <RegimeBadge regime={regime.regime} />
+          ) : (
+            <span className="text-[10px] text-muted-foreground">—</span>
+          )}
+          <div
+            className={cn(
+              "mt-0.5 font-num text-[11px]",
+              (change ?? 0) >= 0
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-red-600 dark:text-red-400",
+            )}
+          >
+            {change != null ? `${formatPct(change)} 30d` : "—"}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Watchlist movers -------------------------------------------------------
 
 function WatchlistMoversCard() {
   const { data, isLoading, error } = useWatchlist();
@@ -222,14 +368,17 @@ function WatchlistMoversCard() {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <div>
-          <CardTitle>Watchlist movers · 24h</CardTitle>
-          <CardDescription>Top 3 gainers + top 3 losers</CardDescription>
+          <CardTitle className="text-base flex items-center gap-2">
+            Watchlist movers
+            <FreshnessBadge sources={["yfinance_eod", "jugaad_eod"]} />
+          </CardTitle>
+          <CardDescription>Top 3 gainers + losers, 24h.</CardDescription>
         </div>
         <Link
           href={"/watchlist" as never}
-          className="flex items-center gap-1 text-xs text-primary hover:underline"
+          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
         >
           Manage <ArrowUpRight className="h-3 w-3" />
         </Link>
@@ -237,12 +386,14 @@ function WatchlistMoversCard() {
       <CardContent>
         {isLoading ? (
           <div className="space-y-2">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
           </div>
         ) : error ? (
-          <div className="text-xs text-destructive">Couldn&apos;t load watchlist.</div>
+          <div className="text-xs text-destructive">
+            Couldn&apos;t load watchlist.
+          </div>
         ) : !data?.length ? (
           <EmptyState
             title="No watchlist items yet"
@@ -252,7 +403,7 @@ function WatchlistMoversCard() {
         ) : !gainers.length && !losers.length ? (
           <EmptyState
             title="No 24h data yet"
-            description="Waiting on the next market-data tick."
+            description="Once ingest runs at 05:35 IST this will populate."
           />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -286,20 +437,23 @@ function MoverList({
     : "text-red-600 dark:text-red-400";
   return (
     <div>
-      <div className={cn("mb-1 flex items-center gap-1 text-xs", tone)}>
+      <div className={cn("mb-1.5 flex items-center gap-1 text-[10px] uppercase tracking-wider", tone)}>
         <Icon className="h-3 w-3" /> {title}
       </div>
       {!items.length ? (
         <div className="text-xs text-muted-foreground">—</div>
       ) : (
-        <ul className="divide-y">
+        <ul className="divide-y divide-border/60">
           {items.map((i) => (
-            <li key={i.id} className="flex items-center justify-between py-1.5">
+            <li
+              key={i.id}
+              className="flex items-center justify-between gap-2 py-1.5"
+            >
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium">{i.symbol}</div>
                 {i.regime ? <RegimeBadge regime={i.regime} /> : null}
               </div>
-              <span className={cn("text-sm tabular-nums", tone)}>
+              <span className={cn("font-num text-sm font-medium", tone)}>
                 {formatPct(i.ch)}
               </span>
             </li>
@@ -310,7 +464,7 @@ function MoverList({
   );
 }
 
-// --- Risk snapshot card -----------------------------------------------------
+// --- Risk snapshot ----------------------------------------------------------
 
 function RiskSnapshotCard() {
   const { data: summary, isLoading: loadingSummary } = usePortfolioSummary();
@@ -331,7 +485,7 @@ function RiskSnapshotCard() {
   if (!summary) {
     return (
       <Card>
-        <CardContent>
+        <CardContent className="p-6">
           <EmptyState
             title="Portfolio empty"
             description="Import CSVs from the Tax page to begin tracking drawdown + risk."
@@ -349,33 +503,36 @@ function RiskSnapshotCard() {
       : dd <= -5
         ? "text-amber-600 dark:text-amber-400"
         : "text-emerald-600 dark:text-emerald-400";
-  // Drawdown bar: negative % of halt threshold. Default halt at -20%.
   const halt = -20;
   const progress = Math.min(100, Math.max(0, (dd / halt) * 100));
+  // Color the bar on the SAME drawdown thresholds as the KPI tone above, so a
+  // red number never sits over a green bar (previously the bar keyed off
+  // progress% which crossed at different points than ddTone).
+  const ddBar =
+    dd <= -10 ? "bg-red-500" : dd <= -5 ? "bg-amber-500" : "bg-emerald-500";
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Risk snapshot</CardTitle>
+        <CardTitle className="text-base flex items-center gap-2">
+          Risk snapshot
+          <FreshnessBadge sources={["portfolio_pnl_daily"]} />
+        </CardTitle>
         <CardDescription>
-          Drawdown, daily caps, total value
+          Drawdown vs halt threshold, daily caps, day P&amp;L.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Total value
-            </div>
-            <div className="text-base font-semibold tabular-nums">
+          <div className="rounded-md border bg-muted/30 p-2.5">
+            <div className="eyebrow">Total value</div>
+            <div className="mt-0.5 font-num text-base font-semibold tracking-tight">
               {formatINR(summary.total_inr)}
             </div>
           </div>
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Drawdown
-            </div>
-            <div className={cn("text-base font-semibold tabular-nums", ddTone)}>
+          <div className="rounded-md border bg-muted/30 p-2.5">
+            <div className="eyebrow">Drawdown</div>
+            <div className={cn("mt-0.5 font-num text-base font-semibold tracking-tight", ddTone)}>
               {formatPct(dd)}
             </div>
           </div>
@@ -389,12 +546,8 @@ function RiskSnapshotCard() {
           <div className="relative h-2 w-full rounded bg-muted">
             <div
               className={cn(
-                "absolute inset-y-0 left-0 rounded transition-all",
-                progress >= 80
-                  ? "bg-red-500"
-                  : progress >= 50
-                    ? "bg-amber-500"
-                    : "bg-emerald-500",
+                "absolute inset-y-0 left-0 rounded transition-all duration-500",
+                ddBar,
               )}
               style={{ width: `${progress}%` }}
               role="progressbar"
@@ -408,8 +561,8 @@ function RiskSnapshotCard() {
 
         <div className="grid grid-cols-2 gap-3 text-xs">
           <div>
-            <div className="text-muted-foreground">New positions left today</div>
-            <div className="font-semibold tabular-nums">
+            <div className="text-muted-foreground">New positions left</div>
+            <div className="font-num text-base font-semibold tabular-nums">
               {risk?.daily_new_positions_remaining ?? "—"}
             </div>
           </div>
@@ -417,7 +570,7 @@ function RiskSnapshotCard() {
             <div className="text-muted-foreground">Day change</div>
             <div
               className={cn(
-                "font-semibold tabular-nums",
+                "font-num text-base font-semibold tabular-nums",
                 (risk?.day_change_inr ?? 0) >= 0
                   ? "text-emerald-600 dark:text-emerald-400"
                   : "text-red-600 dark:text-red-400",
@@ -438,5 +591,88 @@ function RiskSnapshotCard() {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// --- News grid (per tracked market) ----------------------------------------
+
+function NewsRow() {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <div>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Newspaper className="h-4 w-4 text-muted-foreground" />
+            Top news
+            <FreshnessBadge sources={["news_rss", "gdelt"]} />
+          </CardTitle>
+          <CardDescription>
+            Latest headlines per tracked asset with sentiment.
+          </CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {TRACKED_MARKETS.map((m) => (
+            <NewsColumn key={m.symbol} symbol={m.symbol} label={m.label} />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function NewsColumn({ symbol, label }: { symbol: string; label: string }) {
+  const { data, isLoading } = useAssetNews(symbol);
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <div>
+          <div className="text-xs font-medium">{label}</div>
+          <div className="font-mono text-[10px] text-muted-foreground">
+            {symbol}
+          </div>
+        </div>
+      </div>
+      {isLoading ? (
+        <div className="space-y-1.5">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
+        </div>
+      ) : !data?.length ? (
+        <div className="rounded border border-dashed p-3 text-center text-[11px] text-muted-foreground">
+          No recent news.
+        </div>
+      ) : (
+        <ul className="space-y-1.5">
+          {data.slice(0, 5).map((item) => (
+            <li
+              key={item.id}
+              className="rounded-md border bg-card p-2 hover-tile"
+            >
+              <a
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group block"
+              >
+                <div className="mb-1 flex items-center justify-between gap-1">
+                  <SentimentDot value={item.sentiment ?? null} size="xs" />
+                  <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                </div>
+                <div className="line-clamp-2 text-xs font-medium leading-snug group-hover:text-primary">
+                  {item.title}
+                </div>
+                <div className="mt-1 flex items-center justify-between text-[10px] text-muted-foreground">
+                  <span className="truncate">{item.source}</span>
+                  <span>{formatIST(item.published_at, "dd MMM HH:mm")}</span>
+                </div>
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

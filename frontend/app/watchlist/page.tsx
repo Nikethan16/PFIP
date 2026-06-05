@@ -14,13 +14,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -40,6 +33,26 @@ import { cn, formatIST, formatPct } from "@/lib/utils";
 import { toast } from "@/components/ui/toast";
 import { RegimeBadge } from "@/components/shared/regime-badge";
 import { EmptyState } from "@/components/shared/empty-state";
+import { PageHeader } from "@/components/shared/page-header";
+import { Sparkline } from "@/components/charts/sparkline";
+import type { WatchlistItem } from "@/lib/contracts";
+
+type MarketGroup = "Crypto" | "US equity" | "India equity" | "FX" | "Other";
+
+function groupOf(symbol: string): MarketGroup {
+  const s = symbol.toUpperCase();
+  if (
+    /BTC|ETH|SOL|BNB|XRP|ADA|DOT|AVAX|LTC|DOGE|MATIC|LINK|UNI|SHIB|TRX|USDT|USDC|DAI/.test(
+      s,
+    )
+  )
+    return "Crypto";
+  if (/NIFTY|SENSEX|\.NS$|\.BO$/.test(s)) return "India equity";
+  if (/USD|EUR|GBP|JPY|INR/.test(s) && s.length <= 7) return "FX";
+  if (/SPY|QQQ|DIA|VTI|VOO|IWM/.test(s) || /^[A-Z]{1,5}$/.test(s))
+    return "US equity";
+  return "Other";
+}
 
 export default function WatchlistPage() {
   const { data, isLoading, error } = useWatchlist();
@@ -62,115 +75,110 @@ export default function WatchlistPage() {
     }
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Watchlist</h1>
-          <p className="text-sm text-muted-foreground">
-            Symbols you&apos;re watching. Drives the morning brief + dashboard
-            movers.
-          </p>
-        </div>
-        <Button onClick={() => setOpenAdd(true)} className="gap-2">
-          <Plus className="h-4 w-4" /> Add symbol
-        </Button>
-      </div>
+  const grouped = React.useMemo(() => {
+    const map = new Map<MarketGroup, WatchlistItem[]>();
+    (data ?? []).forEach((item) => {
+      const g = groupOf(item.symbol);
+      if (!map.has(g)) map.set(g, []);
+      map.get(g)!.push(item);
+    });
+    return map;
+  }, [data]);
 
-      <div>
-        {isLoading ? (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-20 w-full" />
-            ))}
-          </div>
-        ) : error ? (
-          <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
-            Couldn&apos;t load watchlist: {(error as Error).message}
-          </div>
-        ) : !data?.length ? (
-          <EmptyState
-            title="No items yet"
-            description="Add the tickers you trade or research — we'll surface 24h + 1W deltas and the current regime."
-            action={{ label: "Add your first symbol", onClick: () => setOpenAdd(true) }}
+  /**
+   * Market scope — `null` means show all. The chip strip below the page
+   * header lets the user narrow to a single market (matches the Stitch
+   * Watchlist spec from `docs/FRONTEND_DESIGN_PROMPT.md` §8.2).
+   */
+  const [scope, setScope] = React.useState<MarketGroup | null>(null);
+  const visibleGroups = React.useMemo(() => {
+    const entries = [...grouped.entries()];
+    return scope ? entries.filter(([g]) => g === scope) : entries;
+  }, [grouped, scope]);
+
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        title="Watchlist"
+        description="Symbols you’re watching. Drives the morning brief + dashboard movers."
+        actions={
+          <Button onClick={() => setOpenAdd(true)} size="sm" className="gap-2">
+            <Plus className="h-3.5 w-3.5" /> Add symbol
+          </Button>
+        }
+      />
+
+      {/* Market scope chips — empty / scope-all when data hasn't loaded yet. */}
+      {data && data.length > 0 ? (
+        <div className="flex flex-wrap gap-1">
+          <ScopeChip
+            label={`All · ${data.length}`}
+            active={scope === null}
+            onClick={() => setScope(null)}
           />
-        ) : (
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {data.map((item) => {
-              const change24 = item.change_pct_24h ?? 0;
-              return (
-                <li
-                  key={item.id}
-                  className="flex items-start justify-between rounded-md border bg-card p-3"
-                >
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{item.symbol}</span>
-                      {item.regime ? (
-                        <RegimeBadge regime={item.regime} />
-                      ) : null}
-                    </div>
-                    {item.label ? (
-                      <div className="text-xs text-muted-foreground">
-                        {item.label}
-                      </div>
-                    ) : null}
-                    <div className="flex items-center gap-3 text-xs">
-                      <span
-                        className={cn(
-                          "tabular-nums",
-                          change24 >= 0
-                            ? "text-emerald-600 dark:text-emerald-400"
-                            : "text-red-600 dark:text-red-400",
-                        )}
-                      >
-                        24h {formatPct(change24)}
-                      </span>
-                      <WeeklyDelta symbol={item.symbol} />
-                    </div>
-                    {item.last_price != null ? (
-                      <div className="text-xs tabular-nums">
-                        last{" "}
-                        <span className="font-medium">
-                          {item.last_price.toLocaleString()}
-                        </span>
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setChartFor(item.symbol)}
-                      aria-label={`Quick chart for ${item.symbol}`}
-                      title="Quick chart"
-                    >
-                      <LineIcon className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() =>
-                        remove.mutate(
-                          { id: item.id },
-                          {
-                            onSuccess: () => toast.success("Removed"),
-                            onError: (err) =>
-                              toast.error((err as Error).message),
-                          },
-                        )
-                      }
-                      aria-label={`Remove ${item.symbol}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+          {[...grouped.entries()].map(([g, items]) => (
+            <ScopeChip
+              key={g}
+              label={`${g} · ${items.length}`}
+              active={scope === g}
+              onClick={() => setScope(g)}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {isLoading ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 w-full" />
+          ))}
+        </div>
+      ) : error ? (
+        <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+          Couldn&apos;t load watchlist: {(error as Error).message}
+        </div>
+      ) : !data?.length ? (
+        <EmptyState
+          title="No items yet"
+          description="Add the tickers you trade or research — we'll surface 24h + 1W deltas and the current regime."
+          action={{
+            label: "Add your first symbol",
+            onClick: () => setOpenAdd(true),
+          }}
+        />
+      ) : (
+        <div className="space-y-6">
+          {visibleGroups.map(([group, items]) => (
+            <section key={group} className="space-y-2">
+              <div className="flex items-baseline justify-between">
+                <h2 className="eyebrow text-foreground">{group}</h2>
+                <span className="text-[10px] text-muted-foreground">
+                  {items.length} item{items.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {items.map((item) => (
+                  <WatchlistTile
+                    key={item.id}
+                    item={item}
+                    onChart={() => setChartFor(item.symbol)}
+                    onRemove={() =>
+                      remove.mutate(
+                        { id: item.id },
+                        {
+                          onSuccess: () => toast.success("Removed"),
+                          onError: (err) =>
+                            toast.error((err as Error).message),
+                        },
+                      )
+                    }
+                  />
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
 
       <AddDialog
         open={openAdd}
@@ -178,36 +186,131 @@ export default function WatchlistPage() {
         pending={add.isPending}
         onSubmit={onAdd}
       />
-      <ChartDialog
-        symbol={chartFor}
-        onClose={() => setChartFor(null)}
-      />
+      <ChartDialog symbol={chartFor} onClose={() => setChartFor(null)} />
     </div>
   );
 }
 
-function WeeklyDelta({ symbol }: { symbol: string }) {
+function WatchlistTile({
+  item,
+  onChart,
+  onRemove,
+}: {
+  item: WatchlistItem;
+  onChart: () => void;
+  onRemove: () => void;
+}) {
+  const change24 = item.change_pct_24h ?? 0;
   const since = React.useMemo(() => {
     const d = new Date();
-    d.setUTCDate(d.getUTCDate() - 8);
+    d.setUTCDate(d.getUTCDate() - 30);
     return d.toISOString();
   }, []);
-  const { data } = useCandles({ symbol, timeframe: "1d", since });
-  if (!data || data.length < 2) return <span>—</span>;
-  const first = data[0].close;
-  const last = data[data.length - 1].close;
-  const ch = ((last - first) / first) * 100;
+  const { data: candles } = useCandles({
+    symbol: item.symbol,
+    timeframe: "1d",
+    since,
+  });
+  const closes = (candles ?? []).map((c) => c.close);
+  const wkChange = (() => {
+    if (closes.length < 8) return null;
+    const first = closes[closes.length - 8] ?? 0;
+    const last = closes[closes.length - 1] ?? 0;
+    if (!first) return null;
+    return ((last - first) / first) * 100;
+  })();
+  const moChange = (() => {
+    if (closes.length < 2) return null;
+    const first = closes[0] ?? 0;
+    const last = closes[closes.length - 1] ?? 0;
+    if (!first) return null;
+    return ((last - first) / first) * 100;
+  })();
+  const positive24 = change24 >= 0;
   return (
-    <span
-      className={cn(
-        "tabular-nums",
-        ch >= 0
-          ? "text-emerald-600 dark:text-emerald-400"
-          : "text-red-600 dark:text-red-400",
-      )}
-    >
-      1W {formatPct(ch)}
-    </span>
+    <li className="rounded-lg border bg-card p-3 transition-all hover:border-foreground/20 hover:shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate font-mono text-sm font-semibold">
+              {item.symbol}
+            </span>
+            {item.regime ? <RegimeBadge regime={item.regime} /> : null}
+          </div>
+          {item.label ? (
+            <div className="truncate text-[11px] text-muted-foreground">
+              {item.label}
+            </div>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={onChart}
+            aria-label={`Quick chart for ${item.symbol}`}
+            title="Quick chart"
+          >
+            <LineIcon className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+            onClick={onRemove}
+            aria-label={`Remove ${item.symbol}`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-2 flex items-center gap-3">
+        <Sparkline values={closes} width={88} height={30} />
+        <div className="grid flex-1 grid-cols-3 gap-1.5 text-[11px]">
+          <DeltaPill label="1D" value={change24} positive={positive24} />
+          <DeltaPill label="1W" value={wkChange} />
+          <DeltaPill label="1M" value={moChange} />
+        </div>
+      </div>
+
+      {item.last_price != null ? (
+        <div className="mt-2 flex items-center justify-between border-t pt-2">
+          <span className="text-[10px] text-muted-foreground">Last</span>
+          <span className="font-num text-xs font-semibold">
+            {item.last_price.toLocaleString()}
+          </span>
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+function DeltaPill({
+  label,
+  value,
+  positive,
+}: {
+  label: string;
+  value: number | null;
+  positive?: boolean;
+}) {
+  const tone =
+    value == null
+      ? "text-muted-foreground"
+      : (positive ?? value >= 0)
+        ? "text-emerald-600 dark:text-emerald-400"
+        : "text-red-600 dark:text-red-400";
+  return (
+    <div className="rounded border bg-background px-1.5 py-1 text-center">
+      <div className="text-[9px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className={cn("font-num text-[11px] font-medium tabular-nums", tone)}>
+        {value == null ? "—" : formatPct(value)}
+      </div>
+    </div>
   );
 }
 
@@ -251,8 +354,6 @@ function AddDialog({
         >
           <div>
             <Label htmlFor="symbol">Symbol</Label>
-            {/* TODO(user): add an autocomplete source — we can plug
-                in a search endpoint later, e.g. `/assets/search?q=…` */}
             <Input
               id="symbol"
               placeholder="BTC-USD"
@@ -264,11 +365,13 @@ function AddDialog({
             <datalist id="pfip-symbol-suggestions">
               <option value="BTC-USD" />
               <option value="ETH-USD" />
+              <option value="SOL-USD" />
               <option value="SPY" />
               <option value="QQQ" />
               <option value="NIFTY50" />
               <option value="RELIANCE.NS" />
               <option value="USDINR" />
+              <option value="EURUSD" />
             </datalist>
           </div>
           <div>
@@ -281,7 +384,11 @@ function AddDialog({
             />
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={pending || !symbol.trim()}>
@@ -316,8 +423,8 @@ function ChartDialog({
     <Dialog open onOpenChange={(o) => (!o ? onClose() : null)}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>{symbol}</DialogTitle>
-          <DialogDescription>90d close</DialogDescription>
+          <DialogTitle className="font-mono">{symbol}</DialogTitle>
+          <DialogDescription>90-day close</DialogDescription>
         </DialogHeader>
         {isLoading ? (
           <Skeleton className="h-60 w-full" />
@@ -355,5 +462,37 @@ function ChartDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+
+/**
+ * Tiny pill-button used by the market-scope row. Active = teal primary,
+ * inactive = subtle muted with hover lift. Matches the Stitch filter
+ * chip pattern.
+ */
+function ScopeChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "rounded-full border px-3 py-1 text-[11px] font-medium transition-colors",
+        active
+          ? "border-primary bg-primary/10 text-primary"
+          : "border-border text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+      )}
+    >
+      {label}
+    </button>
   );
 }

@@ -105,8 +105,8 @@ export function BriefCard() {
             <Markdown>{data.markdown}</Markdown>
             {data.headline_items.length ? (
               <ul className="mt-4 space-y-1 border-t pt-3">
-                {data.headline_items.map((item) => (
-                  <li key={item.symbol} className="flex gap-2 text-xs">
+                {data.headline_items.map((item, i) => (
+                  <li key={`${item.symbol}-${i}`} className="flex gap-2 text-xs">
                     <span className="font-mono font-semibold text-primary">
                       {item.symbol}
                     </span>

@@ -17,7 +17,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PreTradeChecklistDialog } from "@/components/journal/pre-trade-checklist";
 import { PostMortemDialog } from "@/components/journal/post-mortem-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
-import { useJournalEntries } from "@/lib/api";
+import { PageHeader } from "@/components/shared/page-header";
+import { useJournalEntries, useJournalPatterns } from "@/lib/api";
 import { formatIST } from "@/lib/utils";
 import type { JournalEntry } from "@/lib/contracts";
 
@@ -52,20 +53,15 @@ function JournalPageInner() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            Decision journal
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Every new position begins with a 10-item checklist (Appendix B).
-            Closing a trade requires a post-mortem (Appendix C).
-          </p>
-        </div>
-        <Button onClick={() => setChecklistOpen(true)} className="gap-2">
-          <Plus className="h-4 w-4" /> New entry
-        </Button>
-      </div>
+      <PageHeader
+        title="Decision journal"
+        description="Every new position begins with a 10-item checklist (Appendix B). Closing a trade requires a post-mortem (Appendix C)."
+        actions={
+          <Button onClick={() => setChecklistOpen(true)} size="sm" className="gap-2">
+            <Plus className="h-3.5 w-3.5" /> New entry
+          </Button>
+        }
+      />
 
       <FailurePatternsCard entries={data ?? []} />
 
@@ -181,15 +177,18 @@ function JournalPageInner() {
 }
 
 /**
- * Aggregates closed entries' post-mortems into a simple "top 3 failure
- * patterns" card. We key off `thesis_correct = false` and dedupe by
- * stemmed first-word of the `what_didnt` field as a lightweight pattern tag.
+ * Top-3 failure patterns over the trailing 30 days.
  *
- * TODO(user): swap this with backend-computed tags when `/journal/patterns`
- * exists.
+ * Primary source is the backend's `GET /journal/patterns` aggregation
+ * (post-mortem clustering by first clause, scoped to closed entries in
+ * the last N days). If the endpoint isn't reachable or returns empty we
+ * fall back to a client-side compute over the supplied entries — same
+ * heuristic, just rendered locally so the card still works in demo mode.
  */
 function FailurePatternsCard({ entries }: { entries: JournalEntry[] }) {
-  const counts = React.useMemo(() => {
+  const backend = useJournalPatterns({ days: 30, top: 3 });
+
+  const fallback = React.useMemo(() => {
     const map = new Map<string, number>();
     const now = new Date();
     const cutoff = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -206,6 +205,13 @@ function FailurePatternsCard({ entries }: { entries: JournalEntry[] }) {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3);
   }, [entries]);
+
+  const counts: [string, number][] = (() => {
+    if (backend.data && backend.data.length > 0) {
+      return backend.data.map((p) => [p.pattern, p.count] as [string, number]);
+    }
+    return fallback;
+  })();
 
   if (!counts.length) return null;
 
@@ -224,7 +230,7 @@ function FailurePatternsCard({ entries }: { entries: JournalEntry[] }) {
         <ol className="space-y-1 text-sm">
           {counts.map(([pattern, count], i) => (
             <li
-              key={pattern}
+              key={`${pattern}-${i}`}
               className="flex items-center justify-between rounded-md border bg-background p-2"
             >
               <span className="truncate">

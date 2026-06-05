@@ -15,25 +15,63 @@ import { PnlCards } from "@/components/portfolio/pnl-cards";
 import { HoldingsTable } from "@/components/portfolio/holdings-table";
 import { CorrelationMatrix } from "@/components/portfolio/correlation-matrix";
 import { VarPanel } from "@/components/portfolio/var-panel";
+import { MacroShockCard } from "@/components/portfolio/macro-shock-card";
 import { PostMortemDialog } from "@/components/journal/post-mortem-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StaleBadge } from "@/components/shared/stale-badge";
+import { PageHeader } from "@/components/shared/page-header";
 import {
+  useClosePosition,
   useHoldings,
+  useMarking,
   usePortfolioSummary,
   useVarPanel,
 } from "@/lib/api";
 import type { Holding, HoldingCategory } from "@/lib/contracts";
 import { toast } from "@/components/ui/toast";
+import { formatINR, formatIST } from "@/lib/utils";
+import { MarkingBadge } from "@/components/portfolio/marking-badge";
 
 export default function PortfolioPage() {
   const { data: holdings, isLoading: loadingHoldings, error: holdingsError } =
     useHoldings();
   const { data: summary, isLoading: loadingSummary } = usePortfolioSummary();
   const { data: risk } = useVarPanel();
+  const { data: marking } = useMarking();
+  const closePosition = useClosePosition();
 
-  const [closingHolding, setClosingHolding] =
-    React.useState<Holding | null>(null);
+  // Holding whose close is in flight (drives the row's "Closing…" state).
+  const [closingHoldingId, setClosingHoldingId] = React.useState<string | null>(
+    null,
+  );
+  // Journal entry id of the auto-created post-mortem stub; opens the dialog.
+  const [postMortemEntryId, setPostMortemEntryId] = React.useState<
+    string | null
+  >(null);
+
+  const handleClosePosition = async (h: Holding) => {
+    if (!h.symbol) {
+      toast.error("Holding has no symbol — open the journal to link it first.");
+      return;
+    }
+    // Exit at the live market value when we have one, else cost basis. The
+    // user refines the realised P&L in the post-mortem dialog.
+    const exitPriceInr = h.market_value_inr ?? h.cost_basis_inr;
+    setClosingHoldingId(h.id);
+    try {
+      const result = await closePosition.mutateAsync({
+        holdingId: h.id,
+        exit_price_inr: exitPriceInr,
+      });
+      // Open the post-mortem dialog with the JOURNAL entry id (audit H4) —
+      // NOT the holding id.
+      setPostMortemEntryId(result.journal_entry_id);
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setClosingHoldingId(null);
+    }
+  };
 
   const exposure = summary
     ? (
@@ -45,16 +83,30 @@ export default function PortfolioPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Portfolio</h1>
-          <p className="text-sm text-muted-foreground">
-            Unified view across equities, ETFs, MFs, PPF, EPF, NPS, FDs, gold,
-            bonds, and crypto.
-          </p>
-        </div>
-        {summary ? <StaleBadge updatedAt={summary.updated_at} /> : null}
-      </div>
+      <PageHeader
+        title="Portfolio"
+        description={
+          summary ? (
+            <span className="flex items-baseline gap-3">
+              <span className="font-num text-base font-semibold text-foreground">
+                {formatINR(summary.total_inr)}
+              </span>
+              <span className="text-muted-foreground">
+                across equities, ETFs, MFs, PPF, EPF, NPS, FDs, gold, bonds,
+                and crypto.
+              </span>
+            </span>
+          ) : (
+            "Unified view across equities, ETFs, MFs, PPF, EPF, NPS, FDs, gold, bonds, and crypto."
+          )
+        }
+        actions={
+          <span className="flex items-center gap-3">
+            <MarkingBadge marking={marking} />
+            {summary ? <StaleBadge updatedAt={summary.updated_at} /> : null}
+          </span>
+        }
+      />
 
       <PnlCards
         summary={summary}
@@ -121,7 +173,12 @@ export default function PortfolioPage() {
         </ShadCard>
       </div>
 
-      <VarPanel />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <VarPanel />
+        </div>
+        <MacroShockCard />
+      </div>
 
       <div>
         <h2 className="mb-3 text-lg font-semibold">Holdings</h2>
@@ -138,31 +195,22 @@ export default function PortfolioPage() {
         ) : (
           <HoldingsTable
             holdings={holdings ?? []}
-            onClosePosition={(h) => {
-              // We scope the close dialog to holdings that have a journal entry
-              // via symbol match. If not, a soft toast — the user needs to
-              // record the pre-trade first.
-              if (!h.symbol) {
-                toast.error("Holding has no symbol — open the journal to link it first.");
-                return;
-              }
-              setClosingHolding(h);
-            }}
+            onClosePosition={handleClosePosition}
+            closingHoldingId={closingHoldingId}
           />
         )}
       </div>
 
       {/*
-        Close-position post-mortem. We reuse the agent-drafted dialog; for
-        holdings that map to a journal entry we pass the entry_id. If the
-        backend hasn't linked them, we just let the user know.
-        TODO(user): wire backend `/portfolio/holdings/{id}/journal-entry` so we
-        can resolve the journal id from a holding without a manual lookup.
+        Close-position post-mortem. Closing a holding creates a linked
+        post-mortem journal stub server-side (audit H4); we open the dialog
+        with that JOURNAL entry id so the save targets the journal, not the
+        holding.
       */}
       <PostMortemDialog
-        open={closingHolding !== null}
-        entryId={closingHolding ? closingHolding.id : null}
-        onOpenChange={(next) => !next && setClosingHolding(null)}
+        open={postMortemEntryId !== null}
+        entryId={postMortemEntryId}
+        onOpenChange={(next) => !next && setPostMortemEntryId(null)}
       />
     </div>
   );

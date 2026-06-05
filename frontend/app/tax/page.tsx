@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StaleBadge } from "@/components/shared/stale-badge";
 import { EmptyState } from "@/components/shared/empty-state";
+import { PageHeader } from "@/components/shared/page-header";
 import { ScheduleFaTable } from "@/components/tax/schedule-fa-table";
 import { SurchargeGauge } from "@/components/tax/surcharge-gauge";
 import { RegimeComparison } from "@/components/tax/regime-comparison";
@@ -82,28 +83,25 @@ export default function TaxPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Tax</h1>
-          <p className="text-sm text-muted-foreground">
-            India-first: STCG / LTCG, crypto flat 30%, Schedule FA for foreign
-            assets, DTAA credit via Form 67.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {summary ? <StaleBadge updatedAt={summary.updated_at} /> : null}
-          <Button
-            onClick={onExport}
-            disabled={exporting}
-            variant="outline"
-            size="sm"
-            className="gap-1"
-          >
-            <Download className="h-3 w-3" />
-            {exporting ? "Exporting…" : "Export for CA"}
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title={`Tax · FY ${fy}`}
+        description="India-first: STCG / LTCG, crypto flat 30%, Schedule FA for foreign assets, DTAA credit via Form 67."
+        actions={
+          <>
+            {summary ? <StaleBadge updatedAt={summary.updated_at} /> : null}
+            <Button
+              onClick={onExport}
+              disabled={exporting}
+              variant="outline"
+              size="sm"
+              className="gap-1"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {exporting ? "Exporting…" : "Export for CA"}
+            </Button>
+          </>
+        }
+      />
 
       {/* Summary cards */}
       {isLoading ? (

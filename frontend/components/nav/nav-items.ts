@@ -1,14 +1,18 @@
 import {
+  Activity,
   BarChart3,
   BookOpen,
   Briefcase,
   Calculator,
   Cog,
   Eye,
+  Heart,
   Home,
+  LayoutDashboard,
+  LineChart,
   MessageSquare,
-  SlidersHorizontal,
   Stars,
+  Wrench,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -17,19 +21,68 @@ export interface NavItem {
   href: string;
   icon: LucideIcon;
   mobile?: boolean; // show in bottom tab bar
+  group: NavGroup;
+  shortcut?: string;
 }
 
-/** Keep this list the single source of truth for sidebar + mobile bar. */
+export type NavGroup =
+  | "overview"
+  | "markets"
+  | "trading"
+  | "tax"
+  | "tools"
+  | "ops"
+  | "system";
+
+export const NAV_GROUP_LABELS: Record<NavGroup, string> = {
+  overview: "Overview",
+  markets: "Markets",
+  trading: "Portfolio",
+  tax: "Tax (India)",
+  tools: "Tools",
+  ops: "Operations",
+  system: "Settings",
+};
+
+/** Single source of truth for sidebar + mobile bar + command palette.
+ *
+ * Eight top-level groups matching the Stitch ("PFIP Terminal · Institutional
+ * Grade") shell. Each group expands into one or more pages.
+ */
 export const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", href: "/", icon: Home, mobile: true },
-  { label: "Portfolio", href: "/portfolio", icon: Briefcase, mobile: true },
-  { label: "Chat", href: "/chat", icon: MessageSquare, mobile: true },
-  { label: "Tax", href: "/tax", icon: Calculator, mobile: true },
-  { label: "Journal", href: "/journal", icon: BookOpen, mobile: true },
-  { label: "Signals", href: "/signals", icon: Stars },
-  { label: "Watchlist", href: "/watchlist", icon: Eye },
-  { label: "Calibration", href: "/calibration", icon: BarChart3 },
-  { label: "Settings", href: "/settings", icon: Cog },
+  // Overview
+  { label: "Dashboard", href: "/", icon: LayoutDashboard, mobile: true, group: "overview", shortcut: "G then D" },
+
+  // Markets
+  { label: "Watchlist", href: "/watchlist", icon: Eye, group: "markets", shortcut: "G then W" },
+  { label: "Signals", href: "/signals", icon: Stars, group: "markets", shortcut: "G then S" },
+
+  // Portfolio
+  { label: "Holdings", href: "/portfolio", icon: Briefcase, mobile: true, group: "trading", shortcut: "G then P" },
+
+  // Tax
+  { label: "Tax", href: "/tax", icon: Calculator, mobile: true, group: "tax", shortcut: "G then T" },
+  { label: "Loss harvesting", href: "/tax/harvest", icon: Calculator, group: "tax" },
+
+  // Tools
+  { label: "Journal", href: "/journal", icon: BookOpen, mobile: true, group: "tools", shortcut: "G then J" },
+  { label: "Chat", href: "/chat", icon: MessageSquare, mobile: true, group: "tools", shortcut: "G then C" },
+  { label: "Calibration", href: "/calibration", icon: LineChart, group: "tools" },
+
+  // Operations
+  { label: "Source health", href: "/ops/sources", icon: Heart, group: "ops" },
+  { label: "Schedules", href: "/ops/schedules", icon: Activity, group: "ops" },
+  { label: "Models", href: "/ops/models", icon: Wrench, group: "ops" },
+
+  // Settings
+  { label: "Settings", href: "/settings", icon: Cog, group: "system" },
 ];
 
-export const SECONDARY_NAV_ICON: LucideIcon = SlidersHorizontal;
+/** Used in topbar to render breadcrumb labels. */
+export const NAV_BY_PATH: Record<string, NavItem> = NAV_ITEMS.reduce(
+  (acc, item) => {
+    acc[item.href] = item;
+    return acc;
+  },
+  {} as Record<string, NavItem>,
+);

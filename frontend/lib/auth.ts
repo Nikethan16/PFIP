@@ -7,8 +7,18 @@ import CredentialsProvider from "next-auth/providers/credentials";
  * into the session so API calls can pass it as a Bearer token.
  */
 
-const BACKEND =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+// Server-side fetch from inside the frontend container needs the Docker
+// service name (BACKEND_URL = http://backend:8000/api/v1), NOT localhost.
+// localhost from inside this container points to the frontend itself.
+// Fall back to NEXT_PUBLIC_API_URL only for non-Docker dev (e.g. running
+// `pnpm dev` directly on the host).
+const RAW_BACKEND =
+  process.env.BACKEND_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  "http://localhost:8000/api/v1";
+const BACKEND = RAW_BACKEND.replace(/\/+$/, "").endsWith("/api/v1")
+  ? RAW_BACKEND.replace(/\/+$/, "")
+  : `${RAW_BACKEND.replace(/\/+$/, "")}/api/v1`;
 
 export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },

@@ -1,69 +1,111 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* shadcn/ui CSS variables (slate base color). */
+/* --------------------------------------------------------------------------
+ * Design tokens — Linear-inspired neutral palette.
+ *
+ * Light theme:  near-white background with subtle slate borders, deep slate
+ *               text. Primary uses indigo for a softer call-to-action.
+ * Dark theme:   deep near-black background (#08090d-ish) — feels more like
+ *               Bloomberg Terminal than the previous near-navy. Borders pop
+ *               just enough to give panels structure without "admin template"
+ *               heaviness.
+ * -------------------------------------------------------------------------- */
 @layer base {
+  /* --------------------------------------------------------------------
+   * Slate & Teal Institutional palette (from Google Stitch DESIGN.md).
+   * Dual-encoded: HSL channels for shadcn primitives + flat hex for the
+   * design-system utilities (`bg-surface`, `text-positive`, etc.) used
+   * by the Stitch-derived pages.
+   * -------------------------------------------------------------------- */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Surfaces — light/blueish background per Stitch spec. */
+    --background: 222 100% 98%; /* #f8f9ff */
+    --foreground: 213 64% 12%; /* #0b1c30 */
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 213 64% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 213 64% 12%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Primary — institutional teal. */
+    --primary: 173 100% 21%; /* #006b5f */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217 100% 96%; /* #eff4ff (surface-container-low) */
+    --secondary-foreground: 213 64% 12%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 217 89% 94%; /* #e5eeff (surface-container) */
+    /* Darkened from 39% → 31% lightness so muted text clears WCAG AA (~4.5:1)
+       on both --background (#f8f9ff) and the lighter --muted surface. */
+    --muted-foreground: 173 12% 31%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 217 89% 91%; /* #d3e4fe */
+    --accent-foreground: 213 64% 12%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 75% 42%; /* #ba1a1a */
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --success: 152 71% 35%;
+    --warning: 38 92% 50%;
+
+    --border: 158 5% 76%; /* #bbcac6 (outline-variant) */
+    --input: 158 5% 76%;
+    --ring: 173 100% 21%;
 
     --radius: 0.5rem;
+
+    --sidebar: 0 0% 100%;
+    --sidebar-foreground: 213 64% 12%;
+    --sidebar-border: 158 5% 76%;
+
+    --header: 0 0% 100%;
   }
 
+  /* Dark mode — slate-900 base per Stitch DESIGN.md "Slate-900 (#0F172A)". */
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 222 47% 11%; /* slate-900 */
+    --foreground: 210 40% 96%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 217 33% 13%;
+    --card-foreground: 210 40% 96%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 217 33% 15%;
+    --popover-foreground: 210 40% 96%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    /* Teal-500 brightens in dark, per spec. */
+    --primary: 174 73% 47%; /* #14b8a6 */
+    --primary-foreground: 222 47% 11%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 217 25% 17%;
+    --secondary-foreground: 210 40% 96%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 217 19% 20%;
+    --muted-foreground: 215 16% 65%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 217 19% 24%;
+    --accent-foreground: 210 40% 96%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 70% 56%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --success: 152 60% 50%;
+    --warning: 38 92% 60%;
+
+    --border: 217 19% 22%;
+    --input: 217 19% 22%;
+    --ring: 174 73% 47%;
+
+    --sidebar: 222 47% 9%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-border: 217 19% 18%;
+
+    --header: 222 47% 11%;
   }
 }
 
@@ -73,7 +115,7 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1, "cv11" 1;
   }
 
   /* Prevent horizontal scroll on mobile regardless of child misbehaviour. */
@@ -81,10 +123,76 @@
   body {
     overflow-x: hidden;
   }
+
+  /* Tabular numerals look right at home for prices/percents. */
+  .font-num,
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "cv11" 1;
+  }
+
+  /* Default focus ring — slightly softer than browser default. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring/60 ring-offset-2 ring-offset-background;
+  }
+
+  /* Scrollbars: thin in dark mode like Linear / Bloomberg. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.5);
+    background-clip: padding-box;
+  }
 }
 
-/* ---------- Minimal syntax highlighting for rehype-highlight ---------- */
-/* Keeps the bundle lean; we don't ship a whole highlight.js theme. */
+/* --------------------------------------------------------------------------
+ * Reusable utility classes used across pages.
+ * -------------------------------------------------------------------------- */
+@layer components {
+  /* Sticky page header — every page wraps its title block in this. */
+  .page-header {
+    @apply sticky top-12 z-20 -mx-3 mb-4 border-b bg-background/85 px-3 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8;
+  }
+
+  /* Section header / eyebrow label. */
+  .eyebrow {
+    @apply text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground;
+  }
+
+  /* Card variant: subtle hover lift used on list/row tiles. */
+  .hover-tile {
+    @apply transition-all duration-150 hover:border-foreground/20 hover:bg-accent/40 hover:shadow-sm;
+  }
+
+  /* Card variant: dashboard hero/KPI surface with faint gradient. */
+  .kpi-card {
+    @apply relative overflow-hidden rounded-lg border bg-card text-card-foreground;
+  }
+  .kpi-card::before {
+    content: "";
+    @apply pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-foreground/10 to-transparent;
+  }
+
+  /* Subtle inline divider for grouped lists. */
+  .divider-soft {
+    @apply h-px w-full bg-border/60;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Minimal syntax highlighting for rehype-highlight in chat / brief.
+ * -------------------------------------------------------------------------- */
 .hljs {
   color: hsl(var(--foreground));
   background: transparent;
@@ -141,11 +249,99 @@
   background: rgba(16 185 129 / 0.15);
 }
 
-/* Tiny utility used by the correlation heatmap cells. */
+/* --------------------------------------------------------------------------
+ * Stitch-derived utility classes — keep the HTML from the Stitch deliverables
+ * working verbatim when ported into React components. These don't conflict
+ * with shadcn / Tremor and can be deleted if we ever drop the Stitch layouts.
+ * -------------------------------------------------------------------------- */
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  -webkit-font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+}
+
+.freshness-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+/* Sidebar active-link treatment matching Stitch (left-flush teal stripe). */
+.sidebar-item-active {
+  background-color: hsl(var(--accent));
+  border-right: 3px solid hsl(var(--primary));
+  color: hsl(var(--primary));
+}
+
+/* Candlestick primitives for the embedded BTC chart. */
+.candlestick {
+  width: 6px;
+  position: relative;
+}
+.wick {
+  position: absolute;
+  width: 1px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Heatmap cell zoom hover (portfolio correlation matrix). */
 .pfip-heatmap-cell {
   transition: transform 120ms ease;
 }
 .pfip-heatmap-cell:hover {
   transform: scale(1.08);
   z-index: 1;
+}
+
+/* Tiny "live" dot animation for streaming/online states. */
+@keyframes pfip-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+}
+.pfip-live-dot {
+  animation: pfip-pulse 1.6s ease-in-out infinite;
+}
+
+/* Marquee-style "thinking" shimmer for the chat indicator. */
+@keyframes pfip-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+.pfip-shimmer {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted-foreground) / 0.2) 0%,
+    hsl(var(--foreground) / 0.6) 50%,
+    hsl(var(--muted-foreground) / 0.2) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: pfip-shimmer 1.8s linear infinite;
 }
