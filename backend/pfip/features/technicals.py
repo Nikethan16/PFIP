@@ -98,7 +98,21 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     out = pd.DataFrame(index=work.index)
 
     if _TA_AVAILABLE:
-        out["rsi_14"] = RSIIndicator(close=close, window=14).rsi()
+        rsi = RSIIndicator(close=close, window=14).rsi()
+        # Edge case: on a pure-uptrend series there are no losses, so the
+        # `ta` lib's RSI returns NaN (division by zero). The textbook
+        # definition saturates at 100 (pure up) / 0 (pure down). Patch
+        # those bars in directly after the 14-bar warmup completes.
+        delta = close.diff()
+        gain = delta.clip(lower=0)
+        loss = -delta.clip(upper=0)
+        avg_gain = gain.rolling(window=14, min_periods=14).mean()
+        avg_loss = loss.rolling(window=14, min_periods=14).mean()
+        pure_up = (avg_loss == 0) & (avg_gain > 0)
+        pure_down = (avg_gain == 0) & (avg_loss > 0)
+        rsi = rsi.mask(pure_up, 100.0)
+        rsi = rsi.mask(pure_down, 0.0)
+        out["rsi_14"] = rsi
         macd_ind = MACD(close=close, window_slow=26, window_fast=12, window_sign=9)
         out["macd"] = macd_ind.macd()
         out["macd_signal"] = macd_ind.macd_signal()
