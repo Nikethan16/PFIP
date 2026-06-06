@@ -23,8 +23,10 @@ from pfip.api import (
     health,
     journal,
     model_registry,
+    notifications,
     portfolio,
     schedules,
+    settings as settings_router,
     setup,
     shadow,
     signals,
@@ -128,7 +130,9 @@ def create_app() -> FastAPI:
     app.include_router(setup.router, prefix=prefix)
     app.include_router(model_registry.router, prefix=prefix)
     app.include_router(changes_today.router, prefix=prefix)
+    app.include_router(notifications.router, prefix=prefix)
     app.include_router(schedules.router, prefix=prefix)
+    app.include_router(settings_router.router, prefix=prefix)
 
     return app
 

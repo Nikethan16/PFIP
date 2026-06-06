@@ -174,6 +174,13 @@ async def load_on_chain_history(
         )
         rows = res.all()
     except Exception:
+        # A missing ``onchain_metrics`` table raises UndefinedTable, which aborts
+        # the current Postgres transaction. Roll back so the shared session stays
+        # usable for the rest of the feature pipeline (derivatives/macro/upserts).
+        try:
+            await session.rollback()
+        except Exception:
+            pass
         return pd.DataFrame(columns=["time", "field", "value"])
 
     if not rows:

@@ -23,6 +23,7 @@ import anyio
 import ccxt
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pfip.core.contracts import to_canonical_symbol
 from pfip.core.logging import get_logger
 from pfip.db.session import get_sessionmaker
 from pfip.ingest._common.upsert import upsert_ohlcv_rows
@@ -83,11 +84,14 @@ def fetch_watchlist(
                 log.warning(f"ccxt_multi: {ex} {use_sym} failed: {type(e).__name__}: {e}")
                 continue
             market = _symbol_to_market(use_sym)
+            # Store the symbol in PFIP canonical dash form (BTC-USD), not ccxt
+            # slash form (BTC/USD), so the dashboard / API queries match.
+            canonical_sym = to_canonical_symbol(use_sym)
             for ts_ms, o, h, l, c, v in rows:
                 out.append(
                     {
                         "time": datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc),
-                        "symbol": use_sym,
+                        "symbol": canonical_sym,
                         "market": market,
                         "source": ex,
                         "timeframe": timeframe,

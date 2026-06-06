@@ -81,7 +81,7 @@ def _zscore(values: list[float], current: float) -> float:
     return (current - mu) / sd
 
 
-@router.get("/", response_model=ChangesTodayResponse)
+@router.get("", response_model=ChangesTodayResponse)
 async def changes_today(
     db: DbSession,
     _user: CurrentUser,
@@ -180,8 +180,8 @@ async def changes_today(
     news_rows = (
         await db.execute(
             select(NewsRow)
-            .where(NewsRow.published_at >= cutoff)
-            .order_by(NewsRow.published_at.desc())
+            .where(NewsRow.time >= cutoff)
+            .order_by(NewsRow.time.desc())
         )
     ).scalars().all()
     # Sort by impact_score if the column is populated; else by recency.
@@ -199,7 +199,7 @@ async def changes_today(
             source=str(getattr(n, "source", "")),
             impact_score=_impact(n),
             sentiment=float(getattr(n, "sentiment_score", 0.0) or 0.0),
-            published_at=n.published_at,
+            published_at=n.time,
             url=getattr(n, "url", None),
         )
         for n in news_sorted

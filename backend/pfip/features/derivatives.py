@@ -148,6 +148,13 @@ async def load_derivatives_history(
         )
         rows = res.all()
     except Exception:
+        # A missing ``derivatives_metrics`` table raises UndefinedTable, which
+        # aborts the current Postgres transaction. Roll back so the shared session
+        # stays usable for the rest of the feature pipeline.
+        try:
+            await session.rollback()
+        except Exception:
+            pass
         return pd.DataFrame(columns=["time", "field", "value"])
     if not rows:
         return pd.DataFrame(columns=["time", "field", "value"])

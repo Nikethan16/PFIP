@@ -15,6 +15,7 @@ import pandas as pd
 from sqlalchemy import desc, select
 
 from pfip.core.contracts import Regime
+from pfip.db.sources import resolve_ohlcv_source
 from pfip.regime.hmm import HMMRegimeDetector, build_three_state
 
 log = logging.getLogger(__name__)
@@ -182,7 +183,10 @@ async def run_for_watchlist(
     out: list[RegimeRunResult] = []
     for r in rows:
         symbol = str(r.symbol)
-        source = _source_for(symbol)
+        # Read from the source that ACTUALLY ingested this symbol (US equities
+        # live under 'tiingo', not the heuristic's 'yfinance'); fall back to the
+        # heuristic only when no OHLCV rows exist yet.
+        source = await resolve_ohlcv_source(session, symbol, timeframe) or _source_for(symbol)
         try:
             result = await run_for_symbol(
                 session,

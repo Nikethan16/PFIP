@@ -27,6 +27,7 @@ from typing import Iterable
 import pandas as pd
 from sqlalchemy import select, text
 
+from pfip.db.sources import resolve_ohlcv_source
 from pfip.features.cross_asset import (
     CROSS_ASSET_FEATURE_COLS,
     derive_from_panel as derive_cross_asset,
@@ -169,6 +170,25 @@ def _none_if_nan(v) -> float | None:
         return None
 
 
+def _json_safe(d: dict) -> dict:
+    """Drop keys whose value is None or a non-finite float.
+
+    Postgres JSONB rejects the ``NaN``/``Infinity`` tokens that ``json.dumps``
+    emits by default, which would abort the whole feature upsert transaction
+    (the extras blob often carries NaNs for missing on-chain/derivative data).
+    """
+    import math
+
+    out: dict = {}
+    for k, v in d.items():
+        if v is None:
+            continue
+        if isinstance(v, float) and not math.isfinite(v):
+            continue
+        out[k] = v
+    return out
+
+
 async def compute_and_persist(
     session,
     request: FeatureRunRequest,
@@ -243,8 +263,10 @@ async def compute_and_persist(
         # Only attach extras to the latest bar to keep historical writes light.
         is_latest = ts == last_ts
         extras = extras_blob if (is_latest and request.write_extras) else {}
+        # psycopg cannot adapt a pandas Timestamp — convert to a native datetime.
+        ts_py = ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
         params = {
-            "time": ts,
+            "time": ts_py,
             "symbol": request.symbol,
             "source": request.source,
             "timeframe": request.timeframe,
@@ -255,7 +277,7 @@ async def compute_and_persist(
             "atr_14": _none_if_nan(row.get("atr_14")),
             "return_7d": _none_if_nan(row.get("return_7d")),
             "volatility_30d": _none_if_nan(row.get("volatility_30d")),
-            "extras": json.dumps({k: v for k, v in extras.items() if v is not None}),
+            "extras": json.dumps(_json_safe(extras)),
         }
         await session.execute(_UPSERT_SQL, params)
         written += 1
@@ -289,19 +311,35 @@ async def run_for_watchlist(
         log.warning("watchlist load failed: %s", exc)
         return []
 
+    # Use a fresh session per symbol. A single shared session reused across the
+    # whole watchlist breaks under ``pool_pre_ping`` when a symbol returns early
+    # with no data (the pooled connection gets pinged across the event-loop /
+    # greenlet boundary on the next iteration -> ``MissingGreenlet``). A session
+    # per symbol matches the working pattern used by the regime flow and keeps
+    # one bad/empty symbol from aborting the rest.
+    from pfip.db.session import get_sessionmaker
+
+    factory = get_sessionmaker()
     out: list[FeatureRunResult] = []
     for r in rows:
         symbol = str(r.symbol)
         market_kind = _infer_market_kind(symbol)
-        source = _infer_source(symbol, market_kind)
-        req = FeatureRunRequest(
-            symbol=symbol,
-            source=source,
-            timeframe=timeframe,
-            market=market_kind,
-        )
         try:
-            result = await compute_and_persist(session, req)
+            async with factory() as sym_session:
+                # Use the source that ACTUALLY ingested this symbol (the heuristic
+                # mislabels US equities as 'yfinance' when data is under 'tiingo',
+                # so the scheduled run read 0 rows). Fall back to the heuristic
+                # only when the symbol has no OHLCV rows yet.
+                source = await resolve_ohlcv_source(
+                    sym_session, symbol, timeframe
+                ) or _infer_source(symbol, market_kind)
+                req = FeatureRunRequest(
+                    symbol=symbol,
+                    source=source,
+                    timeframe=timeframe,
+                    market=market_kind,
+                )
+                result = await compute_and_persist(sym_session, req)
         except Exception as exc:  # pragma: no cover
             log.warning("feature compute failed for %s: %s", symbol, exc)
             continue

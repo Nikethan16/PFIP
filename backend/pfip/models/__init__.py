@@ -20,4 +20,5 @@ from pfip.models.portfolio_tx import PortfolioTxRow  # noqa: F401
 from pfip.models.regime import RegimeRow  # noqa: F401
 from pfip.models.shadow import ShadowHoldingRow, ShadowPortfolioTxRow  # noqa: F401
 from pfip.models.signals import SignalRow  # noqa: F401
+from pfip.models.user_settings import UserSettingsRow  # noqa: F401
 from pfip.models.watchlist import WatchlistRow  # noqa: F401

@@ -15,6 +15,30 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 # ---------------------------------------------------------------------------
+# Symbol normalization
+# ---------------------------------------------------------------------------
+
+
+def to_canonical_symbol(s: str) -> str:
+    """Normalize a market symbol to PFIP canonical dash form.
+
+    Rule: ccxt-style ``BASE/QUOTE`` becomes ``BASE-QUOTE`` (slash -> dash),
+    uppercased. Symbols that are already dash-style or have no separator
+    (e.g. ``USDINR``, ``MF_141272``) are returned uppercased but otherwise
+    unchanged. See ``docs/CONTRACTS.md`` — canonical crypto symbols are
+    dash-style (``BTC-USD``), not ccxt slash form (``BTC/USD``).
+
+    Examples:
+        BTC/USD     -> BTC-USD
+        ETH/USDT    -> ETH-USDT
+        BTC-USD     -> BTC-USD
+        USDINR      -> USDINR
+        MF_141272   -> MF_141272
+    """
+    return s.replace("/", "-").upper()
+
+
+# ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
 
@@ -249,20 +273,24 @@ class PortfolioSummary(_StrictBase):
 
 
 class WatchlistItem(_StrictBase):
-    """A watchlist row."""
+    """A watchlist row, enriched with the latest price + 24h change."""
 
     id: UUID | None = None
     symbol: str
     market: str
     note: str | None = None
     added_at: datetime | None = None
+    last_price: float | None = None
+    change_pct_24h: float | None = None
 
 
 class WatchlistCreate(_StrictBase):
     """Request body for ``POST /watchlist``."""
 
     symbol: str
-    market: str
+    # Optional: defaults to the symbol itself when the UI doesn't classify a
+    # market (the add-symbol form only collects symbol + label).
+    market: str | None = None
     note: str | None = None
 
 

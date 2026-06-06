@@ -17,6 +17,7 @@ import ccxt
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pfip.core.contracts import to_canonical_symbol
 from pfip.core.logging import get_logger
 from pfip.db.session import get_sessionmaker
 
@@ -117,11 +118,14 @@ async def ingest_ohlcv(
     log.info(f"Fetched {len(rows)} candles")
 
     market = _symbol_to_market(symbol)
+    # Persist the symbol in PFIP canonical dash form (BTC-USD), not the ccxt
+    # slash form (BTC/USD) used for the fetch call above.
+    canonical_symbol = to_canonical_symbol(symbol)
     factory = get_sessionmaker()
     async with factory() as session:
         inserted = await _upsert_rows(
             session,
-            symbol=symbol,
+            symbol=canonical_symbol,
             market=market,
             source=exchange,
             timeframe=timeframe,

@@ -22,6 +22,7 @@ import asyncio
 
 from prefect import flow, get_run_logger, task
 
+from pfip.core.config import get_settings
 from pfip.db.session import get_sessionmaker
 from pfip.signals.runner import SignalRunResult, run_for_symbol, run_for_watchlist
 
@@ -51,6 +52,17 @@ async def signals_generate_daily(
 ) -> dict[str, list[dict] | int]:
     """Produce one signal per watchlist asset and persist."""
     log = get_run_logger()
+
+    # Runtime kill-switch, independent of the deployment's stage gating.
+    # ML signals stay OFF until the operator has enough OHLCV history for the
+    # walk-forward trainer to be trustworthy, then sets FEATURE_ML_SIGNALS=true.
+    if not get_settings().feature_ml_signals:
+        log.warning(
+            "signals_generate_daily skipped: FEATURE_ML_SIGNALS is off. "
+            "Set FEATURE_ML_SIGNALS=true once you have sufficient price history."
+        )
+        return {"n": 0, "per_asset": [], "skipped": "feature_ml_signals_disabled"}
+
     results = await _run_watchlist(timeframe)
     if not results:
         log.info("watchlist empty — falling back to %s", fallback_symbol)

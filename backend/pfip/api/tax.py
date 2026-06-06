@@ -19,6 +19,7 @@ from pfip.api.deps import CurrentUser, DbSession
 from pfip.brokers.csv_adapters import UnknownSchemaError
 from pfip.brokers.csv_adapters.router import tax_focused_parse
 from pfip.models.holdings import HoldingRow
+from pfip.models.ohlcv import OHLCVRow
 from pfip.models.portfolio_tx import PortfolioTxRow
 from pfip.tax.engine import (
     AssetClass,
@@ -38,6 +39,7 @@ from pfip.tax.engine import (
     itr_form_recommendation,
     surcharge_cliff_check,
 )
+from pfip.tax.indian_rules import DEDUCTION_LIMITS_INR, SURCHARGE_BANDS
 from pfip.tax.forms import (
     build_summary_pdf,
     form_67_json,
@@ -201,35 +203,100 @@ async def tax_events(db: DbSession, _user: CurrentUser, fy: str = Query(...)) ->
 # ---------------------------------------------------------------------------
 
 
+async def _fy_daily_closes(
+    db: Any, symbol: str, start: date, end: date
+) -> dict[date, Decimal]:
+    """Return ``{date: close}`` for ``symbol``'s daily OHLCV bars within the FY.
+
+    Uses the ``1d`` timeframe close (instrument quote currency — USD for US
+    stocks). Multiple sources for the same day collapse to the last seen close.
+    """
+    rows = (
+        await db.execute(
+            select(OHLCVRow.ts, OHLCVRow.close)
+            .where(
+                OHLCVRow.symbol == symbol,
+                OHLCVRow.timeframe == "1d",
+                OHLCVRow.ts
+                >= datetime(start.year, start.month, start.day, tzinfo=timezone.utc),
+                OHLCVRow.ts
+                <= datetime(end.year, end.month, end.day, 23, 59, 59, tzinfo=timezone.utc),
+            )
+            .order_by(OHLCVRow.ts.asc())
+        )
+    ).all()
+    out: dict[date, Decimal] = {}
+    for ts, close in rows:
+        if ts is None or close is None:
+            continue
+        out[ts.date()] = Decimal(str(close))
+    return out
+
+
 @router.get("/schedule-fa")
 async def schedule_fa(
     db: DbSession,
     _user: CurrentUser,
     fy: str = Query(...),
 ) -> dict:
-    """Schedule FA rows — pulled from US-stock holdings' cost-basis ledger."""
+    """Schedule FA rows for US-stock holdings.
+
+    Peak/closing balances are computed from **real daily OHLCV closes** over the
+    financial year: for each holding the per-day USD balance is ``qty × daily
+    close``; the peak over the FY window and the closing balance (``qty × close``
+    on the latest bar on/before FY-end) follow from that series.
+
+    When a holding has no usable price history in the FY we fall back to the
+    cost-basis approximation (peak ≈ cost basis, closing = 0) and flag the row
+    with ``"basis": "cost_approx"`` so the value is honest, not silently wrong.
+    Price-derived rows are flagged ``"basis": "peak"``.
+    """
+    start, end = fy_bounds(fy)
     result = await db.execute(select(HoldingRow).where(HoldingRow.cost_basis_ccy == "USD"))
     rows = result.scalars().all()
-    us_holdings = [
-        {
-            "symbol": r.symbol,
-            "isin": r.isin,
-            "acquired_on": r.acquired_at.date() if r.acquired_at else None,
-            # Without a daily-balance feed we approximate peak = cost_basis.
-            "daily_balances_usd": (
-                {r.acquired_at.date(): (Decimal(str(r.cost_basis_inr)) / Decimal(str(r.fx_rate)))}
-                if (r.fx_rate and r.acquired_at)
+
+    us_holdings: list[dict] = []
+    # Track which holdings used real price history vs the cost-basis fallback,
+    # keyed by symbol (matches how schedule_fa_json emits rows).
+    basis_by_symbol: dict[str | None, str] = {}
+    for r in rows:
+        acquired = r.acquired_at.date() if r.acquired_at else None
+        qty = Decimal(str(r.qty)) if r.qty is not None else Decimal("0")
+
+        closes = await _fy_daily_closes(db, r.symbol, start, end) if r.symbol else {}
+        # Only count price days on/after acquisition — we didn't hold it before.
+        if acquired is not None:
+            closes = {d: c for d, c in closes.items() if d >= acquired}
+
+        if closes and qty != 0:
+            daily_balances = {d: (qty * c) for d, c in closes.items()}
+            closing_date = max(closes)  # latest bar on/before FY-end
+            closing_usd = qty * closes[closing_date]
+            basis_by_symbol[r.symbol] = "peak"
+        else:
+            # Fallback: approximate peak = cost basis in USD, no closing mark.
+            daily_balances = (
+                {acquired: (Decimal(str(r.cost_basis_inr)) / Decimal(str(r.fx_rate)))}
+                if (r.fx_rate and acquired)
                 else {}
-            ),
-            "closing_balance_usd": Decimal("0"),
-            "country": "USA",
-        }
-        for r in rows
-    ]
+            )
+            closing_usd = Decimal("0")
+            basis_by_symbol[r.symbol] = "cost_approx"
+
+        us_holdings.append(
+            {
+                "symbol": r.symbol,
+                "isin": r.isin,
+                "acquired_on": acquired,
+                "daily_balances_usd": daily_balances,
+                "closing_balance_usd": closing_usd,
+                "country": "USA",
+            }
+        )
+
     dividends_usd: list[dict] = []  # future: pull from portfolio_tx kind=DIVIDEND
     # Pre-fetch FX rates async (AsyncSession can't be queried synchronously
     # inside the sync tax math). Cover every peak date + the FY end date.
-    start, end = fy_bounds(fy)
     needs: list[tuple[str, date]] = [("USD", end)]
     for h in us_holdings:
         for d in (h.get("daily_balances_usd") or {}):
@@ -237,12 +304,12 @@ async def schedule_fa(
                 needs.append(("USD", d))
     rate_cache = await prefetch_fx_rates(db, needs)
     fa_rows = compute_schedule_fa(us_holdings, dividends_usd, fy, db=db, rate_cache=rate_cache)
-    return _wrap(
-        {
-            "fy": fy,
-            **schedule_fa_json(fa_rows),
-        }
-    )
+    payload = schedule_fa_json(fa_rows)
+    # Annotate each row with how its peak/closing was derived (backward-compatible
+    # additive field only).
+    for row in payload.get("rows", []):
+        row["basis"] = basis_by_symbol.get(row.get("symbol"), "cost_approx")
+    return _wrap({"fy": fy, **payload})
 
 
 # ---------------------------------------------------------------------------
@@ -487,6 +554,131 @@ async def summary_pdf(
     # If reportlab isn't installed the helper returns text bytes.
     ct = "application/pdf" if pdf.startswith(b"%PDF") else "text/plain"
     return Response(content=pdf, media_type=ct)
+
+
+# ---------------------------------------------------------------------------
+# /tax/export — PDF package download (frontend downloadTaxExport)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/export")
+async def tax_export(
+    db: DbSession,
+    _user: CurrentUser,
+    fy: str = Query(..., description="FY, e.g. 2026-27"),
+    gross_income_inr: Decimal = Query(Decimal("0")),
+) -> Response:
+    """Download the FY tax package as a PDF (CA handoff).
+
+    The frontend ``downloadTaxExport`` fetches this with ``Accept:
+    application/pdf`` and saves the blob as ``pfip-tax-<fy>.pdf``. Reuses the
+    same ``build_summary_pdf`` renderer as ``/tax/summary/pdf`` and sets a
+    Content-Disposition so the browser names the download correctly. Falls back
+    to a text/plain body if reportlab is unavailable.
+    """
+    enriched = await _fetch_enriched_tx(db, fy)
+    events = classify_capital_gains(enriched)
+    summary = build_tax_summary(fy, events, gross_income=gross_income_inr)
+    pdf = build_summary_pdf(summary, events=events)
+    is_pdf = pdf.startswith(b"%PDF")
+    ext = "pdf" if is_pdf else "txt"
+    ct = "application/pdf" if is_pdf else "text/plain"
+    return Response(
+        content=pdf,
+        media_type=ct,
+        headers={
+            "Content-Disposition": f'attachment; filename="pfip-tax-{fy}.{ext}"'
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# /tax/details — extended tax view (80C optimizer + surcharge + Form 67)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/details")
+async def tax_details(
+    db: DbSession,
+    _user: CurrentUser,
+    fy: str = Query(..., description="FY, e.g. 2026-27"),
+    gross_income_inr: Decimal = Query(Decimal("0")),
+) -> dict:
+    """Extended tax detail for the tax page (regime compare, 80C, surcharge).
+
+    Shapes exactly to the frontend ``TaxDetailsSchema`` (all plain numbers):
+    ``{ fy, slab_income_inr, eighty_c_used_inr, eighty_c_cap_inr,
+    marginal_rate_pct, total_income_inr, old_regime_tax_inr,
+    new_regime_tax_inr, surcharge_thresholds[{threshold_inr, rate_pct}],
+    form_67_lines[] }``.
+
+    ``slab_income_inr`` / ``total_income_inr`` are the caller-supplied
+    ``gross_income_inr`` plus realised capital gains in the FY (the only income
+    PFIP itself can observe). With no income supplied and no events the figures
+    are 0 and the regime taxes are 0 — a correct empty shape, not fabricated.
+    """
+    enriched = await _fetch_enriched_tx(db, fy)
+    events = classify_capital_gains(enriched)
+    start, end = fy_bounds(fy)
+    fy_events = [e for e in events if start <= e.sell_date <= end]
+    realised_gains = sum((e.gain_inr for e in fy_events), Decimal("0"))
+
+    slab_income = Decimal(str(gross_income_inr))
+    total_income = (slab_income + realised_gains).quantize(Decimal("0.01"))
+
+    regimes = compare_regimes(slab_income, {}, fy=fy)
+    old_tax = Decimal(str(regimes["old_regime_tax_inr"]))
+    new_tax = Decimal(str(regimes["new_regime_tax_inr"]))
+
+    # Marginal slab rate at this income (whole-number percent).
+    if total_income > Decimal("1500000"):
+        marginal_rate_pct = 30.0
+    elif total_income > Decimal("1000000"):
+        marginal_rate_pct = 20.0
+    elif total_income > Decimal("500000"):
+        marginal_rate_pct = 5.0
+    else:
+        marginal_rate_pct = 0.0
+
+    eighty_c_cap = DEDUCTION_LIMITS_INR["80C"]
+
+    # Form 67 lines: descriptive strings for any FY US-dividend tx.
+    hold_res = await db.execute(
+        select(HoldingRow).where(HoldingRow.cost_basis_ccy == "USD")
+    )
+    us_holdings = {h.id: h for h in hold_res.scalars().all()}
+    tx_res = await db.execute(
+        select(PortfolioTxRow).where(PortfolioTxRow.kind == "DIVIDEND")
+    )
+    form_67_lines: list[str] = []
+    for t in tx_res.scalars().all():
+        h = us_holdings.get(t.holding_id) if t.holding_id else None
+        if h is None or not t.time:
+            continue
+        on = t.time.date()
+        if not (start <= on <= end):
+            continue
+        wht = Decimal(str(t.tax_withheld or 0))
+        form_67_lines.append(
+            f"{h.symbol or h.isin or '—'} · {on.isoformat()} · "
+            f"dividend {Decimal(str(t.amount_inr))} INR · WHT {wht} INR (DTAA credit)"
+        )
+
+    return {
+        "fy": fy,
+        "slab_income_inr": float(slab_income),
+        "eighty_c_used_inr": 0.0,
+        "eighty_c_cap_inr": float(eighty_c_cap),
+        "marginal_rate_pct": marginal_rate_pct,
+        "total_income_inr": float(total_income),
+        "old_regime_tax_inr": float(old_tax),
+        "new_regime_tax_inr": float(new_tax),
+        "surcharge_thresholds": [
+            {"threshold_inr": float(b.threshold), "rate_pct": float(b.rate) * 100.0}
+            for b in SURCHARGE_BANDS
+        ],
+        "form_67_lines": form_67_lines,
+    }
 
 
 # ---------------------------------------------------------------------------

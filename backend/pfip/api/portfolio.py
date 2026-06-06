@@ -36,6 +36,7 @@ from pfip.portfolio.service import (
     HoldingNotFoundError,
     HoldingValidationError,
     PortfolioService,
+    trailing_sharpe,
 )
 from pfip.tax.indian_rules import DISCLAIMER
 
@@ -167,7 +168,12 @@ async def summary(db: DbSession, _user: CurrentUser) -> PortfolioSummary:
     svc = PortfolioService(db)
     holdings = await svc.list_holdings(active=True)
     marking = await build_marking(db, holdings)
-    return await svc.portfolio_summary(mark_prices=marking.mark_prices)
+    # NAV history (cumulative-net-flow proxy from the ledger) drives the
+    # peak-to-current drawdown. Empty ⇒ drawdown stays 0.0.
+    nav_history = await svc.nav_history()
+    return await svc.portfolio_summary(
+        mark_prices=marking.mark_prices, nav_history=nav_history
+    )
 
 
 @router.get("/marking")
@@ -254,6 +260,128 @@ async def correlations(
         "matrix": matrix_2d,
         "note": note,
         "disclaimer": DISCLAIMER,
+    }
+
+
+# ---------------------------------------------------------------------------
+# VaR / risk panel (dashboard HeroKpis)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/var")
+async def var_panel(
+    db: DbSession,
+    _user: CurrentUser,
+    window_days: int = Query(90, ge=10, le=365),
+    positions_added_today: int = Query(0, ge=0),
+) -> dict:
+    """Historical-VaR + risk panel for the dashboard HeroKpis.
+
+    Composes existing building blocks:
+      * ``PortfolioService.historical_var`` over a portfolio-level daily
+        log-return series (value-weighted blend of each holding's own OHLCV
+        returns). With fewer than 30 returns we return a graceful zero shape
+        (no fabricated numbers).
+      * ``concentration_score`` HHI.
+      * ``RiskManager.daily_new_positions_remaining``.
+      * ``nav_history`` for the drawdown series + day change.
+
+    Every field is a plain JSON number to match the frontend ``VarPanelSchema``.
+    """
+    svc = PortfolioService(db)
+    holdings = await svc.list_holdings(active=True)
+    marking = await build_marking(db, holdings)
+    mark_prices = marking.mark_prices
+
+    # Per-symbol value weights (market value where marked, else cost basis).
+    weights: dict[str, Decimal] = {}
+    total_value = Decimal("0")
+    for h in holdings:
+        sym = h.symbol
+        if not sym:
+            continue
+        mp = mark_prices.get(sym)
+        val = (mp * h.qty).quantize(Decimal("0.01")) if mp else h.cost_basis_inr
+        weights[sym] = weights.get(sym, Decimal("0")) + val
+        total_value += val
+
+    # Value-weighted portfolio daily log-return series.
+    symbols = sorted(weights.keys())
+    series = await fetch_return_series(db, symbols, window_days)
+    portfolio_returns: list[float] = []
+    if series and total_value > 0:
+        aligned = {s: series[s] for s in symbols if series.get(s)}
+        if aligned:
+            n = min(len(v) for v in aligned.values())
+            for i in range(n):
+                day_ret = 0.0
+                for s, rs in aligned.items():
+                    w = float(weights[s] / total_value)
+                    day_ret += w * rs[-n:][i]
+                portfolio_returns.append(day_ret)
+
+    pv_inr = total_value if total_value > 0 else None
+    var95 = svc.historical_var(
+        portfolio_returns, confidence=0.95, portfolio_value_inr=pv_inr
+    )
+    var99 = svc.historical_var(
+        portfolio_returns, confidence=0.99, portfolio_value_inr=pv_inr
+    )
+
+    def _abs_pct(v: dict) -> float:
+        return abs(float(v.get("var_pct", 0.0)))
+
+    def _abs_inr(v: dict) -> float:
+        return abs(float(v.get("var_inr", 0.0))) if "var_inr" in v else 0.0
+
+    # Concentration HHI.
+    conc = await svc.concentration_score(mark_prices=mark_prices)
+    hhi = float(conc.get("hhi", 0.0))
+
+    # Daily new-positions remaining.
+    rm = RiskManager()
+    remaining = rm.daily_new_positions_remaining(positions_added_today)
+
+    # 30d Sharpe from the same portfolio return series.
+    sharpe = trailing_sharpe(portfolio_returns, window=30) if portfolio_returns else 0.0
+
+    # NAV history → drawdown series + day change.
+    nav_history = await svc.nav_history(days=window_days + 7)
+    drawdown_series: list[dict] = []
+    day_change_inr = 0.0
+    day_change_pct = 0.0
+    if nav_history:
+        running_peak = nav_history[0][1]
+        for d, nav in nav_history:
+            if nav > running_peak:
+                running_peak = nav
+            dd_pct = (
+                float((Decimal("1") - nav / running_peak)) * 100.0
+                if running_peak > 0
+                else 0.0
+            )
+            drawdown_series.append(
+                {"date": d.isoformat(), "drawdown_pct": round(dd_pct, 4)}
+            )
+        if len(nav_history) >= 2:
+            prev_nav = nav_history[-2][1]
+            last_nav = nav_history[-1][1]
+            day_change_inr = float((last_nav - prev_nav))
+            if prev_nav != 0:
+                day_change_pct = float((last_nav - prev_nav) / prev_nav) * 100.0
+
+    return {
+        "var_95_inr": _abs_inr(var95),
+        "var_99_inr": _abs_inr(var99),
+        "var_95_pct": round(_abs_pct(var95) * 100.0, 4),
+        "var_99_pct": round(_abs_pct(var99) * 100.0, 4),
+        "window_days": window_days,
+        "concentration_hhi": round(hhi, 6),
+        "drawdown_series": drawdown_series,
+        "daily_new_positions_remaining": int(remaining),
+        "sharpe_30d": round(float(sharpe), 4),
+        "day_change_inr": round(day_change_inr, 2),
+        "day_change_pct": round(day_change_pct, 4),
     }
 
 

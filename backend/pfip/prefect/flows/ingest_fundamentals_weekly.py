@@ -25,7 +25,7 @@ from pfip.db.session import get_sessionmaker
 from pfip.ingest._common.source_health import record_run
 from pfip.ingest.commodities.nasdaq_data_link import ingest_nasdaq_data_link
 from pfip.ingest.indian_equities.screener_fundamentals import ingest_screener
-from pfip.ingest.us_equities.finnhub_fundamentals import ingest_finnhub_metrics
+from pfip.ingest.us_equities.finnhub_fundamentals import ingest_finnhub
 from pfip.ingest.us_equities.sec_edgar import ingest_sec_edgar
 
 # Default CIKs — overridden when watchlist contains US tickers.
@@ -70,7 +70,7 @@ def _make_task(name: str, fn):  # type: ignore[no-untyped-def]
 
 _sec = _make_task("sec_edgar_weekly", ingest_sec_edgar)
 _screener = _make_task("screener_weekly", ingest_screener)
-_finnhub = _make_task("finnhub_weekly", ingest_finnhub_metrics)
+_finnhub = _make_task("finnhub_weekly", ingest_finnhub)
 _ndl = _make_task("nasdaq_data_link", ingest_nasdaq_data_link)
 
 

@@ -1,10 +1,13 @@
-"""Prefect flow: train HMM regime detector per market and write today's label.
+"""Prefect flow: train HMM regime detector per watchlist symbol, write today's label.
 
-Schedule: daily. Trains on trailing 3 years of D1 OHLCV and writes a
-row to ``regime`` (current label) + a row to ``regime_transitions`` when the
-label changes.
+Schedule: daily. For every watchlist symbol it resolves the symbol's real OHLCV
+``source`` from the DB (US equities live under ``tiingo``, not the heuristic
+``yfinance``), trains on the trailing 3 years of D1 OHLCV, and writes a row to
+``regime`` (current label) + a row to ``regime_transitions`` when the label
+changes.
 
-    python -m pfip.prefect.flows.regime_detect_daily --symbol BTC/USD
+    # all watchlist symbols (scheduled / default):
+    python -m pfip.prefect.flows.regime_detect_daily
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ from prefect import flow, get_run_logger, task
 from sqlalchemy import desc, select
 
 from pfip.db.session import get_sessionmaker
+from pfip.db.sources import resolve_ohlcv_source
 from pfip.models.calibration_reports import RegimeTransitionRow
 from pfip.models.ohlcv import OHLCVRow
 from pfip.models.regime import RegimeRow
@@ -81,12 +85,19 @@ async def _write_regime(symbol: str, regime: str, confidence: float) -> None:
         await session.commit()
 
 
-@flow(name="regime-detect-daily", log_prints=True)
-async def regime_detect_daily_flow(
-    symbol: str = "BTC/USD", source: str = "coinbase", timeframe: str = "1d"
-) -> dict[str, str]:
-    """Fit HMM on trailing 3y, predict current regime, persist."""
-    log = get_run_logger()
+async def _resolve_source(symbol: str, timeframe: str) -> str | None:
+    """The source that actually ingested this symbol's data (not a guess).
+
+    Opens its own session (this flow uses a session-per-operation pattern) and
+    delegates the actual query to :func:`pfip.db.sources.resolve_ohlcv_source`.
+    """
+    factory = get_sessionmaker()
+    async with factory() as session:
+        return await resolve_ohlcv_source(session, symbol, timeframe)
+
+
+async def _detect_one(symbol: str, source: str, timeframe: str, log) -> dict[str, str]:
+    """Fit HMM on trailing 3y for one symbol, predict + persist the regime."""
     df = await _load_3y(symbol, source, timeframe)
     if df.empty or len(df) < 50:
         log.warning(f"Not enough data for {symbol} {source} {timeframe}")
@@ -95,9 +106,7 @@ async def regime_detect_daily_flow(
     returns = np.log(df["close"] / df["close"].shift(1)).dropna()
     detector = HMMRegimeDetector(n_states=4)
     detector.fit(returns)
-
-    # Persist to MLflow (non-blocking on failure)
-    try:  # pragma: no cover
+    try:  # pragma: no cover — MLflow is best-effort
         detector.persist_to_mlflow(run_name=f"regime_{symbol}")
     except Exception as exc:  # pragma: no cover
         log.warning(f"MLflow persist failed: {exc}")
@@ -106,10 +115,44 @@ async def regime_detect_daily_flow(
     last = score_df.iloc[-1]
     regime_label = str(last["regime"])
     confidence = float(last["confidence"])
-
     await _write_regime(symbol, regime_label, confidence)
     log.info(f"{symbol}: {regime_label} (conf={confidence:.2f})")
     return {"symbol": symbol, "regime": regime_label, "confidence": f"{confidence:.3f}"}
+
+
+@flow(name="regime-detect-daily", log_prints=True)
+async def regime_detect_daily_flow(
+    symbol: str | None = None, source: str | None = None, timeframe: str = "1d"
+) -> dict:
+    """Detect the regime for every watchlist symbol (or a single one if given).
+
+    Default (scheduled) mode iterates the watchlist and resolves each symbol's
+    REAL source from the OHLCV table — previously it only ever ran BTC/USD.
+    """
+    log = get_run_logger()
+    if symbol:  # single-symbol / manual mode
+        return await _detect_one(symbol, source or "coinbase", timeframe, log)
+
+    factory = get_sessionmaker()
+    async with factory() as session:
+        from pfip.models.watchlist import WatchlistRow
+
+        symbols = [str(r.symbol) for r in (await session.execute(select(WatchlistRow))).scalars().all()]
+
+    results: list[dict[str, str]] = []
+    for sym in symbols:
+        src = await _resolve_source(sym, timeframe)
+        if not src:
+            log.warning(f"no OHLCV source for {sym}; skipping")
+            results.append({"symbol": sym, "status": "no-data"})
+            continue
+        try:
+            results.append(await _detect_one(sym, src, timeframe, log))
+        except Exception as exc:
+            log.warning(f"regime failed for {sym}: {exc}")
+            results.append({"symbol": sym, "status": "error"})
+    log.info(f"regime-detect-daily: processed {len(results)} watchlist symbols")
+    return {"n": len(results), "results": results}
 
 
 if __name__ == "__main__":

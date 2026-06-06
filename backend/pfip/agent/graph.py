@@ -58,6 +58,7 @@ from pfip.agent.llm_client import (
 )
 from pfip.agent.privacy import classify_sensitivity
 from pfip.agent.prompts import load as load_prompt
+from pfip.agent.reranker import get_reranker
 from pfip.agent.router import Sensitivity, TaskType
 from pfip.agent.sanitizer import sanitize_many
 from pfip.kb.search import KBHit, format_citations, search as kb_search, search_news
@@ -339,6 +340,50 @@ async def run_agent_stream(
     state = await node_retrieve_news(state)
     state = await node_retrieve_db(db, state)
 
+    # --- Privacy classification (must precede any rerank) -------------------
+    # Compute sensitivity BEFORE reranking so the Cohere reranker is never
+    # invoked on sensitive content. Two interlocks make this safe against
+    # classifier misses:
+    #   1. Feed the user's open-holding symbols into the classifier so an
+    #      owned-ticker mention (e.g. "RELIANCE earnings") flips to SENSITIVE.
+    #   2. Structurally force SENSITIVE whenever ANY holding row was actually
+    #      retrieved into the prompt — holdings must never route to cloud,
+    #      regardless of the text classifier's verdict.
+    holding_symbols = {
+        str(r["symbol"])
+        for r in state.retrieved_db
+        if r.get("kind") == "holding" and r.get("symbol")
+    }
+    history_blob = "\n".join(m.get("content", "") for m in (history or []))
+    sensitivity = classify_sensitivity(
+        user_query + "\n" + history_blob,
+        user_holdings_symbols=holding_symbols or None,
+    )
+    if holding_symbols:
+        # A holding row is in the prompt → hard-pin to local, no override.
+        sensitivity = Sensitivity.SENSITIVE
+
+    # --- Rerank retrieved hits (privacy-gated) ------------------------------
+    # CRITICAL: pass the REAL sensitivity through. When sensitivity ==
+    # SENSITIVE the reranker's built-in no-op path returns identity order
+    # WITHOUT any Cohere (cloud) call — see reranker.Reranker.rerank. This is
+    # the single gate that prevents a holdings leak to Cohere. Reranking
+    # failures degrade gracefully to the original order.
+    try:
+        reranker = get_reranker()
+        if state.retrieved_kb:
+            kb_ranked = await reranker.rerank(
+                user_query, state.retrieved_kb, top_n=6, sensitivity=sensitivity
+            )
+            state.retrieved_kb = [r.doc for r in kb_ranked]
+        if state.retrieved_news:
+            news_ranked = await reranker.rerank(
+                user_query, state.retrieved_news, top_n=6, sensitivity=sensitivity
+            )
+            state.retrieved_news = [r.doc for r in news_ranked]
+    except Exception as exc:  # noqa: BLE001 — never let rerank break the stream
+        logger.debug(f"[agent] rerank skipped (fallback to original order): {exc}")
+
     # Emit `source` events up front so the UI can render citation chips
     # before any tokens arrive.
     for h in state.retrieved_kb:
@@ -367,30 +412,10 @@ async def run_agent_stream(
         }
 
     # --- Synthesize + stream ------------------------------------------------
+    # Build the prompt AFTER reranking so the synthesis blocks use the
+    # reordered, top-N hits. Sensitivity was already determined above (and
+    # gated the reranker) — reuse it here for routing.
     messages = _build_synthesis_messages(state)
-    # Privacy classification: scan the user query (plus any chat history) for
-    # personal-finance signals. Sensitive → local Ollama (forced when
-    # LLM_PRIVACY_STRICT=true); Public → cloud 70B for speed/quality.
-    #
-    # Two interlocks make this safe against classifier misses:
-    #   1. Feed the user's open-holding symbols into the classifier so an
-    #      owned-ticker mention (e.g. "RELIANCE earnings") flips to SENSITIVE.
-    #   2. Structurally force SENSITIVE whenever ANY holding row was actually
-    #      retrieved into the prompt — holdings must never route to cloud,
-    #      regardless of the text classifier's verdict.
-    holding_symbols = {
-        str(r["symbol"])
-        for r in state.retrieved_db
-        if r.get("kind") == "holding" and r.get("symbol")
-    }
-    history_blob = "\n".join(m.get("content", "") for m in (history or []))
-    sensitivity = classify_sensitivity(
-        user_query + "\n" + history_blob,
-        user_holdings_symbols=holding_symbols or None,
-    )
-    if holding_symbols:
-        # A holding row is in the prompt → hard-pin to local, no override.
-        sensitivity = Sensitivity.SENSITIVE
     task = TaskType.CHAT_SENSITIVE if sensitivity == Sensitivity.SENSITIVE else TaskType.CHAT_PUBLIC
     logger.debug(f"[agent] privacy={sensitivity.value} task={task.value}")
     client = get_llm_client()

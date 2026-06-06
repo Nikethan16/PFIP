@@ -433,6 +433,53 @@ class PortfolioService:
             exposure[cat] = exposure.get(cat, Decimal("0")) + val
         return exposure
 
+    async def nav_history(self, days: int = 365) -> list[tuple[date, Decimal]]:
+        """Daily portfolio NAV (INR) series, ascending by date, last ``days``.
+
+        There is no dedicated NAV/equity snapshot table in this schema (only the
+        ``portfolio_tx`` ledger and the ``holdings`` book), so we derive the best
+        available proxy: the *cumulative net invested capital* curve from the
+        ledger. For each tx we add cash-in (SELL / DIVIDEND / INTEREST) and
+        subtract cash-out (BUY / FEE / TDS), accumulate by day, and carry the
+        running total forward to produce one point per day on which activity
+        occurred. This is a realized-flow proxy — it does not re-mark open
+        positions intraday — but it is a real, monotone-where-flat series whose
+        peak-to-current ratio yields a meaningful realized drawdown.
+
+        Returns an empty list when there are no transactions, in which case
+        :meth:`portfolio_summary` leaves drawdown at 0.0.
+        """
+        cutoff = datetime.now(tz=timezone.utc) - timedelta(days=days)
+        stmt = (
+            select(PortfolioTxRow)
+            .where(PortfolioTxRow.time >= cutoff)
+            .order_by(PortfolioTxRow.time.asc())
+        )
+        result = await self.db.execute(stmt)
+        rows = list(result.scalars().all())
+        if not rows:
+            return []
+
+        # Net-flow sign per ledger kind: cash that *enters* the book is +, cash
+        # that *leaves* it is -. Unknown kinds are treated as neutral (0).
+        _inflow = {"SELL", "DIVIDEND", "INTEREST"}
+        _outflow = {"BUY", "FEE", "TDS"}
+
+        # Accumulate the end-of-day running total, one entry per active day.
+        running = Decimal("0")
+        by_day: dict[date, Decimal] = {}
+        for r in rows:
+            amt = Decimal(str(r.amount_inr or 0))
+            if r.kind in _inflow:
+                running += amt
+            elif r.kind in _outflow:
+                running -= amt
+            # TRANSFER and anything else: leave the running total unchanged.
+            d = r.time.date()
+            by_day[d] = running
+
+        return [(d, by_day[d]) for d in sorted(by_day)]
+
     async def portfolio_summary(
         self,
         *,
@@ -472,10 +519,17 @@ class PortfolioService:
 
         drawdown = 0.0
         if nav_history:
-            peak = max(n for _, n in nav_history)
+            # Running peak up to the current point, then current-vs-peak. Using
+            # the running peak (not the global max) makes this a true
+            # peak-to-current drawdown even if NAV later recovered above an old
+            # trough but stayed below the all-time high.
+            running_peak = nav_history[0][1]
+            for _, n in nav_history:
+                if n > running_peak:
+                    running_peak = n
             current = nav_history[-1][1]
-            if peak > 0:
-                drawdown = float(Decimal("1") - current / peak)
+            if running_peak > 0:
+                drawdown = max(0.0, float(Decimal("1") - current / running_peak))
 
         exposure = await self.exposure_by_category(mark_prices=mark_prices)
 
