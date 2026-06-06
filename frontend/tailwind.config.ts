@@ -143,6 +143,10 @@ const config: Config = {
       },
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        // Sahara editorial serif (section headings, "What Changed Today").
+        serif: ["Libre Caslon Text", "Georgia", "serif"],
+        // Condensed label face for uppercase eyebrows / data labels.
+        label: ["Archivo Narrow", "Inter", "sans-serif"],
         mono: [
           "JetBrains Mono",
           "ui-monospace",

@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=Archivo+Narrow:wght@500;600;700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap");
 
 @tailwind base;
@@ -23,89 +23,89 @@
    * by the Stitch-derived pages.
    * -------------------------------------------------------------------- */
   :root {
-    /* Surfaces — light/blueish background per Stitch spec. */
-    --background: 222 100% 98%; /* #f8f9ff */
-    --foreground: 213 64% 12%; /* #0b1c30 */
+    /* ---- "Sahara" — warm Material-3 institutional-terminal palette. ----
+       Deep amber/rust primary on a warm off-white canvas, charcoal ink. */
+    --background: 20 33% 98%; /* #fbf9f8 warm off-white */
+    --foreground: 200 2% 11%; /* #1b1c1c charcoal ink */
 
-    --card: 0 0% 100%;
-    --card-foreground: 213 64% 12%;
+    --card: 36 40% 99%; /* #fefcf7 warm white */
+    --card-foreground: 200 2% 11%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 213 64% 12%;
+    --popover-foreground: 200 2% 11%;
 
-    /* Primary — institutional teal. */
-    --primary: 173 100% 21%; /* #006b5f */
+    /* Primary — deep Sahara rust/amber (#964407). */
+    --primary: 26 91% 31%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 217 100% 96%; /* #eff4ff (surface-container-low) */
-    --secondary-foreground: 213 64% 12%;
+    --secondary: 20 13% 96%; /* #f5f3f3 warm surface-low */
+    --secondary-foreground: 200 2% 11%;
 
-    --muted: 217 89% 94%; /* #e5eeff (surface-container) */
-    /* Darkened from 39% → 31% lightness so muted text clears WCAG AA (~4.5:1)
-       on both --background (#f8f9ff) and the lighter --muted surface. */
-    --muted-foreground: 173 12% 31%;
+    --muted: 20 8% 93%; /* #efeded warm surface-container */
+    --muted-foreground: 22 20% 28%; /* #554339 warm muted ink (AA clears) */
 
-    --accent: 217 89% 91%; /* #d3e4fe */
-    --accent-foreground: 213 64% 12%;
+    --accent: 24 100% 90%; /* #ffdbca peach (primary-fixed) */
+    --accent-foreground: 26 90% 18%;
 
     --destructive: 0 75% 42%; /* #ba1a1a */
     --destructive-foreground: 0 0% 100%;
 
-    --success: 152 71% 35%;
-    --warning: 38 92% 50%;
+    --success: 152 64% 32%; /* deep green for +P&L */
+    --warning: 32 95% 44%; /* amber alert */
 
-    --border: 158 5% 76%; /* #bbcac6 (outline-variant) */
-    --input: 158 5% 76%;
-    --ring: 173 100% 21%;
+    --border: 22 28% 82%; /* #dbc1b5 warm outline */
+    --input: 22 28% 82%;
+    --ring: 26 91% 31%;
 
     --radius: 0.5rem;
 
-    --sidebar: 0 0% 100%;
-    --sidebar-foreground: 213 64% 12%;
-    --sidebar-border: 158 5% 76%;
+    --sidebar: 36 40% 99%;
+    --sidebar-foreground: 200 2% 11%;
+    --sidebar-border: 22 24% 86%;
 
-    --header: 0 0% 100%;
+    --header: 36 40% 99%;
   }
 
-  /* Dark mode — slate-900 base per Stitch DESIGN.md "Slate-900 (#0F172A)". */
+  /* Dark mode — warm charcoal "Sahara night" (matches the #1b1c1c regime panel),
+     light-amber primary. */
   .dark {
-    --background: 222 47% 11%; /* slate-900 */
-    --foreground: 210 40% 96%;
+    --background: 30 7% 9%; /* warm charcoal */
+    --foreground: 36 33% 95%;
 
-    --card: 217 33% 13%;
-    --card-foreground: 210 40% 96%;
+    --card: 30 6% 12%;
+    --card-foreground: 36 33% 95%;
 
-    --popover: 217 33% 15%;
-    --popover-foreground: 210 40% 96%;
+    --popover: 30 6% 13%;
+    --popover-foreground: 36 33% 95%;
 
-    /* Teal-500 brightens in dark, per spec. */
-    --primary: 174 73% 47%; /* #14b8a6 */
-    --primary-foreground: 222 47% 11%;
+    /* Light amber lifts in dark (inverse-primary #ffb68e). */
+    --primary: 24 100% 78%;
+    --primary-foreground: 26 90% 14%;
 
-    --secondary: 217 25% 17%;
-    --secondary-foreground: 210 40% 96%;
+    --secondary: 28 6% 17%;
+    --secondary-foreground: 36 33% 95%;
 
-    --muted: 217 19% 20%;
-    --muted-foreground: 215 16% 65%;
+    --muted: 28 6% 18%;
+    --muted-foreground: 30 10% 66%;
 
-    --accent: 217 19% 24%;
-    --accent-foreground: 210 40% 96%;
+    --accent: 26 30% 24%;
+    --accent-foreground: 36 33% 95%;
 
-    --destructive: 0 70% 56%;
+    --destructive: 0 70% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 152 60% 50%;
-    --warning: 38 92% 60%;
+    --success: 152 55% 52%;
+    --warning: 36 95% 60%;
 
-    --border: 217 19% 22%;
-    --input: 217 19% 22%;
-    --ring: 174 73% 47%;
+    --border: 28 7% 22%;
+    --input: 28 7% 22%;
+    --ring: 24 100% 78%;
 
-    --sidebar: 222 47% 9%;
-    --sidebar-foreground: 210 40% 96%;
-    --sidebar-border: 217 19% 18%;
+    --sidebar: 30 7% 7%;
+    --sidebar-foreground: 36 33% 95%;
+    --sidebar-border: 28 7% 18%;
 
-    --header: 222 47% 11%;
+    --header: 30 7% 9%;
   }
 }
 
@@ -165,9 +165,16 @@
     @apply sticky top-12 z-20 -mx-3 mb-4 border-b bg-background/85 px-3 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8;
   }
 
-  /* Section header / eyebrow label. */
+  /* Section header / eyebrow label — Sahara: condensed Archivo Narrow caps. */
   .eyebrow {
-    @apply text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground;
+    font-family: "Archivo Narrow", "Inter", sans-serif;
+    @apply text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground;
+  }
+
+  /* Editorial serif heading (Sahara "What Changed Today" style). */
+  .display-serif {
+    font-family: "Libre Caslon Text", Georgia, serif;
+    @apply tracking-tight;
   }
 
   /* Card variant: subtle hover lift used on list/row tiles. */

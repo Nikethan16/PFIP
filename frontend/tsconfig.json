@@ -28,5 +28,11 @@
     "**/*.ts",
     "**/*.tsx"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "vitest.config.ts",
+    "test",
+    "**/*.test.ts",
+    "**/*.test.tsx"
+  ]
 }
