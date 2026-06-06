@@ -18,14 +18,7 @@
  * without introducing a new layout primitive.
  */
 
-import { ArrowDown, ArrowUp, Newspaper, TrendingUp, Zap } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { ArrowDown, ArrowUp, Newspaper, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useChangesToday } from "@/lib/api";
@@ -35,41 +28,47 @@ function formatTime(iso: string): string {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+/** Editorial "What Changed Today" shell — serif heading + mono sync stamp. */
+function FeedShell({
+  syncLabel,
+  children,
+}: {
+  syncLabel?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="border border-border/60 bg-card p-6">
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <h3 className="font-serif text-2xl italic tracking-tight">
+          What Changed Today
+        </h3>
+        <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground/60">
+          {syncLabel ?? "—"}
+        </span>
+      </div>
+      {children}
+    </section>
+  );
+}
+
 export function ChangesTodayCard() {
   const q = useChangesToday({ hours: 24, zThreshold: 5, newsTop: 5 });
 
   if (q.isLoading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Zap className="h-4 w-4 text-amber-500" />
-            What changed today
-          </CardTitle>
-          <CardDescription>Pre-empts &ldquo;anything worth looking at?&rdquo;</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-32 w-full" />
-        </CardContent>
-      </Card>
+      <FeedShell syncLabel="Syncing…">
+        <Skeleton className="h-32 w-full" />
+      </FeedShell>
     );
   }
 
   if (q.error || !q.data) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Zap className="h-4 w-4 text-muted-foreground" />
-            What changed today
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-sm text-destructive">
-            Failed to load: {(q.error as Error)?.message ?? "unknown"}
-          </div>
-        </CardContent>
-      </Card>
+      <FeedShell>
+        <div className="text-sm text-destructive">
+          Failed to load: {(q.error as Error)?.message ?? "unknown"}
+        </div>
+      </FeedShell>
     );
   }
 
@@ -78,22 +77,13 @@ export function ChangesTodayCard() {
     d.signals.length + d.regime_flips.length + d.movers.length + d.news.length;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2">
-          <Zap className="h-4 w-4 text-amber-500" />
-          What changed today
-          <span className="text-xs text-muted-foreground ml-1">
-            ({d.window_hours}h window)
-          </span>
-        </CardTitle>
-        <CardDescription>
-          {totalDeltas === 0
-            ? "All quiet — nothing tripped the thresholds."
-            : `${totalDeltas} item${totalDeltas === 1 ? "" : "s"} worth a look.`}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4 text-sm">
+    <FeedShell syncLabel={`Last sync · ${d.window_hours}h window`}>
+      <p className="-mt-3 mb-4 text-sm text-muted-foreground">
+        {totalDeltas === 0
+          ? "All quiet — nothing tripped the thresholds."
+          : `${totalDeltas} item${totalDeltas === 1 ? "" : "s"} worth a look.`}
+      </p>
+      <div className="space-y-4 text-sm">
         {d.signals.length > 0 && (
           <Section
             title="New signals"
@@ -103,7 +93,7 @@ export function ChangesTodayCard() {
               {d.signals.slice(0, 5).map((s, i) => (
                 <li
                   key={`${s.symbol}-${i}`}
-                  className="flex items-center justify-between rounded-md border bg-background p-2"
+                  className="flex items-center justify-between border border-border/50 bg-secondary/30 p-2 hover-tile"
                 >
                   <span>
                     <Badge
@@ -136,7 +126,7 @@ export function ChangesTodayCard() {
               {d.regime_flips.slice(0, 5).map((f, i) => (
                 <li
                   key={`${f.symbol}-${i}`}
-                  className="flex items-center justify-between rounded-md border bg-background p-2"
+                  className="flex items-center justify-between border border-border/50 bg-secondary/30 p-2 hover-tile"
                 >
                   <span>
                     <span className="font-mono text-xs">{f.symbol}</span>:{" "}
@@ -157,7 +147,7 @@ export function ChangesTodayCard() {
               {d.movers.slice(0, 5).map((m) => (
                 <li
                   key={m.symbol}
-                  className="flex items-center justify-between rounded-md border bg-background p-2"
+                  className="flex items-center justify-between border border-border/50 bg-secondary/30 p-2 hover-tile"
                 >
                   <span className="font-mono text-xs">{m.symbol}</span>
                   <span
@@ -189,7 +179,7 @@ export function ChangesTodayCard() {
               {d.news.slice(0, 5).map((n, i) => (
                 <li
                   key={`${n.title}-${i}`}
-                  className="flex items-start gap-2 rounded-md border bg-background p-2"
+                  className="flex items-start gap-2 border border-border/50 bg-secondary/30 p-2 hover-tile"
                 >
                   <Badge variant="outline" className="text-[10px] shrink-0">
                     {n.impact_score}
@@ -223,8 +213,8 @@ export function ChangesTodayCard() {
             movers, no high-impact news in the last {d.window_hours}h.
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </FeedShell>
   );
 }
 
@@ -239,7 +229,7 @@ function Section({
 }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1.5">
+      <div className="eyebrow mb-1.5 flex items-center gap-1.5">
         {icon}
         {title}
       </div>

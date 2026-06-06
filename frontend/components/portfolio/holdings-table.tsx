@@ -11,30 +11,49 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { Holding, HoldingCategory } from "@/lib/contracts";
 import { formatINR, formatPct } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/empty-state";
+import { assetClassLabel, holdingDisplayName } from "./holding-labels";
+
+/**
+ * Per-holding derived metrics computed by the page from the live marking
+ * payload. Keeps this table presentational: the page owns "where the price
+ * came from", the table just renders it.
+ */
+export interface HoldingMetrics {
+  /** Live mark price per unit (INR), or cost-basis-derived per unit when unmarked. */
+  pricePerUnitInr: number | null;
+  /** Average cost per unit (INR) = cost_basis_inr / qty. */
+  avgCostInr: number | null;
+  /** Total market value (INR) = pricePerUnit × qty (cost basis when unmarked). */
+  marketValueInr: number | null;
+  /** Unrealised P&L (INR) = marketValue − cost basis. Null when unmarked. */
+  pnlInr: number | null;
+  /** Unrealised P&L (%). Null when unmarked or cost basis is 0. */
+  pnlPct: number | null;
+  /** True when a live mark price backs this row (vs cost-basis fallback). */
+  marked: boolean;
+}
 
 interface HoldingsTableProps {
   holdings: Holding[];
-  /** Called when the user clicks "Close" on a row. Triggers the close flow. */
-  onClosePosition?: (holding: Holding) => void;
-  /** Id of the holding whose close is currently in flight (disables its button). */
-  closingHoldingId?: string | null;
+  /** Derived MTM metrics, keyed by holding id. */
+  metrics: Map<string, HoldingMetrics>;
+  /** Currently selected holding id (amber left-stripe). */
+  selectedId?: string | null;
+  /** Row click → select this holding into the deep-dive panel. */
+  onSelect?: (holding: Holding) => void;
 }
 
 type SortKey =
   | "symbol"
   | "category"
-  | "qty"
-  | "cost_basis_inr"
-  | "market_value_inr"
-  | "unrealized_pnl_inr"
-  | "unrealized_pnl_pct";
+  | "price"
+  | "avg_cost"
+  | "pnl";
 
 const ALL_CATEGORIES: HoldingCategory[] = [
   "equity",
@@ -53,17 +72,22 @@ const ALL_CATEGORIES: HoldingCategory[] = [
 ];
 
 /**
- * Holdings table with sortable columns, category filter pills, search by
- * symbol/ISIN, and a per-row "close" action that calls `onClosePosition`.
+ * Editorial holdings table (Sahara split-pane left rail).
  *
- * Mobile: rows stack into cards; filter pills + search stay at the top.
+ * Columns: SYMBOL (bold ticker + muted name) · ASSET CLASS · PRICE (live MTM) ·
+ * AVG COST · P&L (signed, green/red). Rows are clickable to SELECT a holding;
+ * the selected row gets an amber left-accent stripe. Search by symbol/ISIN/
+ * broker + category filter pills + sortable columns are preserved.
+ *
+ * Mobile: rows stack into cards; filters stay on top.
  */
 export function HoldingsTable({
   holdings,
-  onClosePosition,
-  closingHoldingId,
+  metrics,
+  selectedId,
+  onSelect,
 }: HoldingsTableProps) {
-  const [sortKey, setSortKey] = React.useState<SortKey>("market_value_inr");
+  const [sortKey, setSortKey] = React.useState<SortKey>("pnl");
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
   const [activeCats, setActiveCats] = React.useState<Set<HoldingCategory>>(
     new Set(),
@@ -93,21 +117,18 @@ export function HoldingsTable({
   const sorted = React.useMemo(() => {
     const list = [...filtered];
     const getter: (h: Holding) => string | number | null | undefined = (h) => {
+      const m = metrics.get(h.id);
       switch (sortKey) {
         case "symbol":
           return h.symbol ?? h.isin ?? "";
         case "category":
           return h.category;
-        case "qty":
-          return h.qty;
-        case "cost_basis_inr":
-          return h.cost_basis_inr;
-        case "market_value_inr":
-          return h.market_value_inr ?? 0;
-        case "unrealized_pnl_inr":
-          return h.unrealized_pnl_inr ?? 0;
-        case "unrealized_pnl_pct":
-          return h.unrealized_pnl_pct ?? 0;
+        case "price":
+          return m?.marketValueInr ?? 0;
+        case "avg_cost":
+          return m?.avgCostInr ?? 0;
+        case "pnl":
+          return m?.pnlInr ?? 0;
       }
     };
     list.sort((a, b) => {
@@ -124,7 +145,7 @@ export function HoldingsTable({
         : (vb as number) - (va as number);
     });
     return list;
-  }, [filtered, sortKey, sortDir]);
+  }, [filtered, sortKey, sortDir, metrics]);
 
   const toggleCat = (c: HoldingCategory) => {
     setActiveCats((prev) => {
@@ -136,8 +157,7 @@ export function HoldingsTable({
   };
 
   const toggleSort = (key: SortKey) => {
-    if (sortKey === key)
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else {
       setSortKey(key);
       setSortDir("desc");
@@ -155,9 +175,9 @@ export function HoldingsTable({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="flex h-full flex-col">
       {/* Search + filter pills */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-2 border-b border-border/40 p-4 sm:flex-row sm:items-center">
         <div className="relative w-full sm:max-w-xs">
           <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -188,13 +208,13 @@ export function HoldingsTable({
                 onClick={() => toggleCat(c)}
                 aria-pressed={active}
                 className={cn(
-                  "rounded-full border px-2 py-0.5 text-[11px] transition-colors",
+                  "border px-2 py-0.5 font-label text-[10px] uppercase tracking-wider transition-colors",
                   active
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-background hover:bg-accent",
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border/60 bg-background hover:bg-accent",
                 )}
               >
-                {c}
+                {assetClassLabel(c)}
               </button>
             );
           })}
@@ -202,7 +222,7 @@ export function HoldingsTable({
             <button
               type="button"
               onClick={() => setActiveCats(new Set())}
-              className="text-[11px] text-muted-foreground hover:underline"
+              className="font-label text-[10px] uppercase tracking-wider text-muted-foreground hover:underline"
             >
               Clear
             </button>
@@ -211,194 +231,213 @@ export function HoldingsTable({
       </div>
 
       {/* Desktop table */}
-      <div className="hidden md:block">
+      <div className="hidden flex-1 overflow-auto md:block">
         <Table>
-          <TableHeader>
-            <TableRow>
+          <TableHeader className="sticky top-0 z-10 bg-card">
+            <TableRow className="border-border/60 hover:bg-transparent">
               <SortHeader
-                label="Asset"
+                label="Symbol"
                 k="symbol"
                 sortKey={sortKey}
                 dir={sortDir}
                 onClick={toggleSort}
               />
               <SortHeader
-                label="Category"
+                label="Asset class"
                 k="category"
                 sortKey={sortKey}
                 dir={sortDir}
                 onClick={toggleSort}
               />
               <SortHeader
-                label="Qty"
-                k="qty"
+                label="Price"
+                k="price"
                 sortKey={sortKey}
                 dir={sortDir}
                 onClick={toggleSort}
                 align="right"
               />
               <SortHeader
-                label="Cost basis"
-                k="cost_basis_inr"
+                label="Avg cost"
+                k="avg_cost"
                 sortKey={sortKey}
                 dir={sortDir}
                 onClick={toggleSort}
                 align="right"
               />
               <SortHeader
-                label="Market value"
-                k="market_value_inr"
+                label="P&L"
+                k="pnl"
                 sortKey={sortKey}
                 dir={sortDir}
                 onClick={toggleSort}
                 align="right"
               />
-              <SortHeader
-                label="Unrealised P&L"
-                k="unrealized_pnl_inr"
-                sortKey={sortKey}
-                dir={sortDir}
-                onClick={toggleSort}
-                align="right"
-              />
-              <TableHead className="w-20" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {sorted.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-sm text-muted-foreground">
+                <TableCell
+                  colSpan={5}
+                  className="text-center text-sm text-muted-foreground"
+                >
                   No holdings match your filter.
                 </TableCell>
               </TableRow>
             ) : (
-              sorted.map((h) => (
-                <TableRow key={h.id}>
-                  <TableCell className="font-medium">
-                    {h.symbol ?? h.isin ?? "—"}
-                    {h.broker ? (
-                      <div className="text-xs text-muted-foreground">
-                        {h.broker}
-                      </div>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{h.category}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {h.qty}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {formatINR(h.cost_basis_inr)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {formatINR(h.market_value_inr)}
-                  </TableCell>
-                  <TableCell
-                    className={`text-right tabular-nums ${
-                      (h.unrealized_pnl_inr ?? 0) >= 0
-                        ? "text-emerald-600 dark:text-emerald-400"
-                        : "text-red-600 dark:text-red-400"
-                    }`}
+              sorted.map((h) => {
+                const m = metrics.get(h.id);
+                const selected = selectedId === h.id;
+                const pnl = m?.pnlInr ?? null;
+                const positive = (pnl ?? 0) >= 0;
+                return (
+                  <TableRow
+                    key={h.id}
+                    onClick={() => onSelect?.(h)}
+                    aria-selected={selected}
+                    className={cn(
+                      "cursor-pointer border-border/30 transition-colors",
+                      selected
+                        ? "bg-primary/5 hover:bg-primary/10"
+                        : "hover:bg-accent/40",
+                    )}
                   >
-                    {formatINR(h.unrealized_pnl_inr)}
-                    {h.unrealized_pnl_pct != null ? (
-                      <div className="text-xs">
-                        {formatPct(h.unrealized_pnl_pct)}
+                    <TableCell
+                      className={cn(
+                        "border-l-2",
+                        selected ? "border-l-primary" : "border-l-transparent",
+                      )}
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-semibold">
+                          {h.symbol ?? h.isin ?? "—"}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {holdingDisplayName(h)}
+                        </span>
                       </div>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {onClosePosition && !h.closed_at ? (
-                      // Closing the holding creates a linked post-mortem journal
-                      // stub server-side and returns its id, which the page
-                      // wiring uses to open the post-mortem dialog.
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={closingHoldingId === h.id}
-                        onClick={() => onClosePosition(h)}
-                        title="Close this position and start its post-mortem"
-                      >
-                        {closingHoldingId === h.id ? "Closing…" : "Close"}
-                      </Button>
-                    ) : h.closed_at ? (
-                      <Badge variant="secondary" className="text-[10px]">
-                        Closed
-                      </Badge>
-                    ) : null}
-                  </TableCell>
-                </TableRow>
-              ))
+                    </TableCell>
+                    <TableCell className="font-label text-xs uppercase tracking-wide text-muted-foreground">
+                      {assetClassLabel(h.category)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">
+                      {m?.pricePerUnitInr != null
+                        ? formatINR(m.pricePerUnitInr, 2)
+                        : "—"}
+                      {m && !m.marked ? (
+                        <div
+                          className="font-label text-[10px] uppercase tracking-wide text-amber-600 dark:text-amber-400"
+                          title="No live mark — showing cost basis"
+                        >
+                          at cost
+                        </div>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">
+                      {m?.avgCostInr != null
+                        ? formatINR(m.avgCostInr, 2)
+                        : "—"}
+                    </TableCell>
+                    <TableCell
+                      className={cn(
+                        "text-right font-mono font-semibold tabular-nums",
+                        pnl == null
+                          ? "text-muted-foreground"
+                          : positive
+                            ? "text-emerald-700 dark:text-emerald-400"
+                            : "text-red-700 dark:text-red-400",
+                      )}
+                    >
+                      {pnl != null
+                        ? `${pnl >= 0 ? "+" : ""}${formatINR(pnl)}`
+                        : "—"}
+                      {m?.pnlPct != null ? (
+                        <div className="text-[11px] font-normal">
+                          {formatPct(m.pnlPct)}
+                        </div>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
       </div>
 
       {/* Mobile cards */}
-      <div className="grid gap-3 md:hidden">
+      <div className="grid flex-1 gap-3 overflow-auto p-4 md:hidden">
         {sorted.length === 0 ? (
           <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
             No holdings match your filter.
           </div>
         ) : (
           sorted.map((h) => {
-            const positive = (h.unrealized_pnl_inr ?? 0) >= 0;
+            const m = metrics.get(h.id);
+            const selected = selectedId === h.id;
+            const pnl = m?.pnlInr ?? null;
+            const positive = (pnl ?? 0) >= 0;
             return (
-              <div
+              <button
                 key={h.id}
-                className="rounded-lg border bg-card p-4 text-card-foreground shadow-sm"
+                type="button"
+                onClick={() => onSelect?.(h)}
+                aria-pressed={selected}
+                className={cn(
+                  "border bg-card p-4 text-left text-card-foreground transition-colors",
+                  selected
+                    ? "border-l-2 border-l-primary bg-primary/5"
+                    : "hover:bg-accent/40",
+                )}
               >
                 <div className="flex items-center justify-between">
-                  <div className="font-medium">{h.symbol ?? h.isin ?? "—"}</div>
-                  <Badge variant="outline">{h.category}</Badge>
+                  <div className="flex flex-col">
+                    <span className="font-semibold">
+                      {h.symbol ?? h.isin ?? "—"}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {holdingDisplayName(h)}
+                    </span>
+                  </div>
+                  <span className="font-label text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {assetClassLabel(h.category)}
+                  </span>
                 </div>
-                <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
                   <div>
-                    <div className="text-xs text-muted-foreground">Qty</div>
-                    <div className="tabular-nums">{h.qty}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Cost</div>
-                    <div className="tabular-nums">
-                      {formatINR(h.cost_basis_inr)}
+                    <div className="eyebrow">Price</div>
+                    <div className="font-mono tabular-nums">
+                      {m?.pricePerUnitInr != null
+                        ? formatINR(m.pricePerUnitInr, 2)
+                        : "—"}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-muted-foreground">Value</div>
-                    <div className="tabular-nums">
-                      {formatINR(h.market_value_inr)}
+                    <div className="eyebrow">Avg cost</div>
+                    <div className="font-mono tabular-nums">
+                      {m?.avgCostInr != null ? formatINR(m.avgCostInr, 2) : "—"}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-muted-foreground">P&amp;L</div>
+                    <div className="eyebrow">P&amp;L</div>
                     <div
-                      className={`tabular-nums ${
-                        positive
-                          ? "text-emerald-600 dark:text-emerald-400"
-                          : "text-red-600 dark:text-red-400"
-                      }`}
+                      className={cn(
+                        "font-mono font-semibold tabular-nums",
+                        pnl == null
+                          ? "text-muted-foreground"
+                          : positive
+                            ? "text-emerald-700 dark:text-emerald-400"
+                            : "text-red-700 dark:text-red-400",
+                      )}
                     >
-                      {formatINR(h.unrealized_pnl_inr)}
+                      {pnl != null
+                        ? `${pnl >= 0 ? "+" : ""}${formatINR(pnl)}`
+                        : "—"}
                     </div>
                   </div>
                 </div>
-                {onClosePosition && !h.closed_at ? (
-                  // See the desktop branch above: close creates the post-mortem
-                  // stub and returns its journal id.
-                  <div className="mt-3 flex justify-end">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={closingHoldingId === h.id}
-                      onClick={() => onClosePosition(h)}
-                      title="Close this position and start its post-mortem"
-                    >
-                      {closingHoldingId === h.id ? "Closing…" : "Close"}
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
+              </button>
             );
           })
         )}
@@ -425,16 +464,20 @@ function SortHeader({
   const active = sortKey === k;
   const Icon = active ? (dir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
   return (
-    <TableHead className={align === "right" ? "text-right" : undefined}>
+    <TableHead
+      className={align === "right" ? "text-right" : undefined}
+      aria-sort={
+        active ? (dir === "asc" ? "ascending" : "descending") : "none"
+      }
+    >
       <button
         type="button"
         onClick={() => onClick(k)}
         className={cn(
-          "inline-flex items-center gap-1 text-xs font-medium",
+          "inline-flex items-center gap-1 font-label text-[11px] uppercase tracking-wider",
           align === "right" && "flex-row-reverse",
           active ? "text-foreground" : "text-muted-foreground",
         )}
-        aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}
       >
         {label}
         <Icon className="h-3 w-3" />

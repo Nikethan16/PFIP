@@ -32,8 +32,8 @@ export function ReliabilityDiagram({
   const data = React.useMemo(
     () =>
       bins.map((b) => ({
-        x: b.predicted,
-        y: b.observed,
+        x: b.predicted_mean,
+        y: b.observed_freq,
         count: b.count,
       })),
     [bins],
@@ -48,13 +48,18 @@ export function ReliabilityDiagram({
     <div className="relative w-full" style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
         <ScatterChart margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="hsl(var(--border))"
+            opacity={0.4}
+          />
           <XAxis
             type="number"
             dataKey="x"
             domain={[0, 1]}
             tickFormatter={(v) => `${Math.round(Number(v) * 100)}%`}
             label={{ value: "Predicted", position: "insideBottom", offset: -2 }}
+            stroke="hsl(var(--muted-foreground))"
             fontSize={11}
           />
           <YAxis
@@ -63,6 +68,7 @@ export function ReliabilityDiagram({
             domain={[0, 1]}
             tickFormatter={(v) => `${Math.round(Number(v) * 100)}%`}
             label={{ value: "Observed", angle: -90, position: "insideLeft" }}
+            stroke="hsl(var(--muted-foreground))"
             fontSize={11}
           />
           <ZAxis type="number" dataKey="count" range={[50, 400]} />
@@ -91,7 +97,8 @@ export function ReliabilityDiagram({
             <Line
               type="linear"
               dataKey="y"
-              stroke="hsl(var(--muted-foreground))"
+              stroke="hsl(var(--primary))"
+              strokeOpacity={0.5}
               strokeDasharray="4 4"
               strokeWidth={1}
               dot={false}

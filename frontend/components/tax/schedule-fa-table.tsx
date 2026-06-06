@@ -52,40 +52,47 @@ export function ScheduleFaTable({ rows, usdByRow }: ScheduleFaTableProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((row, i) => (
-              <TableRow key={`${row.country}-${row.description}-${i}`}>
-                <TableCell className="font-medium uppercase">
-                  {row.country}
-                </TableCell>
-                <TableCell>
-                  <div>{row.description}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {row.asset_type}
-                  </div>
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {formatISTDate(row.acquired_at)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {usdByRow?.[i] != null
-                    ? new Intl.NumberFormat("en-US", {
-                        style: "currency",
-                        currency: "USD",
-                        maximumFractionDigits: 2,
-                      }).format(usdByRow[i]!)
-                    : "—"}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatINR(row.peak_value_inr)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatINR(row.closing_value_inr)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatINR(row.income_inr)}
-                </TableCell>
-              </TableRow>
-            ))}
+            {rows.map((row, i) => {
+              const assetLabel = row.symbol ?? row.isin ?? "—";
+              const dividendsInr = 0; // backend exposes USD dividends only here
+              const peakUsd = usdByRow?.[i] ?? row.peak_balance_usd;
+              return (
+                <TableRow key={`${row.country}-${assetLabel}-${i}`}>
+                  <TableCell className="font-medium uppercase">
+                    {row.country}
+                  </TableCell>
+                  <TableCell>
+                    <div>{assetLabel}</div>
+                    {row.isin && row.symbol ? (
+                      <div className="text-xs text-muted-foreground">
+                        {row.isin}
+                      </div>
+                    ) : null}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {row.acquired_on ? formatISTDate(row.acquired_on) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {peakUsd != null
+                      ? new Intl.NumberFormat("en-US", {
+                          style: "currency",
+                          currency: "USD",
+                          maximumFractionDigits: 2,
+                        }).format(peakUsd)
+                      : "—"}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatINR(row.peak_balance_inr)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatINR(row.closing_balance_inr)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatINR(dividendsInr)}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
@@ -97,7 +104,9 @@ export function ScheduleFaTable({ rows, usdByRow }: ScheduleFaTableProps) {
             className="rounded-md border bg-card p-3"
           >
             <div className="flex items-center justify-between">
-              <span className="font-medium">{row.description}</span>
+              <span className="font-medium">
+                {row.symbol ?? row.isin ?? "—"}
+              </span>
               <span className="text-[11px] uppercase text-muted-foreground">
                 {row.country}
               </span>
@@ -106,22 +115,30 @@ export function ScheduleFaTable({ rows, usdByRow }: ScheduleFaTableProps) {
               <div>
                 <div className="text-muted-foreground">Peak INR</div>
                 <div className="tabular-nums">
-                  {formatINR(row.peak_value_inr)}
+                  {formatINR(row.peak_balance_inr)}
                 </div>
               </div>
               <div>
                 <div className="text-muted-foreground">Closing INR</div>
                 <div className="tabular-nums">
-                  {formatINR(row.closing_value_inr)}
+                  {formatINR(row.closing_balance_inr)}
                 </div>
               </div>
               <div>
-                <div className="text-muted-foreground">Income</div>
-                <div className="tabular-nums">{formatINR(row.income_inr)}</div>
+                <div className="text-muted-foreground">Proceeds USD</div>
+                <div className="tabular-nums">
+                  {new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: "USD",
+                    maximumFractionDigits: 0,
+                  }).format(row.gross_proceeds_usd)}
+                </div>
               </div>
               <div>
                 <div className="text-muted-foreground">Acquired</div>
-                <div>{formatISTDate(row.acquired_at)}</div>
+                <div>
+                  {row.acquired_on ? formatISTDate(row.acquired_on) : "—"}
+                </div>
               </div>
             </div>
           </div>

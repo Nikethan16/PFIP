@@ -29,7 +29,7 @@ import {
   PreTradeChecklistSchema,
   ProblemSchema,
   RegimeStateSchema,
-  ScheduleFARowSchema,
+  ScheduleFAResponseSchema,
   SignalSchema,
   TaxSummarySchema,
   WatchlistItemSchema,
@@ -44,6 +44,7 @@ import {
   type PreTradeChecklist,
   type RegimeState,
   type ScheduleFARow,
+  type ScheduleFAResponse,
   type Signal,
   type TaxSummary,
   type WatchlistItem,
@@ -61,6 +62,19 @@ const RAW_API_BASE =
 const API_BASE = RAW_API_BASE.replace(/\/+$/, "").endsWith("/api/v1")
   ? RAW_API_BASE.replace(/\/+$/, "")
   : `${RAW_API_BASE.replace(/\/+$/, "")}/api/v1`;
+
+/**
+ * Current Indian fiscal year as "YYYY-YY" (Apr 1 – Mar 31). The backend's
+ * `/tax/*` endpoints take `fy` as a REQUIRED query param, so callers that don't
+ * supply one fall back to this rather than 422-ing.
+ */
+export function currentFy(now: Date = new Date()): string {
+  const y = now.getFullYear();
+  // Months are 0-based; Jan–Mar (0–2) belong to the FY that started the prior year.
+  const startYear = now.getMonth() >= 3 ? y : y - 1;
+  const endYY = String((startYear + 1) % 100).padStart(2, "0");
+  return `${startYear}-${endYY}`;
+}
 
 export class ApiError extends Error {
   public readonly status: number;
@@ -223,6 +237,66 @@ export function useAssetNews(symbol: string): UseQueryResult<NewsItem[]> {
   });
 }
 
+/**
+ * Latest computed feature row for an asset. Backend: `GET /assets/{symbol}/features`.
+ * The canonical typed indicators live under `features`; anything else the
+ * compute flow emitted is in the `extras` JSONB blob. When the Prefect compute
+ * flow hasn't run for this symbol yet the backend returns a well-formed payload
+ * with `as_of: null` and every feature null (rather than 404) — the schema below
+ * mirrors that so the hook never throws on a fresh install.
+ */
+export interface AssetFeatures {
+  symbol: string;
+  timeframe: string;
+  as_of: string | null;
+  source: string | null;
+  features: {
+    rsi_14: number | null;
+    macd: number | null;
+    macd_signal: number | null;
+    macd_hist: number | null;
+    atr_14: number | null;
+    return_7d: number | null;
+    volatility_30d: number | null;
+  };
+  extras: Record<string, unknown>;
+}
+
+const AssetFeaturesSchema = z.object({
+  symbol: z.string(),
+  timeframe: z.string(),
+  as_of: z.string().nullable(),
+  source: z.string().nullable(),
+  features: z.object({
+    rsi_14: z.number().nullable(),
+    macd: z.number().nullable(),
+    macd_signal: z.number().nullable(),
+    macd_hist: z.number().nullable(),
+    atr_14: z.number().nullable(),
+    return_7d: z.number().nullable(),
+    volatility_30d: z.number().nullable(),
+  }),
+  extras: z.record(z.string(), z.unknown()).default({}),
+});
+
+export function useAssetFeatures(
+  symbol: string,
+  opts: { timeframe?: string } = {},
+): UseQueryResult<AssetFeatures> {
+  const token = useAuthToken();
+  const timeframe = opts.timeframe ?? "1d";
+  return useQuery<AssetFeatures>({
+    queryKey: ["features", symbol, timeframe],
+    queryFn: () =>
+      apiFetch<AssetFeatures>(
+        `/assets/${encodeURIComponent(symbol)}/features?timeframe=${encodeURIComponent(timeframe)}`,
+        AssetFeaturesSchema,
+        { token },
+      ),
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useWatchlist(): UseQueryResult<WatchlistItem[]> {
   const token = useAuthToken();
   return useQuery<WatchlistItem[]>({
@@ -240,15 +314,21 @@ export function useWatchlist(): UseQueryResult<WatchlistItem[]> {
 export function useAddWatchlist(): UseMutationResult<
   WatchlistItem,
   unknown,
-  { symbol: string; label?: string }
+  { symbol: string; market?: string; note?: string }
 > {
   const token = useAuthToken();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (vars) =>
+      // Backend `WatchlistCreate` is strict and requires { symbol, market, note? }.
+      // `market` defaults to the symbol when the caller doesn't classify it.
       apiFetch<WatchlistItem>(`/watchlist`, WatchlistItemSchema, {
         method: "POST",
-        body: vars,
+        body: {
+          symbol: vars.symbol,
+          market: vars.market ?? vars.symbol,
+          ...(vars.note != null ? { note: vars.note } : {}),
+        },
         token,
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["watchlist"] }),
@@ -438,13 +518,32 @@ export function useMorningBrief(date?: string): UseQueryResult<MorningBrief> {
   const token = useAuthToken();
   return useQuery<MorningBrief>({
     queryKey: ["morning-brief", date ?? "today"],
-    queryFn: () => {
+    queryFn: async () => {
+      // Backend `GET /agent/morning-brief` returns a PlainTextResponse (rendered
+      // Markdown), NOT JSON — see CONTRACTS.md §6. apiFetch assumes JSON, so we
+      // fetch the text directly and adapt it to the MorningBrief shape the card
+      // renders. `headline_items` isn't produced by this endpoint.
       const qs = date ? `?date=${date}` : "";
-      return apiFetch<MorningBrief>(
-        `/agent/morning-brief${qs}`,
-        MorningBriefSchema,
-        { token },
-      );
+      const resp = await fetch(`${API_BASE}/agent/morning-brief${qs}`, {
+        headers: {
+          Accept: "text/plain, text/markdown, */*",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (resp.status === 401) {
+        await signOut({ callbackUrl: "/login" });
+        throw new ApiError("Unauthorized", 401, null);
+      }
+      if (!resp.ok) {
+        throw new ApiError(`HTTP ${resp.status}`, resp.status, null);
+      }
+      const markdown = await resp.text();
+      return MorningBriefSchema.parse({
+        date: (date ?? new Date().toISOString().slice(0, 10)),
+        markdown,
+        headline_items: [],
+        generated_at: new Date().toISOString(),
+      });
     },
     staleTime: 10 * 60_000,
   });
@@ -469,10 +568,13 @@ export function useTaxSummary(fy?: string): UseQueryResult<TaxSummary> {
   return useQuery<TaxSummary>({
     queryKey: ["tax", "summary", fy ?? "current"],
     queryFn: () => {
-      const qs = fy ? `?fy=${fy}` : "";
-      return apiFetch<TaxSummary>(`/tax/summary${qs}`, TaxSummarySchema, {
-        token,
-      });
+      // `fy` is REQUIRED server-side; default to the current Indian FY.
+      const resolvedFy = fy ?? currentFy();
+      return apiFetch<TaxSummary>(
+        `/tax/summary?fy=${encodeURIComponent(resolvedFy)}`,
+        TaxSummarySchema,
+        { token },
+      );
     },
     staleTime: 10 * 60_000,
   });
@@ -671,13 +773,17 @@ export function useScheduleFA(fy?: string): UseQueryResult<ScheduleFARow[]> {
   const token = useAuthToken();
   return useQuery<ScheduleFARow[]>({
     queryKey: ["tax", "schedule-fa", fy ?? "current"],
-    queryFn: () => {
-      const qs = fy ? `?fy=${fy}` : "";
-      return apiFetch<ScheduleFARow[]>(
-        `/tax/schedule-fa${qs}`,
-        z.array(ScheduleFARowSchema),
+    queryFn: async () => {
+      // `fy` is REQUIRED server-side; default to the current Indian FY.
+      const resolvedFy = fy ?? currentFy();
+      // Backend returns a `{ disclaimer, fy, schedule, rows }` envelope, not a
+      // bare array. Validate the envelope, then hand the page just the rows.
+      const env = await apiFetch<ScheduleFAResponse>(
+        `/tax/schedule-fa?fy=${encodeURIComponent(resolvedFy)}`,
+        ScheduleFAResponseSchema,
         { token },
       );
+      return env.rows;
     },
     staleTime: 30 * 60_000,
   });
@@ -728,6 +834,21 @@ export function useJournalPatterns(
   });
 }
 
+// The 10 Appendix-B keys the backend's JournalEntryCreate requires (all must be
+// present and True). Keep in lockstep with backend journal.py::_REQUIRED_CHECKLIST_KEYS.
+const _REQUIRED_CHECKLIST_KEYS = [
+  "regime_check",
+  "risk_size_ok",
+  "thesis_written",
+  "exit_plan_defined",
+  "invalidation_set",
+  "correlation_check",
+  "liquidity_check",
+  "tax_impact_considered",
+  "news_check",
+  "regime_alignment",
+] as const;
+
 export function useCreateJournalEntry(): UseMutationResult<
   JournalEntry,
   unknown,
@@ -737,11 +858,40 @@ export function useCreateJournalEntry(): UseMutationResult<
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (vars) => {
-      // Validate the checklist client-side before firing the request.
-      PreTradeChecklistSchema.parse(vars.pre_trade);
+      // Validate the rich UI checklist client-side, then translate it into the
+      // backend's flat JournalEntryCreate contract: { symbol, direction, thesis,
+      // pre_trade_checklist: {key: bool}, notes? }. The backend stores a plain
+      // boolean map keyed by the 10 Appendix-B keys (NOT the rich object).
+      const pt = PreTradeChecklistSchema.parse(vars.pre_trade);
+      const checklist: Record<string, boolean> = {
+        regime_check: pt.regime_alignment,
+        risk_size_ok: pt.position_size_pct > 0 && pt.position_size_pct <= 100,
+        thesis_written: pt.thesis.trim().length >= 10,
+        exit_plan_defined:
+          pt.stop_loss_pct != null || pt.invalidation.trim().length > 0,
+        invalidation_set: pt.invalidation.trim().length > 0,
+        correlation_check: pt.correlation_check,
+        liquidity_check: pt.liquidity_check,
+        tax_impact_considered: pt.tax_impact_considered,
+        news_check: pt.news_check,
+        regime_alignment: pt.regime_alignment,
+      };
+      const notes = [
+        `Invalidation: ${pt.invalidation}`,
+        `Size ${pt.position_size_pct}% · Horizon ${pt.time_horizon} · Conviction ${pt.conviction_score}/10`,
+        pt.stop_loss_pct != null ? `Stop ${pt.stop_loss_pct}%` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
       return apiFetch<JournalEntry>(`/journal/entries`, JournalEntrySchema, {
         method: "POST",
-        body: vars,
+        body: {
+          symbol: vars.asset,
+          direction: vars.direction,
+          thesis: pt.thesis,
+          pre_trade_checklist: checklist,
+          notes,
+        },
         token,
       });
     },
@@ -758,13 +908,27 @@ export function useCloseJournalEntry(): UseMutationResult<
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, post_mortem }) => {
-      PostMortemSchema.parse(post_mortem);
+      const pm = PostMortemSchema.parse(post_mortem);
+      // Backend CloseRequest expects a free-text `post_mortem` string, not the
+      // rich object. Serialise the structured form into markdown so the journal
+      // stores a single, human-readable reflection (matches /journal/patterns,
+      // which clusters on the post-mortem text).
+      const markdown = [
+        `**P&L**: ${pm.outcome_pnl_inr} INR (${pm.outcome_pnl_pct.toFixed(2)}%)`,
+        `**Thesis correct**: ${pm.thesis_correct ? "yes" : "no"} · **Followed plan**: ${pm.followed_plan ? "yes" : "no"}`,
+        `**What worked**: ${pm.what_worked}`,
+        `**What didn't**: ${pm.what_didnt}`,
+        `**Lessons**: ${pm.lessons}`,
+        pm.next_actions ? `**Next actions**: ${pm.next_actions}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
       return apiFetch<JournalEntry>(
         `/journal/entries/${id}/close`,
         JournalEntrySchema,
         {
           method: "POST",
-          body: { post_mortem },
+          body: { post_mortem: markdown },
           token,
         },
       );

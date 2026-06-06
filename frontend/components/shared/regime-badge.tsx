@@ -38,8 +38,14 @@ const LABELS: Record<Regime, string> = {
   distribution: "Distrib",
 };
 
+// Neutral, unlabelled state surfaced by the backend when a symbol has no
+// regime row yet (`regime: "unknown"`). Rendered as a muted "No regime" pill.
+const UNKNOWN_STYLE =
+  "bg-muted text-muted-foreground border-border";
+const UNKNOWN_LABEL = "No regime";
+
 interface RegimeBadgeProps {
-  regime: Regime;
+  regime: Regime | "unknown";
   className?: string;
   size?: "sm" | "md";
   showConfidence?: number;
@@ -51,18 +57,21 @@ export function RegimeBadge({
   size = "sm",
   showConfidence,
 }: RegimeBadgeProps) {
+  const isUnknown = regime === "unknown";
+  const style = isUnknown ? UNKNOWN_STYLE : REGIME_STYLES[regime];
+  const label = isUnknown ? UNKNOWN_LABEL : LABELS[regime];
   return (
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded-full border font-medium uppercase tracking-wider",
-        REGIME_STYLES[regime],
+        style,
         size === "sm" ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-xs",
         className,
       )}
-      aria-label={`Regime: ${LABELS[regime]}`}
+      aria-label={`Regime: ${label}`}
     >
-      <span>{LABELS[regime]}</span>
-      {showConfidence != null ? (
+      <span>{isUnknown ? "—" : label}</span>
+      {!isUnknown && showConfidence != null ? (
         <span className="font-normal opacity-75">
           {Math.round(showConfidence * 100)}%
         </span>

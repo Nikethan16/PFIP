@@ -18,8 +18,15 @@ interface KpiProps {
   icon?: React.ReactNode;
   loading?: boolean;
   className?: string;
+  /** Extra classes on the big value (e.g. to tint a P&L figure). */
+  valueClassName?: string;
   /** Optional trailing slot — e.g. sparkline or badge. */
   trailing?: React.ReactNode;
+  /**
+   * Draws a flush amber left-stripe (Sahara "Risk Status" treatment) to single
+   * out the most important tile in the strip.
+   */
+  accent?: boolean;
   /**
    * Freshness indicator dot rendered inline before the label.
    * Mirrors the Stitch dashboard pattern where every KPI carries a
@@ -29,13 +36,15 @@ interface KpiProps {
 }
 
 /**
- * Dashboard hero KPI tile.
+ * Dashboard hero KPI tile — Sahara institutional-terminal styling.
  *
  *   ┌──────────────────────┐
- *   │ LABEL          [icn] │
- *   │ 1,23,45,000          │
- *   │ ↑ 1.42%  +12k today  │
+ *   │ NET WORTH       [icn] │   ← Archivo Narrow uppercase eyebrow
+ *   │ ₹1,23,45,000          │   ← big JetBrains Mono number
+ *   │ ↑ 1.42%  vs cost basis│
  *   └──────────────────────┘
+ *
+ * Thin warm border, square corners, amber accent number when neutral.
  */
 export function Kpi({
   label,
@@ -46,7 +55,9 @@ export function Kpi({
   icon,
   loading,
   className,
+  valueClassName,
   trailing,
+  accent,
   freshness,
 }: KpiProps) {
   const resolvedTone =
@@ -61,9 +72,9 @@ export function Kpi({
 
   const toneClass =
     resolvedTone === "up"
-      ? "text-emerald-600 dark:text-emerald-400"
+      ? "text-emerald-700 dark:text-emerald-400"
       : resolvedTone === "down"
-        ? "text-red-600 dark:text-red-400"
+        ? "text-red-700 dark:text-red-400"
         : "text-muted-foreground";
 
   const Arrow =
@@ -84,15 +95,21 @@ export function Kpi({
           : null;
 
   return (
-    <div className={cn("kpi-card p-4 transition-colors hover:bg-accent/30", className)}>
+    <div
+      className={cn(
+        "flex flex-col gap-1 border border-border/70 bg-card p-5 transition-colors hover:border-foreground/20",
+        accent && "border-l-2 border-l-primary",
+        className,
+      )}
+    >
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-1.5 eyebrow">
+        <div className="eyebrow flex items-center gap-1.5">
           {freshnessClass ? (
             <span className={cn("freshness-dot !m-0", freshnessClass)} />
           ) : null}
           {label}
         </div>
-        {icon ? <div className="text-muted-foreground">{icon}</div> : null}
+        {icon ? <div className="text-muted-foreground/70">{icon}</div> : null}
       </div>
       {loading ? (
         <div className="mt-2 space-y-1.5">
@@ -103,30 +120,32 @@ export function Kpi({
         <>
           <div
             className={cn(
-              "mt-1.5 font-mono font-semibold tracking-tight tabular-nums",
-              "text-2xl",
+              "mt-1 font-mono text-2xl font-semibold tracking-tight tabular-nums",
               // When the caller hasn't pinned a tone, prefer the institutional
-              // teal accent on the headline number (Stitch convention).
+              // amber accent on the headline number (Sahara convention).
               tone === undefined && deltaPct == null
-                ? "text-primary"
+                ? "text-foreground"
                 : "text-foreground",
+              valueClassName,
             )}
           >
             {value}
           </div>
-          <div className="mt-1 flex items-center justify-between gap-2">
+          <div className="mt-0.5 flex items-center justify-between gap-2">
             <div className={cn("flex items-center gap-1 text-xs", toneClass)}>
               {deltaPct != null ? (
                 <>
                   <Arrow className="h-3 w-3" />
-                  <span className="font-num font-medium">
+                  <span className="font-mono font-medium tabular-nums">
                     {deltaPct > 0 ? "+" : ""}
                     {deltaPct.toFixed(2)}%
                   </span>
                 </>
               ) : null}
               {hint ? (
-                <span className="text-muted-foreground">{hint}</span>
+                <span className="font-label uppercase tracking-wide text-muted-foreground/80">
+                  {hint}
+                </span>
               ) : null}
             </div>
             {trailing}

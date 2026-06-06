@@ -56,17 +56,19 @@ export function ReliabilityCard({
   history,
   sharpness,
 }: ReliabilityCardProps) {
-  // Sharpness fallback: mean |predicted - 0.5| weighted by bin count.
+  // Prefer the backend-computed sharpness; fall back to the prop, then to a
+  // local mean |predicted - 0.5| weighted by bin count.
   const computedSharpness = React.useMemo(() => {
     if (sharpness != null) return sharpness;
+    if (report.sharpness != null) return report.sharpness;
     const total = report.reliability.reduce((a, b) => a + b.count, 0);
     if (!total) return 0;
     const sum = report.reliability.reduce(
-      (a, b) => a + Math.abs(b.predicted - 0.5) * b.count,
+      (a, b) => a + Math.abs(b.predicted_mean - 0.5) * b.count,
       0,
     );
     return sum / total;
-  }, [report.reliability, sharpness]);
+  }, [report.reliability, report.sharpness, sharpness]);
 
   const suspended = history?.suspended ?? report.ece > 0.15;
 
@@ -85,7 +87,10 @@ export function ReliabilityCard({
             </CardTitle>
             <CardDescription>
               v{report.model_version} · {report.n_samples.toLocaleString()}{" "}
-              samples · {formatIST(report.evaluated_at, "dd MMM HH:mm")}
+              samples
+              {report.created_at
+                ? ` · ${formatIST(report.created_at, "dd MMM HH:mm")}`
+                : ""}
             </CardDescription>
           </div>
           <div className="flex flex-col gap-1">

@@ -2,9 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 
 import { Providers } from "@/components/providers";
-import { MobileNav } from "@/components/nav/mobile-nav";
-import { Sidebar } from "@/components/nav/sidebar";
-import { TopBar } from "@/components/nav/topbar";
+import { AppShell } from "@/components/app-shell";
 
 import "./globals.css";
 
@@ -40,18 +38,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased`}>
         <Providers>
-          <div className="flex min-h-dvh w-full">
-            <Sidebar />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <TopBar />
-              <main className="flex-1 pb-20 md:pb-0">
-                <div className="mx-auto w-full max-w-[1400px] px-3 py-4 sm:px-6 lg:px-8">
-                  {children}
-                </div>
-              </main>
-              <MobileNav />
-            </div>
-          </div>
+          <AppShell>{children}</AppShell>
         </Providers>
       </body>
     </html>

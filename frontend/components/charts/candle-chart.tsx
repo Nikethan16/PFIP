@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import {
+  Area,
   Bar,
   CartesianGrid,
   ComposedChart,
@@ -21,22 +22,16 @@ interface CandleChartProps {
 }
 
 /**
- * OHLCV composed chart:
- *   - high-low range as a thin translucent bar (candle-shadow proxy)
- *   - close as a bold line overlay
- *   - volume as a secondary (axis right) faint bar
- *
- * Tooltip shows full OHLC + volume.
+ * OHLCV chart, Sahara-styled: a flowing amber close-line over a soft
+ * amber→transparent area fill, with the high-low range and volume kept as
+ * faint secondary bars. Reads like the editorial price chart in the mockup
+ * while the tooltip still surfaces the full OHLC + volume.
  */
 export function CandleChart({ data, height = 280 }: CandleChartProps) {
   const shaped = React.useMemo(() => {
     return data.map((row) => ({
       ...row,
       range: [row.low, row.high] as [number, number],
-      body: [Math.min(row.open, row.close), Math.max(row.open, row.close)] as [
-        number,
-        number,
-      ],
       up: row.close >= row.open,
     }));
   }, [data]);
@@ -44,7 +39,7 @@ export function CandleChart({ data, height = 280 }: CandleChartProps) {
   if (!data.length) {
     return (
       <div
-        className="flex w-full items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground"
+        className="flex w-full items-center justify-center border border-dashed text-sm text-muted-foreground"
         style={{ height }}
       >
         No candle data available yet.
@@ -58,13 +53,22 @@ export function CandleChart({ data, height = 280 }: CandleChartProps) {
         data={shaped}
         margin={{ top: 8, right: 36, left: 0, bottom: 0 }}
       >
-        <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+        <defs>
+          <linearGradient id="pfip-close-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.18} />
+            <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" opacity={0.12} vertical={false} />
         <XAxis
           dataKey="time"
           tickFormatter={(value: string) => formatISTDate(value)}
           stroke="currentColor"
           fontSize={11}
           minTickGap={24}
+          tickLine={false}
+          axisLine={false}
+          className="font-mono text-muted-foreground"
         />
         <YAxis
           yAxisId="price"
@@ -72,7 +76,10 @@ export function CandleChart({ data, height = 280 }: CandleChartProps) {
           stroke="currentColor"
           fontSize={11}
           width={52}
+          tickLine={false}
+          axisLine={false}
           tickFormatter={(v) => Number(v).toFixed(0)}
+          className="font-mono text-muted-foreground"
         />
         <YAxis
           yAxisId="vol"
@@ -81,42 +88,38 @@ export function CandleChart({ data, height = 280 }: CandleChartProps) {
           hide
         />
         <Tooltip
-          contentStyle={{
-            background: "hsl(var(--popover))",
-            border: "1px solid hsl(var(--border))",
-            borderRadius: 6,
-            fontSize: 12,
-          }}
+          cursor={{ stroke: "hsl(var(--foreground))", strokeOpacity: 0.25, strokeWidth: 1 }}
           labelFormatter={(v) => formatIST(String(v))}
           content={<OhlcTooltip />}
         />
-        {/* Volume */}
+        {/* Volume — faint amber columns on the hidden right axis. */}
         <Bar
           dataKey="volume"
           yAxisId="vol"
           fill="hsl(var(--primary))"
-          fillOpacity={0.12}
+          fillOpacity={0.08}
           barSize={3}
           isAnimationActive={false}
         />
-        {/* High-low shadow */}
+        {/* High-low shadow — thin translucent range marker. */}
         <Bar
           dataKey="range"
           yAxisId="price"
           fill="hsl(var(--primary))"
-          fillOpacity={0.2}
+          fillOpacity={0.14}
           barSize={1.5}
           isAnimationActive={false}
         />
-        {/* Candle body (open-close range) */}
-        <Bar
-          dataKey="body"
+        {/* Soft area fill under the close. */}
+        <Area
+          type="monotone"
+          dataKey="close"
           yAxisId="price"
-          fill="hsl(var(--primary))"
-          fillOpacity={0.6}
-          barSize={5}
+          stroke="none"
+          fill="url(#pfip-close-fill)"
           isAnimationActive={false}
         />
+        {/* Close line — the hero amber stroke. */}
         <Line
           type="monotone"
           dataKey="close"
@@ -149,8 +152,8 @@ function OhlcTooltip({
   if (!row) return null;
   const up = row.close >= row.open;
   return (
-    <div className="rounded-md border bg-popover p-2 text-[11px] text-popover-foreground shadow-md">
-      <div className="mb-1 text-[10px] font-medium text-muted-foreground">
+    <div className="border bg-popover p-2 font-mono text-[11px] text-popover-foreground shadow-md">
+      <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
         {formatIST(String(label))}
       </div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 tabular-nums">

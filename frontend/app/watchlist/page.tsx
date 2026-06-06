@@ -1,7 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { LineChart as LineIcon, Plus, Trash2 } from "lucide-react";
+import {
+  LineChart as LineIcon,
+  Plus,
+  Trash2,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react";
 import {
   Line,
   LineChart,
@@ -33,7 +39,7 @@ import { cn, formatIST, formatPct } from "@/lib/utils";
 import { toast } from "@/components/ui/toast";
 import { RegimeBadge } from "@/components/shared/regime-badge";
 import { EmptyState } from "@/components/shared/empty-state";
-import { PageHeader } from "@/components/shared/page-header";
+import { FreshnessBadge } from "@/components/shared/freshness-badge";
 import { Sparkline } from "@/components/charts/sparkline";
 import type { WatchlistItem } from "@/lib/contracts";
 
@@ -64,9 +70,11 @@ export default function WatchlistPage() {
 
   const onAdd = async (symbol: string, label?: string) => {
     try {
+      const sym = symbol.trim().toUpperCase();
       await add.mutateAsync({
-        symbol: symbol.trim().toUpperCase(),
-        label: label?.trim() || undefined,
+        symbol: sym,
+        // The UI's free-text "label" maps to the backend `note` column.
+        note: label?.trim() || undefined,
       });
       toast.success("Added to watchlist");
       setOpenAdd(false);
@@ -87,8 +95,7 @@ export default function WatchlistPage() {
 
   /**
    * Market scope — `null` means show all. The chip strip below the page
-   * header lets the user narrow to a single market (matches the Stitch
-   * Watchlist spec from `docs/FRONTEND_DESIGN_PROMPT.md` §8.2).
+   * header lets the user narrow to a single market.
    */
   const [scope, setScope] = React.useState<MarketGroup | null>(null);
   const visibleGroups = React.useMemo(() => {
@@ -97,20 +104,35 @@ export default function WatchlistPage() {
   }, [grouped, scope]);
 
   return (
-    <div className="space-y-4">
-      <PageHeader
-        title="Watchlist"
-        description="Symbols you’re watching. Drives the morning brief + dashboard movers."
-        actions={
-          <Button onClick={() => setOpenAdd(true)} size="sm" className="gap-2">
-            <Plus className="h-3.5 w-3.5" /> Add symbol
-          </Button>
-        }
-      />
+    <div className="space-y-6">
+      {/* Header — serif "Watchlist" editorial banner + add action. */}
+      <div className="page-header flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <div className="eyebrow flex items-center gap-2">
+            Coverage // tracked symbols
+            <FreshnessBadge sources={["yfinance_eod", "jugaad_eod"]} />
+          </div>
+          <h1 className="mt-1 font-serif text-3xl tracking-tight sm:text-4xl">
+            Watchlist
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Symbols you&rsquo;re watching. Drives the morning brief + dashboard
+            movers.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpenAdd(true)}
+          className="inline-flex items-center gap-2 bg-primary px-4 py-2 font-label text-xs uppercase tracking-wider text-primary-foreground transition-all hover:brightness-110"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add symbol
+        </button>
+      </div>
 
       {/* Market scope chips — empty / scope-all when data hasn't loaded yet. */}
       {data && data.length > 0 ? (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-1.5">
           <ScopeChip
             label={`All · ${data.length}`}
             active={scope === null}
@@ -128,49 +150,70 @@ export default function WatchlistPage() {
       ) : null}
 
       {isLoading ? (
-        <div className="grid gap-2 sm:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-20 w-full" />
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-14 w-full" />
           ))}
         </div>
       ) : error ? (
-        <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+        <div className="border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
           Couldn&apos;t load watchlist: {(error as Error).message}
         </div>
       ) : !data?.length ? (
-        <EmptyState
-          title="No items yet"
-          description="Add the tickers you trade or research — we'll surface 24h + 1W deltas and the current regime."
-          action={{
-            label: "Add your first symbol",
-            onClick: () => setOpenAdd(true),
-          }}
-        />
+        <section className="border border-border/60 bg-card p-6">
+          <EmptyState
+            title="No items yet"
+            description="Add the tickers you trade or research — we'll surface the live price, 24h / 1W / 1M deltas and the current regime."
+            action={{
+              label: "Add your first symbol",
+              onClick: () => setOpenAdd(true),
+            }}
+          />
+        </section>
       ) : (
         <div className="space-y-6">
           {visibleGroups.map(([group, items]) => (
-            <section key={group} className="space-y-2">
-              <div className="flex items-baseline justify-between">
+            <section
+              key={group}
+              className="border border-border/60 bg-card"
+            >
+              <div className="flex items-baseline justify-between border-b border-border/40 px-5 py-3">
                 <h2 className="eyebrow text-foreground">{group}</h2>
-                <span className="text-[10px] text-muted-foreground">
-                  {items.length} item{items.length === 1 ? "" : "s"}
+                <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+                  {items.length} symbol{items.length === 1 ? "" : "s"}
                 </span>
               </div>
-              <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {/* Column header — editorial ledger. Hidden on mobile. */}
+              <div className="hidden grid-cols-12 gap-3 border-b border-border/30 px-5 py-2 sm:grid">
+                <span className="eyebrow col-span-4 !text-[10px]">Symbol</span>
+                <span className="eyebrow col-span-2 !text-[10px] text-right">
+                  Last
+                </span>
+                <span className="eyebrow col-span-2 !text-[10px] text-right">
+                  24h
+                </span>
+                <span className="eyebrow col-span-3 !text-[10px]">
+                  30d trend
+                </span>
+                <span className="sr-only col-span-1">Actions</span>
+              </div>
+              <ul className="divide-y divide-border/40">
                 {items.map((item) => (
-                  <WatchlistTile
-                    key={item.id}
+                  <WatchlistRow
+                    key={item.id ?? item.symbol}
                     item={item}
                     onChart={() => setChartFor(item.symbol)}
                     onRemove={() =>
-                      remove.mutate(
-                        { id: item.id },
-                        {
-                          onSuccess: () => toast.success("Removed"),
-                          onError: (err) =>
-                            toast.error((err as Error).message),
-                        },
-                      )
+                      item.id
+                        ? remove.mutate(
+                            { id: item.id },
+                            {
+                              onSuccess: () => toast.success("Removed"),
+                              onError: (err) =>
+                                toast.error((err as Error).message),
+                            },
+                          )
+                        : undefined
                     }
                   />
                 ))}
@@ -191,7 +234,13 @@ export default function WatchlistPage() {
   );
 }
 
-function WatchlistTile({
+/**
+ * One ledger row for a watched symbol. Surfaces the live `last_price` and
+ * `change_pct_24h` returned by GET /watchlist, the regime badge when present,
+ * a 30-day sparkline + 1W/1M deltas derived from candles, and the chart /
+ * remove actions.
+ */
+function WatchlistRow({
   item,
   onChart,
   onRemove,
@@ -200,7 +249,7 @@ function WatchlistTile({
   onChart: () => void;
   onRemove: () => void;
 }) {
-  const change24 = item.change_pct_24h ?? 0;
+  const change24 = item.change_pct_24h ?? null;
   const since = React.useMemo(() => {
     const d = new Date();
     d.setUTCDate(d.getUTCDate() - 30);
@@ -226,91 +275,115 @@ function WatchlistTile({
     if (!first) return null;
     return ((last - first) / first) * 100;
   })();
-  const positive24 = change24 >= 0;
+  const positive24 = (change24 ?? 0) >= 0;
+  const Trend24 = positive24 ? TrendingUp : TrendingDown;
+  const tone24 =
+    change24 == null
+      ? "text-muted-foreground"
+      : positive24
+        ? "text-emerald-700 dark:text-emerald-400"
+        : "text-red-700 dark:text-red-400";
+
   return (
-    <li className="rounded-lg border bg-card p-3 transition-all hover:border-foreground/20 hover:shadow-sm">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="truncate font-mono text-sm font-semibold">
-              {item.symbol}
-            </span>
-            {item.regime ? <RegimeBadge regime={item.regime} /> : null}
-          </div>
-          {item.label ? (
-            <div className="truncate text-[11px] text-muted-foreground">
-              {item.label}
-            </div>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-0.5">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={onChart}
-            aria-label={`Quick chart for ${item.symbol}`}
-            title="Quick chart"
-          >
-            <LineIcon className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-            onClick={onRemove}
-            aria-label={`Remove ${item.symbol}`}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
-
-      <div className="mt-2 flex items-center gap-3">
-        <Sparkline values={closes} width={88} height={30} />
-        <div className="grid flex-1 grid-cols-3 gap-1.5 text-[11px]">
-          <DeltaPill label="1D" value={change24} positive={positive24} />
-          <DeltaPill label="1W" value={wkChange} />
-          <DeltaPill label="1M" value={moChange} />
-        </div>
-      </div>
-
-      {item.last_price != null ? (
-        <div className="mt-2 flex items-center justify-between border-t pt-2">
-          <span className="text-[10px] text-muted-foreground">Last</span>
-          <span className="font-num text-xs font-semibold">
-            {item.last_price.toLocaleString()}
+    <li className="grid grid-cols-12 items-center gap-3 px-5 py-3 hover-tile">
+      {/* Symbol + note + regime */}
+      <div className="col-span-12 min-w-0 sm:col-span-4">
+        <div className="flex items-center gap-2">
+          <span className="truncate font-mono text-sm font-semibold tracking-tight">
+            {item.symbol}
           </span>
+          {item.regime ? <RegimeBadge regime={item.regime} /> : null}
         </div>
-      ) : null}
+        {item.note ? (
+          <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+            {item.note}
+          </div>
+        ) : null}
+      </div>
+
+      {/* Last price */}
+      <div className="col-span-4 text-left sm:col-span-2 sm:text-right">
+        <span className="font-label text-[9px] uppercase tracking-wider text-muted-foreground sm:hidden">
+          Last
+        </span>
+        <div className="font-mono text-sm font-semibold tabular-nums">
+          {item.last_price != null ? item.last_price.toLocaleString() : "—"}
+        </div>
+      </div>
+
+      {/* 24h change */}
+      <div className="col-span-4 text-left sm:col-span-2 sm:text-right">
+        <span className="font-label text-[9px] uppercase tracking-wider text-muted-foreground sm:hidden">
+          24h
+        </span>
+        <div
+          className={cn(
+            "flex items-center gap-1 font-mono text-sm font-semibold tabular-nums sm:justify-end",
+            tone24,
+          )}
+        >
+          {change24 != null ? (
+            <>
+              <Trend24 className="h-3 w-3" />
+              {formatPct(change24)}
+            </>
+          ) : (
+            "—"
+          )}
+        </div>
+      </div>
+
+      {/* 30d sparkline + 1W/1M deltas */}
+      <div className="col-span-8 flex items-center gap-3 sm:col-span-3">
+        <Sparkline values={closes} width={80} height={26} ariaLabel={`${item.symbol} 30d`} />
+        <div className="flex gap-2 font-mono text-[10px] tabular-nums">
+          <Delta label="1W" value={wkChange} />
+          <Delta label="1M" value={moChange} />
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="col-span-4 flex items-center justify-end gap-0.5 sm:col-span-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={onChart}
+          aria-label={`Quick chart for ${item.symbol}`}
+          title="Quick chart"
+        >
+          <LineIcon className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+          onClick={onRemove}
+          aria-label={`Remove ${item.symbol}`}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
     </li>
   );
 }
 
-function DeltaPill({
-  label,
-  value,
-  positive,
-}: {
-  label: string;
-  value: number | null;
-  positive?: boolean;
-}) {
+function Delta({ label, value }: { label: string; value: number | null }) {
   const tone =
     value == null
       ? "text-muted-foreground"
-      : (positive ?? value >= 0)
-        ? "text-emerald-600 dark:text-emerald-400"
-        : "text-red-600 dark:text-red-400";
+      : value >= 0
+        ? "text-emerald-700 dark:text-emerald-400"
+        : "text-red-700 dark:text-red-400";
   return (
-    <div className="rounded border bg-background px-1.5 py-1 text-center">
-      <div className="text-[9px] uppercase tracking-wide text-muted-foreground">
+    <span className="inline-flex flex-col items-center leading-tight">
+      <span className="font-label text-[8px] uppercase tracking-wider text-muted-foreground/80">
         {label}
-      </div>
-      <div className={cn("font-num text-[11px] font-medium tabular-nums", tone)}>
+      </span>
+      <span className={cn("font-medium", tone)}>
         {value == null ? "—" : formatPct(value)}
-      </div>
-    </div>
+      </span>
+    </span>
   );
 }
 
@@ -339,7 +412,9 @@ function AddDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add symbol</DialogTitle>
+          <DialogTitle className="font-serif text-xl tracking-tight">
+            Add symbol
+          </DialogTitle>
           <DialogDescription>
             Canonical ticker: BTC-USD, RELIANCE.NS, SPY, USDINR, …
           </DialogDescription>
@@ -353,7 +428,9 @@ function AddDialog({
           className="space-y-3"
         >
           <div>
-            <Label htmlFor="symbol">Symbol</Label>
+            <Label htmlFor="symbol" className="eyebrow">
+              Symbol
+            </Label>
             <Input
               id="symbol"
               placeholder="BTC-USD"
@@ -361,6 +438,7 @@ function AddDialog({
               onChange={(e) => setSymbol(e.target.value)}
               autoFocus
               list="pfip-symbol-suggestions"
+              className="mt-1 font-mono"
             />
             <datalist id="pfip-symbol-suggestions">
               <option value="BTC-USD" />
@@ -375,12 +453,15 @@ function AddDialog({
             </datalist>
           </div>
           <div>
-            <Label htmlFor="label">Label (optional)</Label>
+            <Label htmlFor="label" className="eyebrow">
+              Label (optional)
+            </Label>
             <Input
               id="label"
               placeholder="Core position"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
+              className="mt-1"
             />
           </div>
           <DialogFooter>
@@ -465,11 +546,9 @@ function ChartDialog({
   );
 }
 
-
 /**
- * Tiny pill-button used by the market-scope row. Active = teal primary,
- * inactive = subtle muted with hover lift. Matches the Stitch filter
- * chip pattern.
+ * Market-scope filter pill. Active = amber primary tint, inactive = subtle
+ * warm muted with hover lift. Square-cornered to match the Sahara chrome.
  */
 function ScopeChip({
   label,
@@ -486,10 +565,10 @@ function ScopeChip({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "rounded-full border px-3 py-1 text-[11px] font-medium transition-colors",
+        "border px-3 py-1 font-label text-[11px] uppercase tracking-wider transition-colors",
         active
           ? "border-primary bg-primary/10 text-primary"
-          : "border-border text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+          : "border-border/70 text-muted-foreground hover:bg-accent/40 hover:text-foreground",
       )}
     >
       {label}

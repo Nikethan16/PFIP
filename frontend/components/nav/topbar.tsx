@@ -32,11 +32,11 @@ export function TopBar() {
   React.useEffect(() => setMounted(true), []);
 
   return (
-    <header className="sticky top-0 z-30 flex h-12 items-center justify-between gap-2 border-b bg-[hsl(var(--header))]/85 px-3 backdrop-blur sm:px-6">
+    <header className="sticky top-0 z-30 flex h-12 items-center justify-between gap-2 border-b border-border/70 bg-[hsl(var(--header))]/85 px-3 backdrop-blur sm:px-6">
       {/* Mobile brand */}
       <div className="flex items-center gap-2 md:hidden">
-        <div className="flex h-7 w-7 items-center justify-center rounded bg-gradient-to-br from-primary to-primary/60 text-primary-foreground shadow-sm">
-          <span className="text-xs font-bold">PF</span>
+        <div className="flex h-7 w-7 items-center justify-center border border-primary/30 bg-primary text-primary-foreground">
+          <span className="font-serif text-[11px] leading-none">PF</span>
         </div>
         <Breadcrumbs crumbs={crumbs} compact />
       </div>
@@ -50,12 +50,14 @@ export function TopBar() {
       <button
         type="button"
         onClick={() => setCommandOpen(true)}
-        className="hidden h-8 w-72 items-center gap-2 rounded-md border bg-background/60 px-3 text-xs text-muted-foreground transition-colors hover:bg-accent md:flex"
+        className="hidden h-8 w-72 items-center gap-2 border border-border/70 bg-background/60 px-3 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:bg-accent/40 md:flex"
         aria-label="Open command palette"
       >
         <Search className="h-3.5 w-3.5" />
-        <span className="flex-1 text-left">Search or jump to&hellip;</span>
-        <kbd className="rounded border bg-muted px-1 text-[10px] text-muted-foreground">
+        <span className="flex-1 text-left font-label uppercase tracking-[0.08em]">
+          Search or jump to&hellip;
+        </span>
+        <kbd className="border border-border/70 bg-muted px-1 font-mono text-[10px] text-muted-foreground">
           {mounted && typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("mac")
             ? "⌘"
             : "Ctrl"}
@@ -90,7 +92,7 @@ export function TopBar() {
         </Button>
         <Link
           href={"/chat" as never}
-          className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent md:hidden"
+          className="flex h-8 w-8 items-center justify-center hover:bg-accent/40 md:hidden"
           aria-label="Open chat"
         >
           <MessageSquare className="h-4 w-4" />
@@ -99,7 +101,7 @@ export function TopBar() {
         <button
           type="button"
           onClick={() => setCommandOpen(true)}
-          className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent md:hidden"
+          className="flex h-8 w-8 items-center justify-center hover:bg-accent/40 md:hidden"
           aria-label="Open command palette"
         >
           <Search className="h-4 w-4" />
@@ -141,11 +143,13 @@ function Breadcrumbs({ crumbs, compact }: { crumbs: Crumb[]; compact?: boolean }
   if (compact) {
     const tail = crumbs[crumbs.length - 1];
     return (
-      <span className="truncate text-sm font-medium">{tail?.label ?? "PFIP"}</span>
+      <span className="truncate font-serif text-base tracking-tight">
+        {tail?.label ?? "PFIP"}
+      </span>
     );
   }
   return (
-    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-sm">
+    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5">
       {crumbs.map((c, i) => {
         const last = i === crumbs.length - 1;
         return (
@@ -153,7 +157,7 @@ function Breadcrumbs({ crumbs, compact }: { crumbs: Crumb[]; compact?: boolean }
             {c.href && !last ? (
               <Link
                 href={c.href as never}
-                className="truncate text-muted-foreground transition-colors hover:text-foreground"
+                className="truncate font-label text-[11px] uppercase tracking-[0.1em] text-muted-foreground transition-colors hover:text-primary"
               >
                 {c.label}
               </Link>
@@ -161,14 +165,16 @@ function Breadcrumbs({ crumbs, compact }: { crumbs: Crumb[]; compact?: boolean }
               <span
                 className={cn(
                   "truncate",
-                  last ? "font-medium text-foreground" : "text-muted-foreground",
+                  last
+                    ? "font-serif text-base tracking-tight text-foreground"
+                    : "font-label text-[11px] uppercase tracking-[0.1em] text-muted-foreground",
                 )}
               >
                 {c.label}
               </span>
             )}
             {!last ? (
-              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+              <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />
             ) : null}
           </React.Fragment>
         );
@@ -265,17 +271,17 @@ function NotificationBell() {
       </Button>
       {open ? (
         <div
-          className="absolute right-0 top-[calc(100%+6px)] z-40 w-80 rounded-md border bg-popover p-3 text-popover-foreground shadow-xl"
+          className="absolute right-0 top-[calc(100%+6px)] z-40 w-80 border border-border/70 bg-popover p-4 text-popover-foreground shadow-xl"
           role="dialog"
         >
-          <div className="mb-2 flex items-center justify-between">
-            <div className="text-sm font-medium">Notifications</div>
-            <span className="text-[10px] text-muted-foreground">
+          <div className="mb-3 flex items-center justify-between border-b border-border/40 pb-2">
+            <div className="font-serif text-base tracking-tight">Notifications</div>
+            <span className="font-label text-[10px] uppercase tracking-wider text-muted-foreground">
               {count} unread
             </span>
           </div>
           {count === 0 ? (
-            <div className="rounded border border-dashed p-4 text-center text-xs text-muted-foreground">
+            <div className="border border-dashed border-border/60 p-4 text-center text-xs text-muted-foreground">
               You&apos;re all caught up. Critical alerts from Telegram will mirror
               here when the backend wires the endpoint.
             </div>
