@@ -214,11 +214,47 @@ services:
       retries: 3
       start_period: 40s
 
-  # Frontend (Next.js). Built from ../frontend. Dev command mounts source for hot reload.
+  # Prefect worker — EXECUTES the scheduled deployments (the daily data pipeline:
+  # ingest -> features -> regime, on cron). Reuses the backend image so it has the
+  # flow code + deps; a `process` work pool runs each flow run as a subprocess here.
+  prefect-worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: pfip-prefect-worker
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pfip}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@timescaledb:5432/${POSTGRES_DB:-pfip}
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      OLLAMA_HOST: http://ollama:11434
+      PREFECT_API_URL: http://prefect:4200/api
+    # --limit 6: run up to 6 flow runs concurrently so one slow/hung flow (e.g.
+    # the external news ingest hitting rate limits) can't head-of-line-block the
+    # daily features/regime jobs.
+    command: ["prefect", "worker", "start", "--pool", "default-agent-pool", "--type", "process", "--limit", "6"]
+    volumes:
+      - ../backend:/app
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [pfip-net]
+
+  # Frontend (Next.js). PRODUCTION build (target: prod) — pre-compiled, so
+  # navigation is instant (dev mode compiled each route on first click, which
+  # caused the 2-3-click slowness). No source bind-mount: the baked build runs.
+  # To iterate on the UI again, switch build.target back to omitted/dev and
+  # restore the volumes block below, then `up -d --build frontend`.
   frontend:
     build:
       context: ../frontend
       dockerfile: Dockerfile
+      target: prod
     container_name: pfip-frontend
     restart: unless-stopped
     environment:
@@ -235,10 +271,7 @@ services:
     # FIX 12: bind to loopback only.
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
-    volumes:
-      - ../frontend:/app
-      - /app/node_modules
-      - /app/.next
+    # No bind-mount in prod: the optimized build is baked into the image.
     depends_on:
       - backend
     networks: [pfip-net]

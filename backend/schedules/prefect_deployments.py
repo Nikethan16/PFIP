@@ -144,7 +144,7 @@ DEPLOYMENTS: List[DeploymentSpec] = [
     # =================== COMPUTE PIPELINES ===================
     DeploymentSpec(
         name="compute-features-daily/prod",
-        flow_path="pfip.prefect.flows.compute_features:compute_features_daily",
+        flow_path="pfip.prefect.flows.compute_features_daily:compute_features_daily",
         cron="30 0 * * *",  # 06:00 IST daily
         description="Compute daily features (RSI/MACD/vol/etc.).",
         stage=2,
@@ -152,7 +152,7 @@ DEPLOYMENTS: List[DeploymentSpec] = [
     ),
     DeploymentSpec(
         name="regime-detect-daily/prod",
-        flow_path="pfip.prefect.flows.regime_detect_daily:regime_detect_daily",
+        flow_path="pfip.prefect.flows.regime_detect_daily:regime_detect_daily_flow",
         cron="0 1 * * *",  # 06:30 IST daily
         description="Daily HMM regime detection.",
         stage=2,
@@ -196,7 +196,7 @@ DEPLOYMENTS: List[DeploymentSpec] = [
     # =================== PORTFOLIO + REVIEW ===================
     DeploymentSpec(
         name="shadow-reconcile-daily/prod",
-        flow_path="pfip.prefect.flows.shadow_reconcile_daily:shadow_reconcile_daily",
+        flow_path="pfip.prefect.flows.shadow_reconcile_daily:shadow_reconcile_daily_flow",
         cron="0 18 * * *",  # 23:30 IST daily
         description="Shadow portfolio daily reconciliation.",
         stage=4,
@@ -204,7 +204,7 @@ DEPLOYMENTS: List[DeploymentSpec] = [
     ),
     DeploymentSpec(
         name="weekly-post-mortem/prod",
-        flow_path="pfip.prefect.flows.weekly_post_mortem:weekly_post_mortem",
+        flow_path="pfip.prefect.flows.weekly_review:weekly_review",
         cron="30 13 * * 0",  # Sunday 19:00 IST
         description="Weekly decision-journal post-mortem.",
         stage=3,
@@ -214,7 +214,7 @@ DEPLOYMENTS: List[DeploymentSpec] = [
     # =================== MONTHLY ROLLUPS ===================
     DeploymentSpec(
         name="monthly-calibration/prod",
-        flow_path="pfip.prefect.flows.calibration_monthly:calibration_monthly",
+        flow_path="pfip.prefect.flows.calibration_monthly:calibration_monthly_flow",
         cron="30 4 1-7 * 6",  # First Saturday 10:00 IST
         description="Monthly confidence calibration report (Brier/ECE).",
         stage=4,
@@ -222,11 +222,21 @@ DEPLOYMENTS: List[DeploymentSpec] = [
     ),
     DeploymentSpec(
         name="monthly-shadow-rollup/prod",
-        flow_path="pfip.prefect.flows.monthly_shadow_rollup:monthly_shadow_rollup",
+        flow_path="pfip.prefect.flows.shadow_rollup_monthly:shadow_rollup_monthly",
         cron="30 13 25-31 * 0",  # Last Sunday 19:00 IST
         description="Monthly shadow-vs-actual portfolio reconciliation.",
         stage=4,
         tags=("shadow", "review"),
+    ),
+
+    # =================== OPS / DISASTER RECOVERY ===================
+    DeploymentSpec(
+        name="backup-daily/prod",
+        flow_path="pfip.prefect.flows.backup_daily:backup_daily",
+        cron="0 19 * * *",  # 00:30 IST daily (after the day's writes)
+        description="Nightly pg_dump + Qdrant snapshot + retention prune.",
+        stage=1,
+        tags=("ops", "backup"),
     ),
 ]
 
