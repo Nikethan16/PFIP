@@ -23,17 +23,30 @@ def test_candles_empty(client: TestClient, auth_headers: dict[str, str]) -> None
     assert resp.json() == []
 
 
-def test_features_stub(client: TestClient, auth_headers: dict[str, str]) -> None:
+def test_features_empty_well_formed(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    # No feature rows in the fake session ⇒ well-formed empty payload (not 501).
     resp = client.get("/api/v1/assets/BTC/USD/features", headers=auth_headers)
     assert resp.status_code == 200
-    assert resp.json() == {}
+    body = resp.json()
+    assert body["symbol"] == "BTC/USD"
+    assert body["as_of"] is None
+    assert body["features"]["rsi_14"] is None
+    assert body["extras"] == {}
 
 
-def test_news_stub_501(client: TestClient, auth_headers: dict[str, str]) -> None:
+def test_news_empty_list(client: TestClient, auth_headers: dict[str, str]) -> None:
     resp = client.get("/api/v1/assets/BTC/USD/news", headers=auth_headers)
-    assert resp.status_code == 501
+    assert resp.status_code == 200
+    assert resp.json() == []
 
 
-def test_regime_stub_501(client: TestClient, auth_headers: dict[str, str]) -> None:
+def test_regime_unknown_when_empty(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
     resp = client.get("/api/v1/assets/BTC/USD/regime", headers=auth_headers)
-    assert resp.status_code == 501
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["regime"] == "unknown"
+    assert body["confidence"] == 0.0

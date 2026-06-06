@@ -28,6 +28,19 @@ def test_calibration_returns_empty_list_when_no_data(
     assert resp.json() == []
 
 
+def test_calibration_history_requires_auth(client: TestClient) -> None:
+    assert client.get("/api/v1/calibration/history").status_code == 401
+
+
+def test_calibration_history_returns_empty_list_when_no_data(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    # Frontend CalibrationHistorySchema expects a LIST (per-model series).
+    resp = client.get("/api/v1/calibration/history", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
 def test_brier_perfect_zero() -> None:
     assert compute_brier_score([1, 0, 1, 0], [1.0, 0.0, 1.0, 0.0]) == 0.0
 

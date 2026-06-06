@@ -62,6 +62,61 @@ def test_tax_summary_with_auth_returns_200(
     assert body["fy"] == "2026-27"
 
 
+def test_tax_details_requires_auth(client: TestClient) -> None:
+    assert client.get("/api/v1/tax/details?fy=2026-27").status_code == 401
+
+
+def test_tax_details_returns_expected_shape(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    """Matches the frontend TaxDetailsSchema (all plain numbers)."""
+    resp = client.get(
+        "/api/v1/tax/details?fy=2026-27&gross_income_inr=1200000",
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    required = {
+        "fy",
+        "slab_income_inr",
+        "eighty_c_used_inr",
+        "eighty_c_cap_inr",
+        "marginal_rate_pct",
+        "total_income_inr",
+        "old_regime_tax_inr",
+        "new_regime_tax_inr",
+        "surcharge_thresholds",
+        "form_67_lines",
+    }
+    assert required.issubset(body.keys())
+    assert body["fy"] == "2026-27"
+    assert body["eighty_c_cap_inr"] == 150000
+    assert isinstance(body["surcharge_thresholds"], list)
+    assert body["surcharge_thresholds"][0] == {
+        "threshold_inr": 5000000,
+        "rate_pct": 10.0,
+    }
+    assert isinstance(body["form_67_lines"], list)
+    for key in ("slab_income_inr", "old_regime_tax_inr", "new_regime_tax_inr"):
+        assert isinstance(body[key], (int, float))
+
+
+def test_tax_export_requires_auth(client: TestClient) -> None:
+    assert client.get("/api/v1/tax/export?fy=2026-27").status_code == 401
+
+
+def test_tax_export_returns_downloadable_file(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    resp = client.get("/api/v1/tax/export?fy=2026-27", headers=auth_headers)
+    assert resp.status_code == 200
+    # PDF when reportlab is present, else text/plain fallback — both downloadable.
+    assert resp.headers["content-type"] in ("application/pdf", "text/plain; charset=utf-8")
+    assert "attachment" in resp.headers.get("content-disposition", "")
+    assert "pfip-tax-2026-27" in resp.headers.get("content-disposition", "")
+    assert len(resp.content) > 0
+
+
 def test_tax_regime_compare_endpoint(
     client: TestClient, auth_headers: dict[str, str]
 ) -> None:
@@ -283,6 +338,141 @@ def test_schedule_fa_peak_balance() -> None:
     assert r.gross_dividend_usd == Decimal("5")
     # Static fallback uses 2024-12-31 rate 85.62
     assert r.peak_balance_inr > Decimal("0")
+
+
+# ---------------------------------------------------------------------------
+# 4b. Schedule FA router — real daily-peak from OHLCV + per-row basis flag
+# ---------------------------------------------------------------------------
+
+
+def test_schedule_fa_router_requires_auth(client: TestClient) -> None:
+    assert client.get("/api/v1/tax/schedule-fa?fy=2024-25").status_code == 401
+
+
+def test_schedule_fa_router_empty_shape(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    """No USD holdings → correct empty shape, still 200."""
+    resp = client.get("/api/v1/tax/schedule-fa?fy=2024-25", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["schedule"] == "FA"
+    assert body["rows"] == []
+    assert body["disclaimer"] == DISCLAIMER
+
+
+def test_schedule_fa_router_real_peak_and_basis_flag(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    """A USD holding with OHLCV history gets a price-derived peak + basis=peak;
+    one without history falls back to cost_approx and is flagged honestly."""
+    from collections.abc import AsyncIterator
+
+    from pfip.api.deps import get_db
+    from pfip.api.main import app
+    from pfip.models.holdings import HoldingRow
+
+    priced = HoldingRow(
+        id=__import__("uuid").uuid4(),
+        category="us_stock",
+        symbol="AAPL",
+        isin="US0378331005",
+        broker="indmoney",
+        acquired_at=datetime(2024, 10, 15, tzinfo=timezone.utc),
+        qty=Decimal("10"),
+        cost_basis_inr=Decimal("170000"),
+        cost_basis_ccy="USD",
+        fx_rate=Decimal("85"),
+    )
+    no_history = HoldingRow(
+        id=__import__("uuid").uuid4(),
+        category="us_stock",
+        symbol="TSLA",
+        isin="US88160R1014",
+        broker="vested",
+        acquired_at=datetime(2024, 11, 1, tzinfo=timezone.utc),
+        qty=Decimal("5"),
+        cost_basis_inr=Decimal("100000"),
+        cost_basis_ccy="USD",
+        fx_rate=Decimal("84"),
+    )
+
+    # AAPL daily closes (USD). Peak balance = 10 * 260 = 2600; closing = 10 * 250.
+    aapl_closes = [
+        (datetime(2024, 12, 31, tzinfo=timezone.utc), Decimal("240")),
+        (datetime(2025, 1, 15, tzinfo=timezone.utc), Decimal("260")),  # peak
+        (datetime(2025, 3, 31, tzinfo=timezone.utc), Decimal("250")),  # closing
+    ]
+
+    class _Result:
+        def __init__(self, scalars=None, rows=None):
+            self._scalars = scalars or []
+            self._rows = rows or []
+
+        def scalars(self):
+            data = self._scalars
+
+            class _S:
+                def all(self_inner):
+                    return data
+
+            return _S()
+
+        def all(self):
+            return self._rows
+
+        def first(self):
+            return None  # no DB fx rate → static fallback
+
+    class _Session:
+        async def execute(self, stmt, params=None, *args, **kwargs):  # noqa: ANN001
+            text = str(stmt)
+            if "FROM holdings" in text or "holdings" in text and "ohlcv" not in text:
+                return _Result(scalars=[priced, no_history])
+            if "ohlcv" in text:
+                # Route by the symbol bound parameter in the compiled query.
+                # SQLAlchemy core select on OHLCVRow.symbol == r.symbol uses a
+                # bound param; inspect the rendered SQL params instead.
+                # Fall back: return AAPL closes only for the AAPL pass.
+                compiled = stmt.compile()
+                bound = {str(k): v for k, v in compiled.params.items()}
+                sym = next(
+                    (v for k, v in bound.items() if v in ("AAPL", "TSLA")), None
+                )
+                if sym == "AAPL":
+                    return _Result(rows=aapl_closes)
+                return _Result(rows=[])
+            if "fx_rates" in text:
+                return _Result()
+            return _Result()
+
+        async def close(self) -> None:
+            return None
+
+    async def _db() -> AsyncIterator[_Session]:
+        yield _Session()
+
+    app.dependency_overrides[get_db] = _db
+    try:
+        resp = client.get("/api/v1/tax/schedule-fa?fy=2024-25", headers=auth_headers)
+    finally:
+        app.dependency_overrides[get_db] = _db
+    assert resp.status_code == 200
+    body = resp.json()
+    rows = {r["symbol"]: r for r in body["rows"]}
+    assert set(rows) == {"AAPL", "TSLA"}
+
+    # AAPL: real price-derived peak.
+    aapl = rows["AAPL"]
+    assert aapl["basis"] == "peak"
+    assert Decimal(aapl["peak_balance_usd"]) == Decimal("2600")
+    assert Decimal(aapl["closing_balance_usd"]) == Decimal("2500")
+    assert Decimal(aapl["peak_balance_inr"]) > Decimal("0")
+
+    # TSLA: no history → honest cost-basis approximation, closing 0.
+    tsla = rows["TSLA"]
+    assert tsla["basis"] == "cost_approx"
+    assert Decimal(tsla["closing_balance_usd"]) == Decimal("0")
 
 
 # ---------------------------------------------------------------------------
