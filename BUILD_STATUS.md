@@ -35,6 +35,41 @@
 >   `FEATURE_ML_SIGNALS` flag is dead, and the walk-forward trainer needs ~3y/756+ bars per
 >   asset that a fresh install lacks. See `docs/CHANGELOG.md` "Known state".
 
+> **Update 2026-06-04 — feature build pass.** A feature-build session on top of the same-day
+> audit. Highlights below; full grouped list in `docs/CHANGELOG.md` "Feature build pass".
+>
+> - **Asset endpoints are now real** (were `501` stubs): `GET /assets/{symbol}/features`
+>   (latest feature row), `/news` (recent, newest-first, `limit` param), `/regime` (latest
+>   label; `regime:"unknown"` when none).
+> - **Real portfolio drawdown:** `/portfolio/summary` computes peak-to-current drawdown from a
+>   NAV-history proxy (cumulative net-flow from the `portfolio_tx` ledger; no NAV table
+>   exists). Was hardcoded `0`.
+> - **FX-rate ingestion:** new `pfip/ingest/macro/fx_rates.py` (Frankfurter, free, no key) +
+>   the `ingest-fx-daily` flow now populate the `fx_rates` table → unlocks USD→INR
+>   mark-to-market and tax conversions. Manual backfill command in `PLACEHOLDERS.md` §0.5b.
+> - **Reranker wired, privacy-gated:** Cohere reranks KB/news hits **only for non-sensitive
+>   queries**; SENSITIVE/holdings-bearing prompts use identity order and never call Cohere.
+>   No-op without `COHERE_API_KEY`.
+> - **Disaster recovery implemented:** `scripts/backup.py` (`pg_dump -Fc` + Qdrant snapshots +
+>   optional GPG `.env` + retention prune) and `scripts/restore.py` (`pg_restore` + Qdrant
+>   recover; `--confirm` required) are real; nightly `backup-daily` Prefect flow added.
+> - **Scheduling fixed:** the Prefect deployment catalogue had **8 of 21** `flow_path`s broken
+>   (so those tasks silently never registered). All 21 now resolve; the missing `morning-brief`
+>   flow wrapper was built; `test_deployments_resolve.py` guards regressions.
+> - **`FEATURE_ML_SIGNALS` is now a real runtime gate:** the `signals-generate-daily` flow
+>   no-ops (logs) when off. Combined with stage-gating, **ML signals stay OFF** until the
+>   operator has enough OHLCV history and sets `FEATURE_ML_SIGNALS=true` (then
+>   `python -m schedules.prefect_deployments apply --stage 3`). Signals are **not** producing
+>   live data today.
+> - **Frontend honesty:** removed the fake CSV-upload progress bar (now indeterminate); chat
+>   sidebar is now real local history (localStorage); fixed news/regime contract field
+>   mismatches so feeds won't break when data flows.
+> - **Tests:** **557 backend tests** (was 484), all green except 5 `litellm`-not-installed
+>   locally + a few Docker-gated integration skips. Added `test_assets_live`, `test_drawdown`,
+>   `test_fx_ingest`, `test_reranker_wiring`, `test_backup`, `test_deployments_resolve`,
+>   `test_close_position`, `test_marking`, `test_ohlcv_columns`, plus a real-DB integration
+>   suite.
+
 ---
 
 ## What works right now (no keys needed)
@@ -47,14 +82,16 @@ These run as soon as `docker compose up` is happy:
 - **US equities** — yfinance (primary), Stooq fallback — works without any key.
 - **Indian equities EOD** — jugaad-data + NSE/BSE bhavcopy — works without key.
 - **Indian MF NAVs** — AMFI daily CSV parser — works without key.
-- **FX** — Frankfurter + RBI reference rates — works without key.
+- **FX** — Frankfurter + RBI reference rates — works without key. The `ingest-fx-daily` flow
+  now populates the `fx_rates` table (`pfip.ingest.macro.fx_rates`), which is what drives
+  USD→INR mark-to-market and tax conversions (manual backfill command in `PLACEHOLDERS.md`).
 - **Commodities** — yfinance futures + LBMA — works without key.
 - **Macro** — DBnomics + World Bank — works without key (FRED needs free key).
 - **News** — GDELT, Google News per-query RSS, SEC 8-K RSS, Moneycontrol, ET Markets, LiveMint, Business Standard, MarketWatch, CoinTelegraph, Decrypt, The Block, CoinDesk, arXiv q-fin — all work without keys.
 - **Prediction markets** — Polymarket + Kalshi read APIs — no keys.
 - **Self-custody BTC** — mempool.space for any BTC address you add.
 - **Tax engine** — full Indian rules: STCG/LTCG classifier with FIFO + 31-Jan-2018 grandfathering; VDA 30% + 1% TDS; Schedule FA; Form 67 DTAA credit; 80C optimiser; old-vs-new regime comparison; surcharge cliff detection; ITR form recommendation; dividend slab treatment.
-- **Portfolio engine** — mark-to-market valuation (latest OHLCV close per symbol; USD→INR via the `fx_rates` table; cost-basis fallback by abstention when currency/FX can't be resolved), P&L, exposure by category, historical VaR 95%/99%, Herfindahl concentration, real Pearson correlation matrix of daily log-returns, trailing-30d Sharpe, peak drawdown. `GET /portfolio/marking` reports which holdings are live-priced vs cost-basis and why.
+- **Portfolio engine** — mark-to-market valuation (latest OHLCV close per symbol; USD→INR via the `fx_rates` table; cost-basis fallback by abstention when currency/FX can't be resolved), P&L, exposure by category, historical VaR 95%/99%, Herfindahl concentration, real Pearson correlation matrix of daily log-returns, trailing-30d Sharpe, real peak-to-current drawdown (from a NAV-history proxy — cumulative net-flow off `portfolio_tx`; was hardcoded `0`). `GET /portfolio/marking` reports which holdings are live-priced vs cost-basis and why.
 - **Risk manager** — pre-trade 10-item Appendix B checklist, drawdown HALT at 20%, correlation guard at 0.7, Van Tharp position sizing, daily 2-new-positions cap.
 - **CSV import adapters** — Zerodha, ICICIdirect, Groww, INDmoney, Vested, WazirX, CoinDCX, Binance, Coinbase, Kraken. 10 brokers, pinned schemas, route auto-detected on upload.
 - **Regime detection** — HMM via hmmlearn, trained per market on 3y trailing. Deterministic state-to-regime mapping. Persists to MLflow.
@@ -72,7 +109,7 @@ These run as soon as `docker compose up` is happy:
 - **Pre-trade checklist UI** — all 10 items from Appendix B enforced before journal entry saves.
 - **Post-mortem dialog** — with auto-draft button.
 - **Scheduled tasks** — Prefect deployments for daily/weekly/monthly/quarterly cadences per plan §12.2; Windows Task Scheduler registration scripts for nightly backup + quarterly restore drill.
-- **Backup pipeline** — nightly pg_dump + Qdrant snapshot + MLflow volume sync, 30d/12m/5y retention, optional rclone off-site.
+- **Backup pipeline** — `scripts/backup.py` (`pg_dump -Fc` + Qdrant snapshots + optional GPG-encrypt of `.env` + retention prune; flags `--out-dir`/`--retention-days`/`--skip-qdrant`/`--dry-run`) + `scripts/restore.py` (`pg_restore` + Qdrant recover; `--confirm` required, `--dry-run` supported), driven nightly by the `backup-daily` Prefect flow. 30d/12m/5y retention, optional rclone off-site. See `docs/BACKUP.md` §0.
 - **Health checks** — Uptime Kuma watching every service.
 - **CI** — GitHub Actions running ruff + black + mypy + pytest (backend), pnpm lint/typecheck/test (frontend), compose-smoke.
 

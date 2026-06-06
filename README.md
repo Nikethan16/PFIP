@@ -177,6 +177,8 @@ All commands assume PowerShell from the repo root (`PFIP_app/`).
 | Deep health check          | `curl http://localhost:8000/api/v1/health/deep`                                          |
 | Pull LLM models            | `docker exec -it pfip-ollama ollama pull mistral:7b-instruct`                            |
 | Backup now                 | `docker exec -it pfip-backend uv run python scripts/backup.py`                           |
+| Restore (dry-run first)    | `docker exec -it pfip-backend uv run python scripts/restore.py --dry-run` (add `--confirm` to apply) |
+| Backfill FX (USD→INR MTM)  | `docker exec -it pfip-backend uv run python -c "import asyncio; from pfip.ingest.macro.fx_rates import ingest_fx_rates; asyncio.run(ingest_fx_rates(mode='backfill', lookback_days=730))"` |
 
 ---
 

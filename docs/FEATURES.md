@@ -24,7 +24,7 @@ What the system does: pulls data from ~50 free sources on the schedules in `WHY_
 | Indian equities EOD via jugaad-data + NSE/BSE bhavcopy | ⏳ | Adapter coded. |
 | Indian fundamentals via Screener.in scrape | ⏳ | Adapter coded; personal-use scope. |
 | Indian mutual fund NAVs via AMFI daily CSV | ⏳ | Adapter coded. |
-| FX rates: Frankfurter (ECB) + RBI reference rates | ⏳ | RBI is authoritative for USD/INR — used in tax cost basis. |
+| FX rates: Frankfurter (ECB) + RBI reference rates | ✅ | `pfip.ingest.macro.fx_rates.ingest_fx_rates` (Frankfurter, free, no key) + the `ingest-fx-daily` flow populate the `fx_rates` table (`base`/`quote`/`rate`/`rate_date`) — unlocks USD→INR mark-to-market and tax conversions. Manual backfill via `ingest_fx_rates(mode='backfill', lookback_days=730)`. RBI is authoritative for USD/INR — used in tax cost basis. |
 | Macro: FRED + DBnomics + World Bank + MOSPI | ⏳ | FRED needs free key (already in `.env`). |
 | Commodities: yfinance futures + LBMA fixes + EIA | ⏳ | EIA key in `.env`. |
 | News RSS (10+ feeds) | ⏳ | CoinDesk, CoinTelegraph, Decrypt, The Block, Moneycontrol, ET, LiveMint, BS, MarketWatch, Yahoo per-ticker. |
@@ -51,7 +51,7 @@ What it does: normalizes ingested data into uniform schema; computes derived fea
 | Feature | Status |
 |---|---|
 | Uniform OHLCV hypertable in TimescaleDB | ✅ |
-| 150+ technical indicators via `ta` library (RSI, MACD, ATR, BB, etc.) | ✅ `pfip.features.technicals.compute_features`. Patched RSI saturation to 100/0 on pure trends (textbook behaviour; `ta` returns NaN otherwise). Tests pass. |
+| 150+ technical indicators via `ta` library (RSI, MACD, ATR, BB, etc.) | ✅ `pfip.features.technicals.compute_features`. Patched RSI saturation to 100/0 on pure trends (textbook behaviour; `ta` returns NaN otherwise). Tests pass. `GET /assets/{symbol}/features` is now real (was a `501` stub) — returns the latest feature row for the symbol. |
 | Returns (1d, 7d, 30d, log, simple) | ✅ |
 | Realized volatility windows (10d, 30d, 90d) | ✅ |
 | Fundamentals ratios (P/E, P/B, debt-to-equity, etc.) | ✅ `pfip.features.fundamentals_ratios` — P/E, P/B, D/E, current ratio, ROE, ROIC, FCF yield, dividend yield. None-safe on missing/zero inputs. 7 tests pass |
@@ -82,7 +82,7 @@ What it does: turns raw text streams into structured signal tied to assets.
 | Entity linking (which ticker, sector, person, central bank) | ✅ `extract_entities` — ticker regex + crypto vocab + central bank + sector dict |
 | Impact score 0–100 | ✅ `impact_score` — weighted keywords (40) + |sentiment| (30) + entities (20) + recency (10). 20 tests in `tests/test_news_enrich.py` |
 | Embedding into Qdrant for semantic search | ✅ `pfip.kb.news_embed` + `pfip.kb.ingest`; vectors land in `news` and `kb` Qdrant collections |
-| Top-N news per asset (queryable) | ✅ `search_news(query, k, filter)` in `pfip.kb.search` + dashboard NewsRow component |
+| Top-N news per asset (queryable) | ✅ `search_news(query, k, filter)` in `pfip.kb.search` + dashboard NewsRow component. `GET /assets/{symbol}/news?limit=N` is now real (was a `501` stub) — recent news newest-first, capped by `limit` (fields `time`/`symbol`). |
 | Sentiment aggregation rolling 7d per asset | ✅ `pfip.ingest.news._pipeline.classify_pending` + DB rollup query |
 | News attached to signals (M4 → M3 join) | ✅ `link_entities` populates `entity_tickers` on news rows; agent joins by symbol at query time |
 | Counter-argument extraction per signal | ✅ `pfip.signals.news_attach.select_news_for_signal` ranks news by `(impact, |sentiment|, recency)` and partitions into supporting + opposing. 4 tests pass |
@@ -94,18 +94,18 @@ What it does: produces typed BUY/SELL/HOLD signals with confidence per asset.
 
 > **Honest status (2026-06-04): live per-asset signal generation is NOT enabled.** The model
 > code below (LightGBM walk-forward, isotonic calibration, SHAP drivers) is implemented and
-> correct, and regime/backtest/calibration flows are scheduled — but the
-> `signals_generate_daily` Prefect flow is **not in the deployment**, so the `signals` table
-> stays empty and the daily shadow-reconcile reads nothing. The multi-asset
-> `compute_features_daily` flow is also not deployed (only legacy BTC-only features run). The
-> `FEATURE_ML_SIGNALS` config flag is defined but checked nowhere (dead). This is
-> intentional: the walk-forward trainer needs ~3y / 756+ bars of OHLCV history per asset,
-> which a fresh install lacks. It will be wired when enough history exists. The ✅ marks below
-> mean "code exists and is tested", not "running in production today".
+> correct, and regime/backtest/calibration flows are scheduled — but ML signals are **off**.
+> As of the feature-build pass, `FEATURE_ML_SIGNALS` is now a **real runtime gate**: the
+> `signals-generate-daily` flow no-ops (logs) when the flag is off, and signals are
+> stage-gated (stage 3). So the `signals` table stays empty and the daily shadow-reconcile
+> reads nothing until the operator (a) has ~months / ~3y / 756+ bars of OHLCV history per
+> asset, which a fresh install lacks, and (b) explicitly sets `FEATURE_ML_SIGNALS=true`.
+> Enabling it prematurely would produce untrustworthy signals. The ✅ marks below mean "code
+> exists and is tested", **not** "running in production today".
 
 | Feature | Status |
 |---|---|
-| HMM regime detection (3-state: bull/bear/sideways) | ✅ `HMMRegimeDetector` (3 or 4 state) + hmmlearn primary + quantile fallback; Prefect deployment `regime-detect-btc-daily` (01:00 UTC); 8 tests in `tests/test_regime_hmm.py` |
+| HMM regime detection (3-state: bull/bear/sideways) | ✅ `HMMRegimeDetector` (3 or 4 state) + hmmlearn primary + quantile fallback; Prefect deployment `regime-detect-btc-daily` (01:00 UTC); 8 tests in `tests/test_regime_hmm.py`. `GET /assets/{symbol}/regime` is now real (was a `501` stub) — latest regime label, returns `{ "regime": "unknown" }` when none computed. |
 | Per-regime LightGBM signal models | ✅ `train_lgbm_per_regime` Prefect flow (Sat 03:00 UTC) trains one model per (symbol, regime, horizon); persists to file-backed registry; auto-pins champion if slot is empty. 9 tests in `tests/test_train_lgbm_per_regime.py` cover labeling + per-regime slicing + edge cases |
 | Confidence floor at 65 (signals below → HOLD) | ✅ Code path exists |
 | Per-prediction SHAP explanations (top drivers) | ✅ `pfip.signals.explain` — real SHAP if installed, permutation-importance fallback otherwise. Signed contributions, JSONB-ready serialization. 7 tests in `tests/test_signals_explain.py` |
@@ -149,7 +149,7 @@ What it does: makes the agent able to cite trading wisdom.
 | Semantic chunking (LangChain text splitters) | ✅ Coded |
 | Embedding via nomic-embed-text local | ✅ |
 | Embedding via NVIDIA NIM (planned upgrade) | ⏳ |
-| Reranking via Cohere rerank-v3 (planned upgrade) | ⏳ |
+| Reranking via Cohere rerank-v3 | ✅ Wired into the live RAG path (2026-06-04), **privacy-gated**: KB/news hits are reranked via Cohere **only for non-sensitive queries**; SENSITIVE queries (incl. any holdings-bearing prompt) use identity order and never call Cohere. No-op without `COHERE_API_KEY`. |
 | Storage in Qdrant with metadata (book, chapter, page) | ✅ |
 | Idempotent ingest (SHA-256 hash) | ✅ Coded |
 | RAG retrieval with citations | ✅ `pfip.kb.search.search` + `format_citations` rendered by agent graph |
@@ -208,7 +208,7 @@ What it does: tracks what you own and what you owe.
 | Historical VaR (95% / 99%) | ✅ Coded |
 | Concentration score (Herfindahl) | ✅ Coded |
 | Trailing 30-day Sharpe | ✅ Coded |
-| Peak-to-current drawdown | ✅ Coded |
+| Peak-to-current drawdown | ✅ **Real on `/portfolio/summary`** (2026-06-04): computed from a NAV-history proxy — cumulative net-flow from the `portfolio_tx` ledger (no dedicated NAV table exists). Was previously hardcoded `0`. |
 
 #### Risk management
 | Feature | Status |
@@ -264,8 +264,8 @@ What it does: gives the user a UI and notifications.
 | **Watchlist** (/watchlist) | Add/remove tickers per market | 🟡 Renders (empty) |
 | **Signals** (/signals) | Latest signals + drivers + counter-args | 🟡 Renders (empty) |
 | **Calibration** (/calibration) | Reliability diagrams + ECE per model | 🟡 Renders (empty) |
-| **Tax** (/tax) | CSV upload + summary + Schedule FA + Form 67 + 80C optimizer + regime comparison | 🟡 Renders (empty) |
-| **Chat** (/chat) | Natural-language Q&A with SSE streaming | 🟡 Renders; agent needs LLM router |
+| **Tax** (/tax) | CSV upload + summary + Schedule FA + Form 67 + 80C optimizer + regime comparison. CSV upload now shows an honest indeterminate state (the fake progress bar was removed, 2026-06-04). | 🟡 Renders (empty) |
+| **Chat** (/chat) | Natural-language Q&A with SSE streaming; conversation sidebar = real client-side local history (localStorage: new chat, switch, delete) — replaced the fake skeletons (2026-06-04) | 🟡 Renders; agent needs LLM router |
 | **Journal** (/journal) | Pre-trade checklist + post-mortem | 🟡 Renders; checklist enforcement pending |
 | **Settings** (/settings) | Risk limits, schedules, watchlist config | 🟡 Renders |
 | **Login** (/login) | Single-user auth | ✅ Working |
@@ -319,8 +319,8 @@ UI infrastructure:
 ### Scheduling
 | Feature | Status |
 |---|---|
-| Prefect deployments per task type | ✅ `pfip/prefect/deploy.py` registers ingest_btc_daily, compute_features, ragas_eval_monthly, weekly_review, anomaly_scan_daily, regime_detect_btc_daily, reconcile_daily, backtest_walk_forward, train_lgbm_per_regime |
-| Daily morning brief at 07:00 IST | ✅ `morning_brief` flow + `pfip.agent.morning_brief` composer |
+| Prefect deployments per task type | ✅ `pfip/prefect/deploy.py` registers ingest_btc_daily, compute_features, ragas_eval_monthly, weekly_review, anomaly_scan_daily, regime_detect_btc_daily, reconcile_daily, backtest_walk_forward, train_lgbm_per_regime. **Catalogue fixed 2026-06-04:** `schedules/prefect_deployments.py` had 8 of 21 `flow_path`s broken (wrong module/callable names + a finnhub import bug) so those tasks silently never registered — all 21 now resolve; `test_deployments_resolve.py` guards against regressions. |
+| Daily morning brief at 07:00 IST | ✅ `morning_brief` flow + `pfip.agent.morning_brief` composer. The missing `morning-brief` Prefect flow wrapper was built 2026-06-04 (one of the 8 previously-broken catalogue entries). |
 | Daily market-close summary at 17:30 IST | ✅ `pfip.agent.market_close.render_markdown` + `market_close_summary` Prefect flow (12:00 UTC weekdays) + Telegram digest. 4 tests in `tests/test_round2_pure.py` |
 | Daily shadow reconcile at 23:30 IST | ✅ `shadow_reconcile_daily` flow; needs schedule binding per market |
 | Weekly post-mortem at Sun 19:00 | ✅ `weekly_review` flow (Sun 19:00 IST = 13:30 UTC) |
@@ -336,10 +336,12 @@ UI infrastructure:
 ### Backups & DR
 | Feature | Status |
 |---|---|
-| Nightly pg_dump TimescaleDB → encrypted external | ✅ Script coded |
-| Nightly Qdrant snapshot via /collections/{name}/snapshots API | ✅ Script coded |
+| Nightly pg_dump TimescaleDB → encrypted external | ✅ `scripts/backup.py` (`pg_dump -Fc`) + nightly `backup-daily` Prefect flow (2026-06-04). Flags `--out-dir` / `--retention-days` / `--skip-qdrant` / `--dry-run`. |
+| Nightly Qdrant snapshot via /collections/{name}/snapshots API | ✅ `scripts/backup.py` takes Qdrant snapshots (skippable via `--skip-qdrant`). |
+| `.env` GPG-encrypt | ✅ `scripts/backup.py` optionally GPG-encrypts `.env`. |
+| Restore script (`pg_restore` + Qdrant recover) | ✅ `scripts/restore.py` (2026-06-04) — requires `--confirm`; supports `--dry-run`. |
 | Nightly MLflow artefact sync | ✅ Script coded |
-| Retention policy (30 daily / 12 monthly / 5 yearly) | ✅ Coded |
+| Retention policy (30 daily / 12 monthly / 5 yearly) | ✅ Coded; `backup.py` prunes per `--retention-days`. |
 | Optional rclone push to off-site (B2, Drive) | ✅ Coded; needs `RCLONE_REMOTE` env |
 | Quarterly restore drill (isolated compose project) | ✅ Script coded; not yet run |
 
@@ -485,4 +487,4 @@ If we ever extend past Stage 7:
 
 ---
 
-*Last updated: 2026-06-04 (security/correctness audit + portfolio MTM/marking/correlations + honest ML-signal status). Update Status column whenever a feature ships.*
+*Last updated: 2026-06-04 (feature build pass: real asset endpoints, real drawdown, FX-rate ingestion, privacy-gated reranker, DR scripts + backup-daily flow, Prefect catalogue fix, `FEATURE_ML_SIGNALS` real runtime gate (signals still OFF), honest frontend states; on top of the same-day security/correctness audit). Update Status column whenever a feature ships.*

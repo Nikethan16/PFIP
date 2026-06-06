@@ -38,7 +38,9 @@ Cross-cutting concerns:
 - **Safety:** Advisory-only. `FEATURE_LIVE_TRADING=false` hard-wired. Risk caps in
   `/backend/pfip/portfolio/risk_manager.py`. The chat agent structurally forces local-only
   LLM routing whenever any holding row is in the prompt, so holdings never reach a cloud LLM
-  (see `docs/LLM_ROUTING.md` §5).
+  (see `docs/LLM_ROUTING.md` §5). The Cohere RAG reranker sits behind the same gate — it runs
+  only for non-sensitive queries and never sends a SENSITIVE query to Cohere
+  (`docs/LLM_ROUTING.md` §5.1).
 
 ---
 
@@ -52,15 +54,16 @@ is intentionally NOT enabled** — be careful not to overclaim it:
   monthly), technical features (BTC via the legacy `compute_features_flow`). The LightGBM
   model code (walk-forward training, isotonic calibration, SHAP drivers) is implemented and
   correct.
-- **Scaffolded but NOT deployed/wired:** the `signals_generate_daily` Prefect flow is not in
-  the deployment, so the `signals` table stays empty and the daily shadow-reconcile reads
-  nothing. The multi-asset `compute_features_daily` flow is also not deployed (only the
-  legacy BTC-only features run).
-- **`FEATURE_ML_SIGNALS`** config flag is defined but checked nowhere (dead; no
-  stage-gating implemented yet).
+- **Gated OFF, not dead:** as of the 2026-06-04 feature build, `FEATURE_ML_SIGNALS` is a
+  **real runtime gate** — the `signals-generate-daily` flow no-ops (logs) when it's off, and
+  signals are stage-gated (stage 3). So the `signals` table stays empty and the daily
+  shadow-reconcile reads nothing until the operator both has enough OHLCV history and sets
+  `FEATURE_ML_SIGNALS=true`. (The multi-asset `compute_features_daily` flow is likewise off
+  until that point; only the legacy BTC-only features run today.)
 - **Why off:** the walk-forward trainer needs ~3 years / 756+ bars of OHLCV history per
-  asset, which a fresh install lacks. It will be wired when enough history exists; enabling
-  it prematurely would produce untrustworthy signals.
+  asset, which a fresh install lacks. It will be turned on when enough history exists; enabling
+  it prematurely would produce untrustworthy signals. **ML signals do not produce live data
+  today.**
 
 ### Portfolio valuation (M8)
 
@@ -70,7 +73,11 @@ are valued at the latest OHLCV close per symbol, USD assets converted to INR via
 currency can't be resolved, or USD holding with no FX rate, falls back to cost basis (never
 a wrong rupee figure). `/portfolio/marking` exposes the coverage (which symbols are
 live-priced vs cost-basis, and why). `/portfolio/correlations` returns a real Pearson matrix
-of daily log-returns from each symbol's own OHLCV history (currency-agnostic). See
+of daily log-returns from each symbol's own OHLCV history (currency-agnostic). The
+`/portfolio/summary` `drawdown` is now real (2026-06-04) — peak-to-current drawdown from a
+NAV-history proxy (cumulative net-flow off the `portfolio_tx` ledger; no dedicated NAV table
+exists), previously hardcoded `0`. USD→INR valuation is driven by the `fx_rates` table, now
+populated by the `ingest-fx-daily` flow (`pfip.ingest.macro.fx_rates`, Frankfurter). See
 `./CONTRACTS.md` for response shapes. Logic lives in `backend/pfip/portfolio/marking.py`.
 
 ---

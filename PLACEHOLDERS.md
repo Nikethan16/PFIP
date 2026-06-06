@@ -42,12 +42,13 @@ and is a no-op otherwise. `sentry-sdk[fastapi]` is pinned in `requirements.txt`.
 different Ollama version, edit `infra/docker-compose.yml` and re-pull.
 - [ ] Confirm `0.30.4` is acceptable, or change the pin.
 
-### 0.5 One finding left as YOUR decision (not auto-fixed)
-- [ ] **Unwired agent modules** — `agent/intent.py`, `agent/embedder.py`, `agent/reranker.py`
-  are not in the live chat path, so the reranker (documented as the top RAG-quality lever)
-  is never applied. NOT auto-wired because the reranker sends the query to Cohere — it touches
-  the privacy boundary I just hardened, and I can't test the live agent path here. Decide:
-  wire them in (with sensitivity gating), or delete them.
+### 0.5 Reranker — RESOLVED (wired 2026-06-04, privacy-gated)
+The Cohere reranker is now wired into the live RAG path, **behind the privacy gate**: KB/news
+hits are reranked via Cohere **only for non-sensitive queries**; SENSITIVE queries (incl. any
+holdings-bearing prompt) use identity order and **never** call Cohere. No-op without
+`COHERE_API_KEY`. This is no longer a pending decision — see `docs/LLM_ROUTING.md` §5.1.
+- [ ] (Optional) Add `COHERE_API_KEY` to `.env` to actually get the rerank quality lift on
+  non-sensitive RAG queries. Without it the path is a safe no-op (identity order).
 
 ### 0.5b Mark-to-market + correlations are now LIVE — operational notes
 `/portfolio/summary` is now real mark-to-market, `/portfolio/correlations` returns a real
@@ -56,21 +57,43 @@ reports coverage (which holdings are live-priced vs cost-basis, the USD/INR used
 holding fell back). For these to show real numbers:
 - [ ] **Ingest OHLCV** for your held symbols (the dashboards mark to the latest close).
 - [ ] **Populate the `fx_rates` table** (USD→INR) — required to value USD assets (crypto/US
-  equities). Without it, USD holdings safely fall back to cost basis and appear under
+  equities). FX ingestion is now real: either let the **`ingest-fx-daily`** Prefect flow run
+  (`pfip.ingest.macro.fx_rates`, Frankfurter — free, no key), or run the manual backfill once:
+  ```powershell
+  python -c "import asyncio; from pfip.ingest.macro.fx_rates import ingest_fx_rates; asyncio.run(ingest_fx_rates(mode='backfill', lookback_days=730))"
+  ```
+  Without rates, USD holdings safely fall back to cost basis and appear under
   `unmarked: [{reason: "no_fx_rate"}]` in `/portfolio/marking` (never a wrong rupee figure).
 - [ ] **Sanity-check the rupee figures** against a known holding once real data is in — the
   valuation logic is unit-tested, but I couldn't validate against your live OHLCV here.
 - Optional UI: wire a small "X/Y live-priced, as of …" badge from `GET /portfolio/marking`.
 
-### 0.5c Still honest stubs (stage-gated, not wired)
-- [ ] `/assets/{symbol}/features|news|regime` and Schedule FA peak-balance approximation —
-  implement when you reach the relevant stage.
+### 0.5c Asset endpoints — RESOLVED (now real, 2026-06-04)
+`/assets/{symbol}/features` (latest feature row), `/assets/{symbol}/news` (recent news,
+newest-first, `limit` param), and `/assets/{symbol}/regime` (latest regime label; returns
+`regime:"unknown"` when none) are now real (were `501` stubs). They return data as soon as the
+underlying tables are populated by ingest/feature/regime flows. The Schedule FA peak-balance
+approximation remains a stage-gated stub — implement when you reach the relevant stage.
 
-### 0.6 Recommended: prove the integration-test gap is closed
-All 452 backend tests run against a fake DB — the SQL layer (the bug class that broke
-tax-harvest/changes-today) is never executed end-to-end. A regression test for the specific
-`OHLCVRow.ts` bug was added, but a real-DB integration suite is still missing.
-- [ ] (Bigger task) Add testcontainers/CI-Postgres integration tests for the tax DB joins and OHLCV queries.
+### 0.5d Turning ML signals ON later (they are OFF by design today)
+`FEATURE_ML_SIGNALS` is now a **real runtime gate** — the `signals-generate-daily` flow no-ops
+(logs) while it's off, and signals are stage-gated (stage 3). ML signals are **not** producing
+data today, and that's intentional: the walk-forward trainer needs ~months / ~3y / 756+ bars
+of OHLCV history per asset, which a fresh install lacks. When you have enough history and want
+to enable them:
+- [ ] Set `FEATURE_ML_SIGNALS=true` in `.env`.
+- [ ] Apply the stage-3 deployments: `python -m schedules.prefect_deployments apply --stage 3`.
+- [ ] Sanity-check the first few signals + their calibration before trusting them.
+
+### 0.6 Integration-test gap — now partly closed (2026-06-04)
+The backend suite grew to **557 tests** (was 484). A **real-DB integration suite** was added
+this pass (alongside `test_close_position`, `test_marking`, `test_ohlcv_columns`,
+`test_drawdown`, `test_fx_ingest`, `test_assets_live`, `test_reranker_wiring`, `test_backup`,
+`test_deployments_resolve`), so the SQL layer is no longer only exercised against a fake DB.
+All green except 5 `litellm`-not-installed-locally failures (pinned + present in Docker) and a
+few Docker-gated integration skips.
+- [ ] Run the Docker-gated integration suite locally (needs Docker up) to confirm the
+  real-Postgres joins pass on your machine.
 
 ---
 

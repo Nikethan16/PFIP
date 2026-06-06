@@ -2,8 +2,41 @@
 
 Backups are non-negotiable from Stage 0. You lose OHLCV history and you've lost weeks of
 ingest work; you lose the portfolio ledger and you've lost ground truth for P&L and tax.
-Everything below is automatable via the scripts in `/scripts/` (owned by another agent —
-this doc is the spec and the runbook that wraps them).
+Everything below is automatable via the scripts in `/scripts/`.
+
+> **Status (2026-06-04): the scripts this doc references now EXIST and are wired.**
+> `scripts/backup.py` (`pg_dump -Fc` + Qdrant snapshots + optional GPG-encrypt of `.env` +
+> retention prune) and `scripts/restore.py` (`pg_restore` + Qdrant recover; requires
+> `--confirm`) are implemented, and a nightly `backup-daily` Prefect flow runs the backup.
+> See §0 for the exact commands.
+
+---
+
+## 0. The scripts (now real) — exact commands
+
+**Backup** — `scripts/backup.py`. Runs `pg_dump -Fc` on TimescaleDB, takes Qdrant snapshots,
+optionally GPG-encrypts `.env`, and prunes old snapshots per the retention window.
+
+```powershell
+# Default nightly backup (this is what the backup-daily Prefect flow runs)
+python scripts/backup.py
+
+# Common flags
+python scripts/backup.py --out-dir E:\pfip_backups --retention-days 30   # where + how long to keep
+python scripts/backup.py --skip-qdrant                                   # DB-only (skip Qdrant snapshots)
+python scripts/backup.py --dry-run                                       # show what would happen, write nothing
+```
+
+**Restore** — `scripts/restore.py`. Runs `pg_restore` and recovers the Qdrant snapshots.
+Destructive, so it **requires `--confirm`**; `--dry-run` previews without touching anything.
+
+```powershell
+python scripts/restore.py --dry-run                 # preview the restore plan
+python scripts/restore.py --confirm                 # actually restore (no-op without --confirm)
+```
+
+**Schedule** — the `backup-daily` Prefect flow runs the backup nightly (one of the 21
+deployments in the corrected catalogue, `schedules/prefect_deployments.py`).
 
 ---
 
@@ -132,8 +165,9 @@ Record the result (pass / fail + duration) in `docs/ONBOARDING.md` section 4.
 
 ## 7. Operational checklist
 
-- [ ] `scripts/backup.py` wired as a Prefect deployment (schedule: daily 01:00 IST).
-- [ ] `scripts/restore.py` exists and was dry-run tested once.
+- [x] `scripts/backup.py` exists and is wired as the nightly `backup-daily` Prefect flow.
+- [x] `scripts/restore.py` exists (`--confirm` required; `--dry-run` supported). — dry-run it
+      once on your machine to confirm the restore plan looks right.
 - [ ] External backup drive mounted and BitLocker-encrypted.
 - [ ] `rclone config` set up with a crypt-wrapped remote named `pfip-cloud`.
 - [ ] Backblaze B2 (or Drive) bucket has object-lock / versioning enabled.

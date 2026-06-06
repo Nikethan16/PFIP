@@ -7,6 +7,16 @@ Deployment specs live in `/schedules/`.
 At Stage 0, only the infra-hygiene rows are wired. Ingest / signal / tax rows come online
 stage-by-stage.
 
+> **Catalogue fixed (2026-06-04 feature build).** The Prefect deployment catalogue
+> (`schedules/prefect_deployments.py`) had **8 of its 21 `flow_path`s broken** (wrong
+> module/callable names + a finnhub import bug), so those scheduled tasks silently never
+> registered — they looked configured here but never ran. All **21 now resolve**, the missing
+> `morning-brief` Prefect flow wrapper was built, and a new test
+> (`test_deployments_resolve.py`) imports every deployment's flow to keep the catalogue from
+> regressing. The signal rows remain **stage-gated and OFF** (`FEATURE_ML_SIGNALS=false`,
+> stage 3) — "resolves" means the deployment registers, not that ML signals are producing
+> data. See `docs/CHANGELOG.md` "Feature build pass".
+
 ---
 
 ## 1. Data ingest
@@ -89,3 +99,12 @@ stage-by-stage.
   wired).
 - When adding a new scheduled task: (1) write the flow, (2) register in `/schedules/`,
   (3) add a row here, (4) add an Uptime Kuma monitor.
+- **FX rates** (the `ingest-fx-daily` row): the flow now actually populates the `fx_rates`
+  table from Frankfurter (`pfip.ingest.macro.fx_rates`) — this is what unlocks USD→INR
+  mark-to-market and tax conversions. Manual backfill if you need history immediately:
+  `python -c "import asyncio; from pfip.ingest.macro.fx_rates import ingest_fx_rates; asyncio.run(ingest_fx_rates(mode='backfill', lookback_days=730))"`.
+- **Signal generation** (the `signals-generate/eod` row): stays a no-op until
+  `FEATURE_ML_SIGNALS=true` AND the asset has enough OHLCV history. The flow logs and exits
+  when the flag is off — registering the deployment does **not** turn signals on.
+- **Full backup** (the infra-hygiene row): now backed by the real `scripts/backup.py` via the
+  `backup-daily` Prefect flow (see `docs/BACKUP.md` §0).

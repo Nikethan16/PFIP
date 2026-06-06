@@ -138,3 +138,77 @@ A security/correctness audit pass plus two shipped features. Backend test suite 
   ~3 years / 756+ bars of OHLCV history per asset, which a fresh install lacks. Enabling it
   prematurely would produce untrustworthy signals. It will be wired when sufficient data
   history exists.
+
+---
+
+## 2026-06-04 — Feature build pass
+
+A feature-build session on top of the same-day audit: the asset endpoints became real,
+drawdown is computed from a NAV-history proxy, FX-rate ingestion now populates `fx_rates`
+(unlocking USD→INR mark-to-market and tax conversions), the Cohere reranker is wired into the
+live RAG path behind a privacy gate, disaster-recovery scripts were implemented and scheduled,
+the Prefect deployment catalogue was fixed (8 of 21 flow paths were silently broken), and
+`FEATURE_ML_SIGNALS` became a real runtime gate. Backend test suite is now **557 tests**
+(was 484), all green except 5 `litellm`-not-installed-locally failures (pinned in
+`requirements.txt`, present in Docker) and a few Docker-gated integration skips.
+
+> **ML signals are still OFF.** `FEATURE_ML_SIGNALS` is now a real gate, but it stays `false`
+> and the signal layer is stage-gated (stage 3). ML signals do **not** produce live data until
+> the operator has ~months of OHLCV history and explicitly flips the flag on. Nothing below
+> changes that.
+
+### Features (shipped 2026-06-04, feature build pass)
+
+- **Asset endpoints are now real** (were stub / `501`): `GET /assets/{symbol}/features`
+  returns the latest feature row; `GET /assets/{symbol}/news` returns recent news newest-first
+  with a `limit` param; `GET /assets/{symbol}/regime` returns the latest regime label and
+  `{ "regime": "unknown" }` when none exists. (`docs/CONTRACTS.md`, `docs/FEATURES.md`.)
+- **Real portfolio drawdown.** `/portfolio/summary` now computes peak-to-current drawdown from
+  a NAV-history proxy — the cumulative net-flow from the `portfolio_tx` ledger (no dedicated
+  NAV table exists). Was hardcoded `0`.
+- **FX-rate ingestion.** New `pfip/ingest/macro/fx_rates.py` (Frankfurter — free, no key) and
+  the `ingest-fx-daily` flow now populate the `fx_rates` table (`base`/`quote`/`rate`/
+  `rate_date`). This is what enables USD→INR mark-to-market and tax conversions. Manual
+  backfill:
+  ```powershell
+  python -c "import asyncio; from pfip.ingest.macro.fx_rates import ingest_fx_rates; asyncio.run(ingest_fx_rates(mode='backfill', lookback_days=730))"
+  ```
+- **Reranker wired into the live RAG path, privacy-gated.** KB/news hits are reranked via
+  Cohere **only for non-sensitive queries**. SENSITIVE queries (including any holdings-bearing
+  prompt) use identity order and never call Cohere. No-op without `COHERE_API_KEY`.
+  (`docs/LLM_ROUTING.md`.)
+- **Disaster recovery implemented.** `scripts/backup.py` (`pg_dump -Fc` + Qdrant snapshots +
+  optional GPG-encrypt of `.env` + retention prune; flags `--out-dir` / `--retention-days` /
+  `--skip-qdrant` / `--dry-run`) and `scripts/restore.py` (`pg_restore` + Qdrant recover;
+  requires `--confirm`; supports `--dry-run`). New `backup-daily` Prefect flow runs nightly.
+  (`docs/BACKUP.md`.)
+- **`FEATURE_ML_SIGNALS` is now a real runtime gate.** The `signals-generate-daily` flow
+  no-ops (logs) when the flag is off. Combined with stage-gating (signals are stage 3), ML
+  signals stay off until the operator has ~months of OHLCV history and sets
+  `FEATURE_ML_SIGNALS=true`. (Still not live.)
+
+### Correctness / scheduling fixes
+
+- **Prefect scheduling fixed.** The deployment catalogue (`schedules/prefect_deployments.py`)
+  had **8 of 21** `flow_path`s broken (wrong module/callable names + a finnhub import bug), so
+  those scheduled tasks silently never registered. All 21 now resolve. The missing
+  `morning-brief` Prefect flow wrapper was built. A new test (`test_deployments_resolve.py`)
+  prevents regressions. (`docs/SCHEDULED_TASKS.md`.)
+
+### Frontend
+
+- **Honest CSV-upload state.** Removed the fake CSV-upload progress bar; it's now an honest
+  indeterminate state.
+- **Real chat history sidebar.** The chat conversation sidebar is now real client-side local
+  history (localStorage: new chat, switch, delete) instead of fake skeletons.
+- **Contract mismatches fixed.** News uses `time` / `symbol` (not `published_at` / `tickers`);
+  regime tolerates `"unknown"` — so the feeds won't break once data flows. A broader
+  frontend↔backend parity sweep is also underway.
+
+### Tests
+
+- Backend now **557 tests** (was 484). New suites: `test_assets_live`, `test_drawdown`,
+  `test_fx_ingest`, `test_reranker_wiring`, `test_backup`, `test_deployments_resolve`,
+  `test_close_position`, `test_marking`, `test_ohlcv_columns`, plus the real-DB integration
+  suite. All green except 5 `litellm`-not-installed-locally failures (pinned + present in
+  Docker) and a few Docker-gated integration skips.

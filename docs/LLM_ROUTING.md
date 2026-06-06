@@ -129,13 +129,28 @@ Net effect: holdings never leave the machine via a cloud provider. A false negat
 text classifier no longer leaks data, because the presence of holding rows in the prompt
 overrides it.
 
+### Reranker privacy gate (2026-06-04 feature build)
+
+The Cohere reranker is now wired into the live RAG path, but it sits **behind the same
+privacy boundary**. Reranking sends the query (and candidate passages) to Cohere, so it is
+applied **only when the query is non-sensitive**:
+
+- **Non-sensitive query** → KB/news hits are reranked via Cohere rerank-v3 for the RAG-quality
+  lift.
+- **SENSITIVE query** (including any holdings-bearing prompt) → reranking is skipped entirely;
+  retrieval keeps **identity order** and Cohere is **never** called.
+- **No `COHERE_API_KEY`** → no-op; retrieval falls through to identity order.
+
+So the reranker can never become a side-channel that leaks a sensitive query to a cloud
+provider — the gate is the same one that keeps holdings off cloud LLMs.
+
 ## 6. Provider routing (recommended)
 
 | Layer | Provider | Why |
 |---|---|---|
 | Sentiment classifiers (FinBERT, CryptoBERT) | Local, CPU | Specialized small models. Don't waste API calls. |
 | Embeddings (KB + news) | **NVIDIA NIM** (NV-Embed-v2 / nv-embedqa-e5-v5), free | Quality > local nomic-embed-text; free; embeddings drive RAG quality more than chat-LLM does. |
-| Reranking (after retrieval) | **Cohere** rerank-v3, free trial | Big quality lift on RAG; explicit no-training-on-data. **Not yet wired into the live retrieval path** (planned — see §9 task 7); RAG today goes straight from Qdrant retrieval to synthesis with no rerank step. |
+| Reranking (after retrieval) | **Cohere** rerank-v3, free trial | Big quality lift on RAG; explicit no-training-on-data. **Now wired into the live retrieval path (2026-06-04), privacy-gated** (see §5.1): KB/news hits are reranked via Cohere **only for non-sensitive queries**; SENSITIVE queries (incl. any holdings-bearing prompt) use identity order and never call Cohere. No-op without `COHERE_API_KEY`. |
 | Daily/bulk tasks (news summarize, quick chat, morning brief) | **Groq Llama 3.3 70B** | Fast (~500 tok/s), free 14k req/day, 70B quality. Workhorse. |
 | Reasoning tasks (post-mortem, weekly review, "should I rebalance") | **DeepSeek-R1** or **Gemini 2.0 Pro Thinking** | Chain-of-thought. Used rarely; quality matters. |
 | Privacy-sensitive prompts | **Local Ollama (Mistral 7B / Llama 3.1 8B)** | Free APIs may log/train on free-tier data. Your portfolio doesn't leave the machine. |
@@ -192,7 +207,9 @@ When LLM router is on the work plan:
 4. Wire `pfip/agent/post_mortem.py` to use router (forced to reasoning model)
 5. Wire `pfip/agent/chat.py` to use router with privacy detection
 6. Add NVIDIA NIM embedder, swap from local nomic-embed-text in KB ingest
-7. Add Cohere reranker after Qdrant retrieval
+7. ~~Add Cohere reranker after Qdrant retrieval~~ **Done (2026-06-04):** wired into the live
+   RAG path, privacy-gated (rerank only for non-sensitive queries; SENSITIVE skips Cohere).
+   No-op without `COHERE_API_KEY`.
 8. Update `.env.example` with all new provider keys
 9. Add provider health-check endpoint to `/api/v1/health/providers`
 10. Add fallback chain: if primary provider 5xx or rate-limited, try next; if all fail, return graceful error
@@ -206,4 +223,4 @@ When LLM router is on the work plan:
 
 ---
 
-*Last updated: 2026-06-04 (privacy hardening; reranker honesty note).*
+*Last updated: 2026-06-04 (privacy hardening; reranker now wired into the live RAG path behind the privacy gate — §5.1).*

@@ -149,10 +149,19 @@ All routes are prefixed `/api/v1`.
 - `GET /auth/me` → current user
 
 ### Assets & market data
+
+All `/assets/*` endpoints require an authenticated user. The three below were stubs (`501`)
+until 2026-06-04 and are now **real**.
+
 - `GET /assets/{symbol}/candles?timeframe=1d&since=ISO&until=ISO` → `OHLCV[]`
-- `GET /assets/{symbol}/features?as_of=ISO` → feature dict
-- `GET /assets/{symbol}/news?since=ISO&limit=50` → `NewsItem[]`
-- `GET /assets/{symbol}/regime` → `{ regime, since, confidence }`
+- `GET /assets/{symbol}/features?as_of=ISO` → the **latest** feature row for the symbol (a
+  feature dict). Empty when none exists.
+- `GET /assets/{symbol}/news?since=ISO&limit=50` → recent `NewsItem[]`, **newest first**,
+  capped by `limit`. Items use `time` and `symbol` (the frontend mirrors these field names —
+  not `published_at` / `tickers`).
+- `GET /assets/{symbol}/regime` → `{ regime, since, confidence }` with the **latest** regime
+  label. Returns `{ "regime": "unknown" }` when no regime has been computed for the symbol
+  (the frontend tolerates `"unknown"`).
 
 ### Watchlist
 - `GET /watchlist` → `WatchlistItem[]`
@@ -172,7 +181,9 @@ All routes are prefixed `/api/v1`.
   converted to INR via the `fx_rates` table. Correctness-by-abstention — any holding whose
   price currency can't be resolved, or USD holding with no FX rate, falls back to cost basis
   (never a wrong rupee figure). `/portfolio/exposure` and `/portfolio/concentration` use the
-  same live prices.
+  same live prices. **`drawdown` is now real** (2026-06-04): peak-to-current drawdown computed
+  from a NAV-history proxy — cumulative net-flow from the `portfolio_tx` ledger (no dedicated
+  NAV table exists). Was previously hardcoded `0`.
 - `GET /portfolio/marking` → mark-to-market coverage:
   ```
   {
