@@ -171,6 +171,59 @@ async def classify_pending(session: AsyncSession, *, batch: int = 128) -> int:
         return 0
 
 
+# Market-moving macro terms worth keeping even when not tied to a tracked
+# symbol (central banks, rates, inflation, major indices, oil). Kept narrow so
+# we don't re-admit generic noise.
+_MACRO_REGEX = (
+    r"fed|fomc|federal reserve|\brbi\b|reserve bank|\bsebi\b|\becb\b|inflation|"
+    r"interest rate|rate (cut|hike)|\bcpi\b|\bgdp\b|recession|crude|\bopec\b|"
+    r"nifty|sensex|s&p 500|nasdaq|dow jones|bond yield|treasury|jobs report"
+)
+
+
+async def prune_irrelevant(session: AsyncSession, *, min_impact: float = 60.0) -> int:
+    """Delete news not relevant to the tracked universe.
+
+    KEEPS a row if ANY of: it's tagged to a symbol, it was entity-linked to a
+    watchlist ticker, it scored high impact, or it matches a narrow set of
+    market-moving macro terms. Everything else (generic noise) is deleted so we
+    only store news that actually informs signals/regime/risk. Runs AFTER
+    link_entities + classify so those signals are populated.
+    """
+    stmt = text(
+        """
+        DELETE FROM news
+        WHERE symbol IS NULL
+          AND (entity_tickers IS NULL OR entity_tickers = '[]'::jsonb)
+          AND (impact_score IS NULL OR impact_score < :min_impact)
+          AND lower(coalesce(title, '') || ' ' || coalesce(summary, '')) !~ :macro
+        """
+    )
+    try:
+        r = await session.execute(stmt, {"min_impact": min_impact, "macro": _MACRO_REGEX})
+        await session.commit()
+        return r.rowcount or 0
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"prune_irrelevant failed: {type(e).__name__}: {e}")
+        return 0
+
+
+async def prune_old(session: AsyncSession, *, days: int = 60) -> int:
+    """Retention: delete news older than ``days`` (stale for daily signals).
+
+    Caps table growth — combined with relevance pruning the news table stays
+    small (titles + short summaries only; no raw article bodies are ever stored).
+    """
+    stmt = text("DELETE FROM news WHERE time < now() - (:d || ' days')::interval")
+    try:
+        r = await session.execute(stmt, {"d": days})
+        await session.commit()
+        return r.rowcount or 0
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"prune_old failed: {type(e).__name__}: {e}")
+        return 0
+
+
 async def embed_pending() -> int:
     """Embed any rows where ``embedded=false`` into Qdrant."""
     try:
@@ -185,17 +238,30 @@ async def embed_pending() -> int:
 async def run_pipeline(session: AsyncSession | None = None) -> dict[str, int]:
     """Execute all stages. Returns counts per stage."""
     log.info("news.pipeline starting")
-    summary: dict[str, int] = {"deduped": 0, "linked": 0, "classified": 0, "embedded": 0}
+    summary: dict[str, int] = {
+        "deduped": 0,
+        "linked": 0,
+        "classified": 0,
+        "pruned_irrelevant": 0,
+        "pruned_old": 0,
+        "embedded": 0,
+    }
+
+    async def _stages(s: AsyncSession) -> None:
+        # Order matters: link + classify populate the relevance signals, THEN
+        # we prune the noise, so only relevant rows survive to be embedded.
+        summary["deduped"] = await dedupe_recent(s)
+        summary["linked"] = await link_entities(s)
+        summary["classified"] = await classify_pending(s)
+        summary["pruned_irrelevant"] = await prune_irrelevant(s)
+        summary["pruned_old"] = await prune_old(s)
+
     if session is None:
         factory = get_sessionmaker()
         async with factory() as s:
-            summary["deduped"] = await dedupe_recent(s)
-            summary["linked"] = await link_entities(s)
-            summary["classified"] = await classify_pending(s)
+            await _stages(s)
     else:
-        summary["deduped"] = await dedupe_recent(session)
-        summary["linked"] = await link_entities(session)
-        summary["classified"] = await classify_pending(session)
+        await _stages(session)
     summary["embedded"] = await embed_pending()
     log.info(f"news.pipeline done: {summary}")
     return summary

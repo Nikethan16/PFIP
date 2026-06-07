@@ -187,8 +187,26 @@ async def backtest_walk_forward(
     except Exception as exc:  # pragma: no cover
         runtime_log.warning("tearsheet failed: %s", exc)
 
+    wf_summary = wf.summary()
+    # Persist per-fold metrics alongside the aggregate so the detail endpoint
+    # (GET /backtest/runs/{id}) can render the walk-forward fold breakdown.
+    wf_summary["fold_metrics"] = [
+        {
+            "fold": fm.fold,
+            "start_idx": fm.start_idx,
+            "end_idx": fm.end_idx,
+            "sharpe": fm.sharpe,
+            "max_drawdown": fm.max_drawdown,
+            "hit_rate": fm.hit_rate,
+            "avg_return": fm.avg_return,
+            "n_trades": fm.n_trades,
+        }
+        for fm in wf.fold_metrics
+    ]
+    wf_summary["cpcv"] = wf.cpcv_metrics
+
     metrics_payload: dict[str, Any] = {
-        "walkforward": wf.summary(),
+        "walkforward": wf_summary,
         "benchmarks": bench,
         "monte_carlo": mc.as_dict() if mc is not None else None,
         "shuffle_test": shuf.summary(),

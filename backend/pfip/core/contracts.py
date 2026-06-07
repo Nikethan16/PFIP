@@ -78,12 +78,17 @@ class Source(str, Enum):
     OKX = "okx"
     YFINANCE = "yfinance"
     STOOQ = "stooq"
+    TIINGO = "tiingo"
     JUGAAD = "jugaad"
+    NSE_BHAVCOPY = "nse_bhavcopy"
+    BSE_BHAVCOPY = "bse_bhavcopy"
+    NSE_FNO_BHAVCOPY = "nse_fno_bhavcopy"
     AMFI = "amfi"
     FRANKFURTER = "frankfurter"
     RBI = "rbi"
     FRED = "fred"
     SEC_EDGAR = "sec_edgar"
+    COINGECKO = "coingecko"
 
 
 class Regime(str, Enum):
@@ -197,7 +202,10 @@ class OHLCV(_StrictBase):
     time: datetime
     symbol: str
     market: str
-    source: Source
+    # Plain str (not the Source enum) on purpose: this is the API read boundary
+    # and ingest sources are open-ended — a new adapter's source must never make
+    # the candles endpoint 500 on validation. The enum stays for write paths.
+    source: str
     timeframe: Timeframe
     open: Decimal
     high: Decimal

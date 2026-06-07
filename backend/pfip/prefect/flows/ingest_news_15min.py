@@ -150,6 +150,17 @@ async def ingest_news_15min(
             continue
         total += int(r)
     log.info(f"ingest-news-15min total rows: {total}")
+
+    # Post-ingest pipeline: dedupe -> entity-link -> classify -> PRUNE the
+    # irrelevant/stale noise -> embed. Keeps only news tied to the tracked
+    # universe (or market-moving macro), so storage stays lean. Non-fatal.
+    try:
+        from pfip.ingest.news._pipeline import run_pipeline
+
+        pipe = await asyncio.wait_for(run_pipeline(), timeout=180.0)
+        log.info(f"news.pipeline: {pipe}")
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"news pipeline failed: {type(e).__name__}: {e}")
     return total
 
 

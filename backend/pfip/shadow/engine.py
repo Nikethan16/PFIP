@@ -178,10 +178,16 @@ class ShadowPortfolio:
     # ------------------------------------------------------------------
 
     async def mark_to_market(self, as_of: datetime | None = None) -> dict[str, Any]:
-        """Daily rollup: total equity, unrealized PnL per holding."""
+        """Daily rollup: total equity (cash + holdings), unrealized PnL per holding.
+
+        ``equity_inr`` is whole-portfolio: uninvested cash plus the
+        marked-to-market value of every open holding. ``holdings_value_inr``
+        and ``cash_inr`` break that down so the UI can show both.
+        """
         as_of = as_of or datetime.now(tz=timezone.utc)
         rows = await self._open_holdings()
-        equity = Decimal(0)
+        holdings_value = Decimal(0)
+        invested = Decimal(0)
         lines: list[dict[str, Any]] = []
         for h in rows:
             price = await self._latest_close(h.symbol)
@@ -189,7 +195,8 @@ class ShadowPortfolio:
                 price = (h.cost_basis_inr / h.qty) if h.qty > 0 else Decimal(0)
             value = h.qty * Decimal(str(price))
             pnl = value - h.cost_basis_inr
-            equity += value
+            holdings_value += value
+            invested += h.cost_basis_inr
             lines.append(
                 {
                     "holding_id": str(h.id),
@@ -200,7 +207,15 @@ class ShadowPortfolio:
                     "pnl_inr": float(pnl),
                 }
             )
-        return {"as_of": as_of.isoformat(), "equity_inr": float(equity), "lines": lines}
+        cash = self.starting_cash_inr - invested
+        equity = cash + holdings_value
+        return {
+            "as_of": as_of.isoformat(),
+            "equity_inr": float(equity),
+            "cash_inr": float(cash),
+            "holdings_value_inr": float(holdings_value),
+            "lines": lines,
+        }
 
     async def close_position(self, holding_id: Any, price: Decimal | float, reason: str) -> bool:
         """Close the given holding at ``price``; record SELL tx."""
@@ -262,23 +277,42 @@ class ShadowPortfolio:
         return len(rows)
 
     async def _mark_to_market_equity(self, as_of) -> Decimal:
-        rows = await self._open_holdings()
-        equity = Decimal(0)
-        for h in rows:
-            price = await self._latest_close(h.symbol)
-            price_d = Decimal(str(price if price is not None else 0))
-            equity += h.qty * price_d
-        return equity or self.starting_cash_inr
+        """Total portfolio equity = uninvested cash + market value of holdings.
 
-    async def _peak_equity(self) -> Decimal:
-        """Approximate peak equity as max(equity_today, sum(cost_basis)).
-
-        Without a full equity-curve table we lower-bound peak by total invested
-        capital. It still triggers the drawdown rule reliably when MtM drops.
+        Cash deployed on each open position equals its ``cost_basis_inr`` (we
+        bought ``qty`` at ``price``), so remaining cash is
+        ``starting_cash_inr - sum(cost_basis)``. Adding the marked-to-market
+        value of the holdings back gives ``starting_cash + unrealized_pnl`` —
+        which keeps equity comparable to :meth:`_peak_equity` (both are on a
+        whole-portfolio basis). Marking holdings-only here previously made a
+        freshly-deployed 10% position look like an 90% drawdown and tripped the
+        halt on the very next signal.
         """
         rows = await self._open_holdings()
         invested = sum((h.cost_basis_inr for h in rows), Decimal(0))
-        return max(invested, self.starting_cash_inr)
+        market_value = Decimal(0)
+        for h in rows:
+            price = await self._latest_close(h.symbol)
+            price_d = Decimal(str(price if price is not None else 0))
+            if price_d <= 0:
+                # No live price → fall back to cost basis so a missing quote
+                # doesn't fabricate a loss.
+                market_value += h.cost_basis_inr
+            else:
+                market_value += h.qty * price_d
+        cash = self.starting_cash_inr - invested
+        return cash + market_value
+
+    async def _peak_equity(self) -> Decimal:
+        """Peak equity high-water mark.
+
+        Without a full equity-curve table we lower-bound the peak by the
+        starting capital: the portfolio only opens positions sized as a
+        fraction of equity, so it never exceeds ``starting_cash_inr`` on day
+        one and the drawdown rule still fires reliably once MtM equity drops a
+        real ``drawdown_halt_pct`` below that base.
+        """
+        return self.starting_cash_inr
 
     async def _correlation_ok(self, symbol: str) -> tuple[bool, str]:
         """90d return correlation guard vs existing open positions."""

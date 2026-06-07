@@ -323,10 +323,15 @@ async def run_for_watchlist(
         log.warning("watchlist load failed: %s", exc)
         return []
 
+    from pfip.db.sources import resolve_ohlcv_source
+
     out: list[SignalRunResult] = []
     for r in rows:
         symbol = str(r.symbol)
-        source = _source_for(symbol)
+        # Use the source that ACTUALLY ingested this symbol (US equities live
+        # under 'tiingo', not the heuristic's 'yfinance' — otherwise the
+        # scheduled signal flow reads 0 rows and silently zeroes US signals).
+        source = await resolve_ohlcv_source(session, symbol, timeframe) or _source_for(symbol)
         try:
             result = await run_for_symbol(
                 session, symbol=symbol, source=source, timeframe=timeframe

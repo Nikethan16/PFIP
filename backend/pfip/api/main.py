@@ -18,6 +18,7 @@ from pfip.api import (
     agent,
     assets,
     auth,
+    backtest,
     calibration,
     changes_today,
     health,
@@ -123,6 +124,7 @@ def create_app() -> FastAPI:
     app.include_router(signals.router, prefix=prefix)
     app.include_router(portfolio.router, prefix=prefix)
     app.include_router(shadow.router, prefix=prefix)
+    app.include_router(backtest.router, prefix=prefix)
     app.include_router(calibration.router, prefix=prefix)
     app.include_router(tax.router, prefix=prefix)
     app.include_router(agent.router, prefix=prefix)
