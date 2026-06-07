@@ -24,6 +24,15 @@ from tenacity import (
 
 USER_AGENT = "PFIP/0.1 (+https://github.com/cbcinc/pfip; contact: suresh.sahoo@cbcinc.ai)"
 
+# A realistic desktop-browser UA. Some exchange/government WAFs (NSE's Akamai,
+# SEC EDGAR) reject the bot-style ``USER_AGENT`` above (it embeds a URL +
+# parenthetical contact, which trips bot filters and yields 403 / ReadTimeout).
+# Adapters hitting those hosts should send ``BROWSER_UA`` instead.
+BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
+
 DEFAULT_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 
 

@@ -1,0 +1,34 @@
+# Worker storage root is /app == ./backend (bind mount). The Prefect process
+# worker copies this whole tree into a fresh temp dir for EVERY flow run. With
+# an empty ignore it copies backend/.venv (~1.8 GB of ML wheels: torch,
+# transformers, lightgbm, …) plus caches, so runs stall for minutes at
+# "Downloading flow code from storage at '/app'" and pile up. The worker has its
+# own installed environment — only the pfip package + schedules are needed to
+# import and run the flows. Exclude everything heavy below.
+
+# The big one: the host virtualenv (not used by the worker, which has its own).
+.venv/
+venv/
+env/
+
+# Python caches / build / test artifacts
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# ML run artifacts
+mlruns/
+mlartifacts/
+
+# Secrets / sessions / logs (never copy into worker temp dirs)
+.env
+*.session
+*.log

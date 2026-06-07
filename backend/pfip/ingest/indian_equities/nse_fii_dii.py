@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pfip.core.logging import get_logger
 from pfip.db.session import get_sessionmaker
-from pfip.ingest._common.http import USER_AGENT, get_async_client, retry_http
+from pfip.ingest._common.http import BROWSER_UA, get_async_client, retry_http
 from pfip.ingest._common.upsert import upsert_fundamentals
 
 log = get_logger("pfip.ingest.indian_equities.nse_fii_dii")
@@ -27,8 +27,9 @@ HOME = "https://www.nseindia.com/"
 @retry_http(max_attempts=3)
 async def _fetch() -> list[dict[str, Any]]:
     headers = {
-        "User-Agent": "Mozilla/5.0 (PFIP) " + USER_AGENT,
+        "User-Agent": BROWSER_UA,
         "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
         "Referer": "https://www.nseindia.com/reports/fii-dii",
     }
     async with get_async_client(headers=headers) as client:

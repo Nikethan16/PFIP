@@ -62,6 +62,14 @@ _DB_QUERY_PATTERNS: list[tuple[str, float]] = [
         r"\b(stcg|ltcg|vda|capital gain|tax (liability|payable|owed)) (for|in) (fy|2[0-9]{3})\b",
         0.85,
     ),
+    # Due-diligence / fundamentals dossier asks resolve to a DB aggregation
+    # (the `get_diligence` tool) — they pull structured data, then the agent
+    # grounds a qualitative read on top. See pfip.agent.tools.get_diligence.
+    (
+        r"\b(due[\s-]?diligence|fundamentals?|financials?|valuation|deep[\s-]?dive|dossier)\b",
+        0.88,
+    ),
+    (r"\b(research|look into|tell me (everything|all) about|profile of)\b.{0,30}\b[A-Z]{2,}", 0.80),
 ]
 
 _RAG_LOOKUP_PATTERNS: list[tuple[str, float]] = [

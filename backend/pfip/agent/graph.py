@@ -132,6 +132,110 @@ def classify_intent(query: str) -> Intent:
 
 
 # ---------------------------------------------------------------------------
+# Due-diligence detection + symbol extraction
+# ---------------------------------------------------------------------------
+#
+# A due-diligence ask ("do a due diligence on NVDA", "fundamentals of RELIANCE",
+# "should I research BTC") routes to the shared aggregation service so the agent
+# grounds its qualitative read in the SAME structured data the REST endpoint
+# serves — alongside the KB books. The trigger is intentionally narrow so we
+# only pay the aggregation cost when the user actually wants a dossier.
+
+_DILIGENCE_RE = re.compile(
+    r"\b("
+    r"due[\s-]?diligence|diligence|fundamentals?|financials?|valuation|"
+    r"deep[\s-]?dive|dossier|research|look into|tell me (everything|all) about|"
+    r"analy[sz]e|profile of"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# A ticker-shaped token: BTC-USD, RELIANCE.NS, M&M.NS, BAJAJ-AUTO.NS, NVDA, SPY.
+_SYMBOL_RE = re.compile(r"\b([A-Z][A-Z0-9&]{0,11}(?:[.\-][A-Z0-9]{1,6}){0,2})\b")
+
+# Common all-caps English words that look like tickers but aren't — never treat
+# these as a symbol when scanning free text.
+_SYMBOL_STOPWORDS = frozenset(
+    {
+        "DD",
+        "ETF",
+        "IPO",
+        "CEO",
+        "CFO",
+        "USD",
+        "INR",
+        "AND",
+        "THE",
+        "FOR",
+        "PE",
+        "PB",
+        "ROE",
+        "ROA",
+        "FII",
+        "DII",
+        "US",
+        "UK",
+        "ALL",
+        "TELL",
+        "DO",
+        "ON",
+        "OF",
+        "A",
+        "I",
+        "RSI",
+        "MACD",
+        "NAV",
+        "P&L",
+        "PNL",
+    }
+)
+
+
+def is_diligence_query(query: str) -> bool:
+    """True when the user is asking for a due-diligence / fundamentals dossier."""
+    return bool(_DILIGENCE_RE.search(query or ""))
+
+
+async def extract_symbol(db: AsyncSession, query: str) -> str | None:
+    """Best-effort extract the asset symbol a diligence ask refers to.
+
+    Strategy (most reliable first):
+      1. Match any watchlist symbol that appears verbatim in the query (case
+         insensitive) — this resolves nicknames-as-tickers and dotted/dashed
+         forms exactly as stored.
+      2. Fall back to the first ticker-shaped, non-stopword uppercase token.
+
+    Returns the canonical symbol string, or ``None`` when nothing plausible is
+    found (the caller then skips diligence retrieval).
+    """
+    q = query or ""
+    # 1) Watchlist match — authoritative for the symbols we actually track.
+    try:
+        from pfip.models.watchlist import WatchlistRow
+
+        rows = (await db.execute(sql_text("SELECT symbol FROM watchlist"))).all()
+        watch = [r[0] for r in rows if r[0]]
+        upper_q = q.upper()
+        # Longest symbols first so RELIANCE.NS wins over a bare RELIANCE token.
+        for sym in sorted(watch, key=len, reverse=True):
+            if sym.upper() in upper_q:
+                return sym
+    except Exception as exc:  # noqa: BLE001 — fall through to regex
+        logger.debug(f"[agent] watchlist symbol match failed: {exc}")
+
+    # 2) Regex fallback — first ticker-shaped token that isn't a stopword.
+    for m in _SYMBOL_RE.finditer(q):
+        tok = m.group(1)
+        if tok.upper() in _SYMBOL_STOPWORDS:
+            continue
+        # Require it to look like a ticker: has a market suffix, OR is 2-5 chars
+        # of letters (NVDA, SPY) — avoids matching ordinary capitalized words.
+        if any(c in tok for c in (".", "-", "&")) or (2 <= len(tok) <= 5 and tok.isalpha()):
+            return tok
+    return None
+
+
+# ---------------------------------------------------------------------------
 # State + node definitions
 # ---------------------------------------------------------------------------
 
@@ -163,7 +267,14 @@ async def node_classify(state: AgentState) -> AgentState:
 
 
 async def node_retrieve_kb(state: AgentState) -> AgentState:
-    if state.intent not in {"market_question", "tax_question", "general"}:
+    # KB books ground market/tax/general answers AND any due-diligence ask
+    # (so the qualitative read is anchored to Graham/Wyckoff/etc., not vibes),
+    # even when the ask was classified portfolio_question.
+    if state.intent not in {
+        "market_question",
+        "tax_question",
+        "general",
+    } and not is_diligence_query(state.user_query):
         return state
     try:
         hits = await kb_search(state.user_query, k=5)
@@ -242,6 +353,79 @@ async def node_retrieve_db(db: AsyncSession, state: AgentState) -> AgentState:
     return state
 
 
+def _summarize_diligence(d: dict[str, Any]) -> dict[str, Any]:
+    """Compact a full diligence aggregate into a prompt-sized dict.
+
+    The full aggregate (every fundamental field, all filings) is too large for
+    the synthesis prompt. We keep the headline price, the curated ``key_metrics``,
+    counts + the most recent few filings/news, flows, on-chain summary, and the
+    model read — enough for the LLM to write a grounded qualitative dossier
+    without dumping the whole EAV blob.
+    """
+    fund = d.get("fundamentals") or {}
+    summary = d.get("summary") or {}
+    model_read = d.get("model_read") or {}
+    return {
+        "symbol": d.get("symbol"),
+        "market": d.get("market"),
+        "asset_class": d.get("asset_class"),
+        "last_price": d.get("last_price"),
+        "change_pct": d.get("change_pct"),
+        "fundamentals_as_of": fund.get("as_of_date"),
+        "fundamentals_source": fund.get("source"),
+        "key_metrics": fund.get("key_metrics") or {},
+        "recent_filings": [
+            {"title": f.get("title"), "type": f.get("type"), "date": f.get("date")}
+            for f in (d.get("filings") or [])[:3]
+        ],
+        "n_filings": len(d.get("filings") or []),
+        "n_insider": len(d.get("insider") or []),
+        "institutional_flows": d.get("institutional_flows") or {},
+        "onchain": d.get("onchain") or {},
+        "recent_news": [
+            {"title": n.get("title"), "sentiment": n.get("sentiment")}
+            for n in (d.get("news") or [])[:3]
+        ],
+        "model_read": {
+            "regime": (model_read.get("regime") or {}).get("label"),
+            "signal": (model_read.get("signal") or {}).get("direction"),
+            "signal_note": "experimental",
+        },
+        "data_coverage": summary.get("data_coverage"),
+        "annotations": summary.get("annotations") or [],
+    }
+
+
+async def node_retrieve_diligence(db: AsyncSession, state: AgentState) -> AgentState:
+    """When the query is a due-diligence ask, fetch the shared aggregate.
+
+    Calls the SAME :func:`pfip.diligence.service.build_diligence` that backs the
+    REST endpoint, compacts it, and appends it to ``retrieved_db`` as a
+    ``diligence`` row with a ``db://diligence/<symbol>`` citation. The LLM then
+    grounds its qualitative read in this structured data plus the KB books —
+    never a recommendation, always with caveats.
+
+    No-op (and cheap) when the query isn't a diligence ask or no symbol resolves.
+    """
+    if not is_diligence_query(state.user_query):
+        return state
+    symbol = await extract_symbol(db, state.user_query)
+    if not symbol:
+        logger.debug("[agent] diligence query but no symbol resolved; skipping")
+        return state
+    try:
+        from pfip.diligence.service import build_diligence
+
+        aggregate = await build_diligence(db, symbol)
+    except Exception as exc:  # noqa: BLE001 — never break the stream on aggregation
+        logger.warning(f"[agent] diligence aggregation failed for {symbol}: {exc}")
+        return state
+    state.retrieved_db.append({"kind": "diligence", **_summarize_diligence(aggregate)})
+    state.db_citations.append(f"db://diligence/{symbol}")
+    logger.debug(f"[agent] attached diligence aggregate for {symbol}")
+    return state
+
+
 # ---------------------------------------------------------------------------
 # Synthesis + streaming
 # ---------------------------------------------------------------------------
@@ -275,6 +459,24 @@ def _build_synthesis_messages(state: AgentState) -> list[ChatMessage]:
     db_block = _render_db_block(state.retrieved_db)
     db_citations_block = ", ".join(state.db_citations) if state.db_citations else "(none)"
 
+    # When a diligence aggregate is attached, steer the model toward a grounded
+    # research dossier — analysis + caveats anchored to the data and KB books,
+    # explicitly NOT a buy/sell call (the architectural contract already forbids
+    # typed signals; this reinforces the posture for the dossier shape).
+    has_diligence = any(r.get("kind") == "diligence" for r in state.retrieved_db)
+    diligence_directive = ""
+    if has_diligence:
+        diligence_directive = (
+            "\n## Due-diligence mode\n\n"
+            "A `diligence` row above carries an aggregated dossier (price,\n"
+            "fundamentals, filings, flows, on-chain, model read). Write a balanced\n"
+            "research summary: what the data shows, valuation context, bull vs bear\n"
+            "points, data gaps, and what the experimental model currently reads —\n"
+            "each claim cited to the data (`db://diligence/<symbol>`) or a KB book.\n"
+            "Do NOT issue a buy/sell/hold recommendation; this is research, not\n"
+            "advice. End with the experimental, not-investment-advice caveat.\n"
+        )
+
     system = (
         f"{persona}\n\n"
         "## Runtime context\n\n"
@@ -284,6 +486,7 @@ def _build_synthesis_messages(state: AgentState) -> list[ChatMessage]:
         f"### News\n{news_block}\n\n"
         f"### Structured DB rows (cite as db://<table>/<id>)\n{db_block}\n"
         f"Available DB citations: {db_citations_block}\n"
+        f"{diligence_directive}"
     )
 
     history: list[ChatMessage] = [ChatMessage(role="system", content=system)]
@@ -379,6 +582,7 @@ async def run_agent_stream(
     state = await node_retrieve_kb(state)
     state = await node_retrieve_news(state)
     state = await node_retrieve_db(db, state)
+    state = await node_retrieve_diligence(db, state)
 
     # --- Privacy classification (must precede any rerank) -------------------
     # Compute sensitivity BEFORE reranking so the Cohere reranker is never
@@ -534,6 +738,9 @@ __all__ = [
     "Intent",
     "cite_and_validate",
     "classify_intent",
+    "extract_symbol",
+    "is_diligence_query",
+    "node_retrieve_diligence",
     "run_agent_oneshot",
     "run_agent_stream",
 ]

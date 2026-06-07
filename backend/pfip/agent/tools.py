@@ -159,6 +159,31 @@ async def get_open_signals(session: Any, *, limit: int = 20) -> dict[str, Any]:
     }
 
 
+async def get_diligence(session: Any, *, symbol: str) -> dict[str, Any]:
+    """Aggregate everything PFIP knows about ``symbol`` for a due-diligence read.
+
+    Thin wrapper over :func:`pfip.diligence.service.build_diligence` (the single
+    shared implementation also backing ``GET /api/v1/diligence/{symbol}``).
+    Returns the same structured aggregate — price, fundamentals + key metrics,
+    filings, insider/PIT disclosures, FII/DII flows, on-chain metrics,
+    regime/signal model read, recent news, and an honest derived summary.
+
+    Never raises: a blank symbol or a lookup failure safe-fails to
+    ``{"ok": False, ...}`` like the other tools. ``found=False`` means the symbol
+    is unknown to the platform (no OHLCV history) — the dict is still well-formed.
+    """
+    sym = (symbol or "").strip()
+    if not sym:
+        return {"ok": False, "error": "symbol is required for diligence"}
+    try:
+        from pfip.diligence.service import build_diligence
+
+        data = await build_diligence(session, sym)
+    except Exception as exc:  # noqa: BLE001 — tool surface never raises
+        return {"ok": False, "error": f"diligence aggregation failed: {exc}"}
+    return {"ok": True, "diligence": data, "found": bool(data.get("found"))}
+
+
 async def get_tax_summary(session: Any, *, fy: str) -> dict[str, Any]:
     """Quick tax-summary lookup for an FY. Just the headline numbers."""
     try:
@@ -196,6 +221,7 @@ REGISTRY: dict[str, ToolFn] = {
     "get_recent_pnl": get_recent_pnl,
     "get_open_signals": get_open_signals,
     "get_tax_summary": get_tax_summary,
+    "get_diligence": get_diligence,
 }
 
 

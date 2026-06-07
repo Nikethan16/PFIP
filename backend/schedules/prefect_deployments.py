@@ -138,6 +138,49 @@ DEPLOYMENTS: List[DeploymentSpec] = [
         stage=3,
         tags=("ingest", "research"),
     ),
+    # =================== DUE-DILIGENCE ADAPTERS (dedicated) ===================
+    # Standalone, per-source variants of adapters also bundled in india-eod /
+    # fundamentals-weekly — isolated so one source's failure can't mask others.
+    DeploymentSpec(
+        name="ingest-sec-edgar-filings/prod",
+        flow_path="pfip.prefect.flows.ingest_due_diligence:ingest_sec_edgar_filings",
+        cron="0 23 * * 5",  # Fri 23:00 UTC (Sat 04:30 IST) — after fundamentals-weekly
+        description="US SEC EDGAR filings (10-K/10-Q/8-K) + companyfacts (weekly).",
+        stage=2,
+        tags=("ingest", "us", "filings", "diligence"),
+    ),
+    DeploymentSpec(
+        name="ingest-screener-fundamentals/prod",
+        flow_path="pfip.prefect.flows.ingest_due_diligence:ingest_screener_fundamentals",
+        cron="30 23 * * 5",  # Fri 23:30 UTC (Sat 05:00 IST)
+        description="India Screener.in fundamentals for NIFTY-50 .NS (weekly).",
+        stage=2,
+        tags=("ingest", "in", "fundamentals", "diligence"),
+    ),
+    DeploymentSpec(
+        name="ingest-nse-fii-dii/prod",
+        flow_path="pfip.prefect.flows.ingest_due_diligence:ingest_nse_fii_dii",
+        cron="30 11 * * 1-5",  # 17:00 IST weekdays — after NSE close / india-eod
+        description="NSE market-level FII/DII institutional flows (daily).",
+        stage=2,
+        tags=("ingest", "in", "fii_dii", "diligence"),
+    ),
+    DeploymentSpec(
+        name="ingest-nse-corp-announcements/prod",
+        flow_path="pfip.prefect.flows.ingest_due_diligence:ingest_nse_corp_announcements",
+        cron="45 11 * * 1-5",  # 17:15 IST weekdays
+        description="NSE corporate announcements feed (daily).",
+        stage=2,
+        tags=("ingest", "in", "announcements", "diligence"),
+    ),
+    DeploymentSpec(
+        name="ingest-nse-pit-disclosures/prod",
+        flow_path="pfip.prefect.flows.ingest_due_diligence:ingest_nse_pit_disclosures",
+        cron="0 12 * * 1-5",  # 17:30 IST weekdays
+        description="NSE insider / SEBI PIT disclosures (daily).",
+        stage=2,
+        tags=("ingest", "in", "pit", "diligence"),
+    ),
     # =================== COMPUTE PIPELINES ===================
     DeploymentSpec(
         name="compute-features-daily/prod",

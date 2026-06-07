@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pfip.core.logging import get_logger
 from pfip.db.session import get_sessionmaker
-from pfip.ingest._common.http import USER_AGENT, get_async_client, retry_http
+from pfip.ingest._common.http import BROWSER_UA, get_async_client, retry_http
 from pfip.ingest._common.upsert import upsert_news
 from pfip.ingest.news.rss_fetcher import _parse_feed
 
@@ -30,7 +30,7 @@ JSON_URL = "https://www.nseindia.com/api/corporate-announcements?index=equities"
 
 def _browser_headers() -> dict[str, str]:
     return {
-        "User-Agent": "Mozilla/5.0 (PFIP/0.1) " + USER_AGENT,
+        "User-Agent": BROWSER_UA,
         "Accept": "application/json,application/rss+xml,text/xml;q=0.9,*/*",
         "Referer": "https://www.nseindia.com/",
         "Accept-Language": "en-IN,en;q=0.9",
