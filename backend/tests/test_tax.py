@@ -117,9 +117,7 @@ def test_tax_export_returns_downloadable_file(
     assert len(resp.content) > 0
 
 
-def test_tax_regime_compare_endpoint(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_tax_regime_compare_endpoint(client: TestClient, auth_headers: dict[str, str]) -> None:
     resp = client.post(
         "/api/v1/tax/regime-compare",
         json={
@@ -349,9 +347,7 @@ def test_schedule_fa_router_requires_auth(client: TestClient) -> None:
     assert client.get("/api/v1/tax/schedule-fa?fy=2024-25").status_code == 401
 
 
-def test_schedule_fa_router_empty_shape(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_schedule_fa_router_empty_shape(client: TestClient, auth_headers: dict[str, str]) -> None:
     """No USD holdings → correct empty shape, still 200."""
     resp = client.get("/api/v1/tax/schedule-fa?fy=2024-25", headers=auth_headers)
     assert resp.status_code == 200
@@ -436,9 +432,7 @@ def test_schedule_fa_router_real_peak_and_basis_flag(
                 # Fall back: return AAPL closes only for the AAPL pass.
                 compiled = stmt.compile()
                 bound = {str(k): v for k, v in compiled.params.items()}
-                sym = next(
-                    (v for k, v in bound.items() if v in ("AAPL", "TSLA")), None
-                )
+                sym = next((v for k, v in bound.items() if v in ("AAPL", "TSLA")), None)
                 if sym == "AAPL":
                     return _Result(rows=aapl_closes)
                 return _Result(rows=[])

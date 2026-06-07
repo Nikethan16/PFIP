@@ -20,9 +20,7 @@ from pfip.ingest.ccxt_ohlcv import ingest_ohlcv
     retries=3,
     retry_delay_seconds=exponential_backoff(backoff_factor=10),
 )
-async def _ingest_task(
-    exchange: str, symbol: str, timeframe: str, since: datetime | None
-) -> int:
+async def _ingest_task(exchange: str, symbol: str, timeframe: str, since: datetime | None) -> int:
     log = get_run_logger()
     log.info(f"Starting ingest: {exchange} {symbol} {timeframe} since={since}")
     n = await ingest_ohlcv(exchange=exchange, symbol=symbol, timeframe=timeframe, since=since)

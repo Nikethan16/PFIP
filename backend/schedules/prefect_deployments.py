@@ -43,7 +43,7 @@ LOG = logging.getLogger("pfip.schedules")
 class DeploymentSpec:
     name: str
     flow_path: str  # "module.path:callable"
-    cron: str       # UTC cron
+    cron: str  # UTC cron
     description: str
     stage: int = 1
     tags: tuple = field(default_factory=tuple)
@@ -80,7 +80,6 @@ DEPLOYMENTS: List[DeploymentSpec] = [
         stage=2,
         tags=("ingest", "self_custody"),
     ),
-
     # =================== DAILY MARKET DATA ===================
     DeploymentSpec(
         name="ingest-us-eod/prod",
@@ -122,7 +121,6 @@ DEPLOYMENTS: List[DeploymentSpec] = [
         stage=1,
         tags=("ingest", "macro"),
     ),
-
     # =================== WEEKLY ===================
     DeploymentSpec(
         name="ingest-fundamentals-weekly/prod",
@@ -140,7 +138,6 @@ DEPLOYMENTS: List[DeploymentSpec] = [
         stage=3,
         tags=("ingest", "research"),
     ),
-
     # =================== COMPUTE PIPELINES ===================
     DeploymentSpec(
         name="compute-features-daily/prod",
@@ -174,7 +171,6 @@ DEPLOYMENTS: List[DeploymentSpec] = [
         stage=2,
         tags=("news", "ml"),
     ),
-
     # =================== USER-FACING DIGESTS ===================
     DeploymentSpec(
         name="morning-brief/prod",
@@ -192,7 +188,6 @@ DEPLOYMENTS: List[DeploymentSpec] = [
         stage=2,
         tags=("brief",),
     ),
-
     # =================== PORTFOLIO + REVIEW ===================
     DeploymentSpec(
         name="shadow-reconcile-daily/prod",
@@ -210,7 +205,6 @@ DEPLOYMENTS: List[DeploymentSpec] = [
         stage=3,
         tags=("review",),
     ),
-
     # =================== MONTHLY ROLLUPS ===================
     DeploymentSpec(
         name="monthly-calibration/prod",
@@ -228,7 +222,6 @@ DEPLOYMENTS: List[DeploymentSpec] = [
         stage=4,
         tags=("shadow", "review"),
     ),
-
     # =================== OPS / DISASTER RECOVERY ===================
     DeploymentSpec(
         name="backup-daily/prod",
@@ -326,12 +319,8 @@ def _flip_active(active: bool) -> int:
             for d in DEPLOYMENTS:
                 flow_name, deploy_name = d.name.split("/", 1)
                 try:
-                    dep = await client.read_deployment_by_name(
-                        name=f"{flow_name}/{deploy_name}"
-                    )
-                    await client.update_deployment(
-                        deployment_id=dep.id, is_schedule_active=active
-                    )
+                    dep = await client.read_deployment_by_name(name=f"{flow_name}/{deploy_name}")
+                    await client.update_deployment(deployment_id=dep.id, is_schedule_active=active)
                     touched += 1
                 except Exception as e:  # noqa: BLE001
                     LOG.warning("skip %s — %s", d.name, e)
@@ -361,7 +350,9 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     p_apply = sub.add_parser("apply", help="Create/update all deployments.")
     p_apply.add_argument(
-        "--stage", type=int, default=4,
+        "--stage",
+        type=int,
+        default=4,
         help="Active PFIP stage. Deployments whose stage > this value register PAUSED.",
     )
     p_apply.set_defaults(func=cmd_apply)

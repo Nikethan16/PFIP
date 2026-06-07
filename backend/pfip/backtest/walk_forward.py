@@ -175,9 +175,7 @@ def run_walk_forward(
         start += step
         fold += 1
 
-    predictions = (
-        pd.concat(pred_pieces, ignore_index=True) if pred_pieces else pd.DataFrame()
-    )
+    predictions = pd.concat(pred_pieces, ignore_index=True) if pred_pieces else pd.DataFrame()
 
     # CPCV summary
     cpcv_metrics: dict[str, float] = {}
@@ -193,7 +191,9 @@ def run_walk_forward(
                 fold_sharpes.append(_sharpe(test_ret))
             if fold_sharpes:
                 cpcv_metrics["mean_sharpe"] = float(np.mean(fold_sharpes))
-                cpcv_metrics["std_sharpe"] = float(np.std(fold_sharpes, ddof=1) if len(fold_sharpes) > 1 else 0.0)
+                cpcv_metrics["std_sharpe"] = float(
+                    np.std(fold_sharpes, ddof=1) if len(fold_sharpes) > 1 else 0.0
+                )
                 cpcv_metrics["min_sharpe"] = float(np.min(fold_sharpes))
                 cpcv_metrics["max_sharpe"] = float(np.max(fold_sharpes))
         except Exception as exc:  # pragma: no cover

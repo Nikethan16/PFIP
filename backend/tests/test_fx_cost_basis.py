@@ -52,9 +52,7 @@ def test_unknown_currency_raises_when_static_misses():
 
 def test_convert_to_inr_quantizes_to_paise():
     """convert_to_inr returns 2 decimals (paise)."""
-    inr = convert_to_inr(
-        amount=Decimal("100"), currency="USD", on=date(2025, 12, 31), db=None
-    )
+    inr = convert_to_inr(amount=Decimal("100"), currency="USD", on=date(2025, 12, 31), db=None)
     # 100 * 84.78 = 8478.00
     assert inr == Decimal("8478.00")
 

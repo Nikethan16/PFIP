@@ -82,9 +82,7 @@ async def get_current_price(session: Any, *, symbol: str) -> dict[str, Any]:
     }
 
 
-async def get_recent_pnl(
-    session: Any, *, days: int = 7
-) -> dict[str, Any]:
+async def get_recent_pnl(session: Any, *, days: int = 7) -> dict[str, Any]:
     """Aggregate realized P&L from closed journal entries in the last `days`."""
     try:
         from sqlalchemy import select
@@ -161,9 +159,7 @@ async def get_open_signals(session: Any, *, limit: int = 20) -> dict[str, Any]:
     }
 
 
-async def get_tax_summary(
-    session: Any, *, fy: str
-) -> dict[str, Any]:
+async def get_tax_summary(session: Any, *, fy: str) -> dict[str, Any]:
     """Quick tax-summary lookup for an FY. Just the headline numbers."""
     try:
         from pfip.tax.engine import (
@@ -174,11 +170,7 @@ async def get_tax_summary(
 
         from pfip.models.portfolio_tx import PortfolioTxRow
 
-        rows = (
-            (await session.execute(select(PortfolioTxRow)))
-            .scalars()
-            .all()
-        )
+        rows = (await session.execute(select(PortfolioTxRow))).scalars().all()
         events = classify_capital_gains([dict(r.__dict__) for r in rows])
         summary = build_tax_summary(fy, events, gross_income=Decimal("0"))
         return {

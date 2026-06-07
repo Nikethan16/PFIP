@@ -47,9 +47,7 @@ async def _load_3y(symbol: str, source: str, timeframe: str) -> pd.DataFrame:
         rows = res.scalars().all()
     if not rows:
         return pd.DataFrame()
-    return pd.DataFrame(
-        [{"time": r.time, "close": float(r.close)} for r in rows]
-    ).set_index("time")
+    return pd.DataFrame([{"time": r.time, "close": float(r.close)} for r in rows]).set_index("time")
 
 
 @task(name="write-regime")
@@ -67,9 +65,7 @@ async def _write_regime(symbol: str, regime: str, confidence: float) -> None:
         prev = res.scalars().first()
         now = datetime.now(tz=timezone.utc)
 
-        row = RegimeRow(
-            symbol=symbol, regime=regime, since=now, confidence=float(confidence)
-        )
+        row = RegimeRow(symbol=symbol, regime=regime, since=now, confidence=float(confidence))
         session.add(row)
 
         if prev is None or prev.regime != regime:
@@ -137,7 +133,9 @@ async def regime_detect_daily_flow(
     async with factory() as session:
         from pfip.models.watchlist import WatchlistRow
 
-        symbols = [str(r.symbol) for r in (await session.execute(select(WatchlistRow))).scalars().all()]
+        symbols = [
+            str(r.symbol) for r in (await session.execute(select(WatchlistRow))).scalars().all()
+        ]
 
     results: list[dict[str, str]] = []
     for sym in symbols:

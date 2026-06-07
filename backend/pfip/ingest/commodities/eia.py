@@ -24,7 +24,7 @@ log = get_logger("pfip.ingest.commodities.eia")
 BASE = "https://api.eia.gov/v2/seriesid"
 
 DEFAULT_SERIES: tuple[str, ...] = (
-    "PET.WCESTUS1.W",   # Weekly US crude oil ending stocks
+    "PET.WCESTUS1.W",  # Weekly US crude oil ending stocks
     "NG.NW2_EPG0_SWO_R48_BCF.W",  # NG storage (48 states)
     "PET.EMM_EPMR_PTE_NUS_DPG.W",  # US retail regular gasoline
 )
@@ -58,7 +58,11 @@ async def fetch_eia(series: Iterable[str] = DEFAULT_SERIES) -> list[dict[str, An
             if val is None or not p:
                 continue
             try:
-                d = date.fromisoformat(str(p)[:10]) if "-" in str(p) else date(int(str(p)[:4]), 12, 31)
+                d = (
+                    date.fromisoformat(str(p)[:10])
+                    if "-" in str(p)
+                    else date(int(str(p)[:4]), 12, 31)
+                )
                 v = float(val)
             except Exception:
                 continue

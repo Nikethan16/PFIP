@@ -28,9 +28,7 @@ def detect(sample_bytes: bytes) -> bool:
 
 def parse(csv_bytes: bytes) -> list[ParsedRow]:
     if not detect(csv_bytes):
-        raise UnknownSchemaError(
-            f"ICICI Direct CSV missing columns; expected {REQUIRED}."
-        )
+        raise UnknownSchemaError(f"ICICI Direct CSV missing columns; expected {REQUIRED}.")
     header, rows = read_rows(csv_bytes)
     idx = {h.lower(): h for h in header}
     out: list[ParsedRow] = []
@@ -38,9 +36,7 @@ def parse(csv_bytes: bytes) -> list[ParsedRow]:
         sym = r.get(idx.get("stock symbol", ""), "")
         if not sym:
             continue
-        dt = to_datetime(r.get(idx.get("transaction date", ""), "")).astimezone(
-            timezone.utc
-        )
+        dt = to_datetime(r.get(idx.get("transaction date", ""), "")).astimezone(timezone.utc)
         qty = to_decimal(r.get(idx.get("quantity", ""), ""))
         price = to_decimal(r.get(idx.get("price", ""), ""))
         kind = normalize_kind(r.get(idx.get("action", ""), "BUY"))

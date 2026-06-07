@@ -25,9 +25,7 @@ def test_var_requires_auth(client: TestClient) -> None:
     assert resp.status_code == 401
 
 
-def test_var_returns_graceful_zero_shape(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_var_returns_graceful_zero_shape(client: TestClient, auth_headers: dict[str, str]) -> None:
     """With no holdings (fake session) every field is present + correctly typed."""
     resp = client.get("/api/v1/portfolio/var", headers=auth_headers)
     assert resp.status_code == 200
@@ -62,8 +60,6 @@ def test_var_returns_graceful_zero_shape(
 def test_var_respects_positions_added_today(
     client: TestClient, auth_headers: dict[str, str]
 ) -> None:
-    resp = client.get(
-        "/api/v1/portfolio/var?positions_added_today=2", headers=auth_headers
-    )
+    resp = client.get("/api/v1/portfolio/var?positions_added_today=2", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["daily_new_positions_remaining"] == 0

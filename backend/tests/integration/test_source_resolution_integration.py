@@ -125,8 +125,12 @@ async def test_features_written_under_resolved_source_not_heuristic(db_session) 
 
     # The persisted feature rows are all under 'tiingo', none under 'yfinance'.
     persisted = (
-        await db_session.execute(
-            select(FeatureRow.source).where(FeatureRow.symbol == "SPY").distinct()
+        (
+            await db_session.execute(
+                select(FeatureRow.source).where(FeatureRow.symbol == "SPY").distinct()
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert persisted == ["tiingo"]

@@ -11,7 +11,12 @@ from typing import Any
 
 import pytest
 
-from pfip.agent.llm_client import (
+# These tests exercise the litellm-backed MultiProviderClient. litellm is an
+# optional/heavy dep; skip the whole module (rather than hard-fail) when it
+# isn't installed, so the suite is green in any environment.
+pytest.importorskip("litellm")
+
+from pfip.agent.llm_client import (  # noqa: E402
     ChatMessage,
     LLMAllProvidersFailed,
     MultiProviderClient,
@@ -67,6 +72,7 @@ async def test_complete_returns_first_success(monkeypatch) -> None:
         return _FakeResponse(f"ok-from-{model}")
 
     import litellm
+
     monkeypatch.setattr(litellm, "acompletion", fake_acompletion)
 
     result = await client.complete(
@@ -99,6 +105,7 @@ async def test_complete_walks_fallback_chain(monkeypatch) -> None:
         return _FakeResponse(f"ok-from-{model}")
 
     import litellm
+
     monkeypatch.setattr(litellm, "acompletion", fake_acompletion)
 
     result = await client.complete(
@@ -126,6 +133,7 @@ async def test_complete_raises_when_all_providers_fail(monkeypatch) -> None:
         )
 
     import litellm
+
     monkeypatch.setattr(litellm, "acompletion", fake_acompletion)
 
     with pytest.raises(LLMAllProvidersFailed):
@@ -148,6 +156,7 @@ async def test_strict_sensitive_only_calls_ollama(monkeypatch) -> None:
         return _FakeResponse("local-ok")
 
     import litellm
+
     monkeypatch.setattr(litellm, "acompletion", fake_acompletion)
 
     await client.complete(
@@ -169,6 +178,7 @@ async def test_embed_uses_litellm_aembedding(monkeypatch) -> None:
         return {"data": [{"embedding": [0.1, 0.2, 0.3]} for _ in input]}
 
     import litellm
+
     monkeypatch.setattr(litellm, "aembedding", fake_aembedding)
 
     vecs = await client.embed(["a", "b", "c"], sensitivity=Sensitivity.PUBLIC)

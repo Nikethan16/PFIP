@@ -30,7 +30,9 @@ async def _get(path: str, api_key: str, params: dict[str, Any] | None = None) ->
         return r.json()
 
 
-async def fetch_addresses(addresses: Iterable[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+async def fetch_addresses(
+    addresses: Iterable[str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     key = os.environ.get("SOLSCAN_API_KEY", "").strip()
     if not key:
         log.warning("SOLSCAN_API_KEY not set, solscan ingest no-op")
@@ -103,9 +105,7 @@ async def fetch_addresses(addresses: Iterable[str]) -> tuple[list[dict[str, Any]
     return funds, news
 
 
-async def ingest_solscan(
-    addresses: Iterable[str] = (), session: AsyncSession | None = None
-) -> int:
+async def ingest_solscan(addresses: Iterable[str] = (), session: AsyncSession | None = None) -> int:
     log.info("ingest.solscan starting")
     addresses = list(addresses)
     if not addresses:

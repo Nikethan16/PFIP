@@ -30,7 +30,15 @@ def detect(sample_bytes: bytes) -> bool:
     return detect_headers(sample_bytes, REQUIRED)
 
 
-_BUY_TYPES = {"BUY", "CONVERT", "RECEIVE", "COINBASE EARN", "STAKING INCOME", "REWARD", "ADVANCE TRADE BUY"}
+_BUY_TYPES = {
+    "BUY",
+    "CONVERT",
+    "RECEIVE",
+    "COINBASE EARN",
+    "STAKING INCOME",
+    "REWARD",
+    "ADVANCE TRADE BUY",
+}
 _SELL_TYPES = {"SELL", "SEND", "ADVANCE TRADE SELL"}
 
 

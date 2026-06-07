@@ -342,9 +342,7 @@ class LGBMBaselineModel:
         if not self._fitted:
             raise RuntimeError("LGBMBaselineModel must be fit() before use")
 
-    def _direction_and_confidence(
-        self, proba_up: float
-    ) -> tuple[SignalDirection, int]:
+    def _direction_and_confidence(self, proba_up: float) -> tuple[SignalDirection, int]:
         # Confidence: distance from 0.5 scaled to [0, 100].
         conf_raw = abs(proba_up - 0.5) * 2.0
         confidence = max(0, min(100, int(round(conf_raw * 100.0))))
@@ -356,9 +354,7 @@ class LGBMBaselineModel:
             direction = SignalDirection.HOLD
         return direction, confidence
 
-    def _drivers_for_row(
-        self, x: pd.DataFrame, k: int = 5
-    ) -> tuple[list[Driver], list[Driver]]:
+    def _drivers_for_row(self, x: pd.DataFrame, k: int = 5) -> tuple[list[Driver], list[Driver]]:
         """Return (top-k positive drivers, top-3 negative counter_arguments)."""
         if self._explainer is None:
             return [], []

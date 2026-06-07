@@ -127,9 +127,7 @@ class PortfolioService:
         row = result.scalars().first()
         return None if row is None else Holding.model_validate(row)
 
-    async def list_transactions(
-        self, *, holding_id: UUID | None = None
-    ) -> list[dict]:
+    async def list_transactions(self, *, holding_id: UUID | None = None) -> list[dict]:
         stmt = select(PortfolioTxRow)
         if holding_id is not None:
             stmt = stmt.where(PortfolioTxRow.holding_id == holding_id)
@@ -236,9 +234,7 @@ class PortfolioService:
         if close_qty <= 0:
             raise HoldingValidationError("qty must be positive")
         if close_qty > Decimal(str(row.qty)):
-            raise HoldingValidationError(
-                f"qty {close_qty} exceeds open qty {row.qty}"
-            )
+            raise HoldingValidationError(f"qty {close_qty} exceeds open qty {row.qty}")
 
         # If per-unit or total? If exit_price_inr is "small" vs cost_basis we
         # assume per-unit; else total. To keep semantics explicit we treat
@@ -318,9 +314,7 @@ class PortfolioService:
         post-mortem entry rather than spawning duplicates.
         """
         marker = f"{_HOLDING_POST_MORTEM_MARKER}{holding.id}]"
-        existing = await self.db.execute(
-            select(JournalRow).where(JournalRow.notes.is_not(None))
-        )
+        existing = await self.db.execute(select(JournalRow).where(JournalRow.notes.is_not(None)))
         for entry in existing.scalars().all():
             if entry.notes and marker in entry.notes:
                 return entry.id
@@ -385,9 +379,7 @@ class PortfolioService:
                 cost_used += Decimal(str(t["amount_inr"] or 0))
 
         # Realized P&L = SELL proceeds - cost of sold units (via avg cost basis)
-        avg_cost = (
-            await self.weighted_avg_cost_basis(holding.id) if holding.id else Decimal("0")
-        )
+        avg_cost = await self.weighted_avg_cost_basis(holding.id) if holding.id else Decimal("0")
         sold_qty = sum(
             (Decimal(str(t["qty"] or 0)) for t in txs if t["kind"] == "SELL"),
             Decimal("0"),
@@ -508,14 +500,10 @@ class PortfolioService:
         realized_sum = Decimal("0")
         for h in closed:
             if h.exit_price_inr is not None:
-                realized_sum += Decimal(str(h.exit_price_inr)) - Decimal(
-                    str(h.cost_basis_inr)
-                )
+                realized_sum += Decimal(str(h.exit_price_inr)) - Decimal(str(h.cost_basis_inr))
 
         pnl_inr = (total_mkt - total_cost + realized_sum).quantize(Decimal("0.01"))
-        pnl_pct = (
-            float(pnl_inr / total_cost) if total_cost > 0 else 0.0
-        )
+        pnl_pct = float(pnl_inr / total_cost) if total_cost > 0 else 0.0
 
         drawdown = 0.0
         if nav_history:
@@ -554,9 +542,7 @@ class PortfolioService:
         if not _HAS_PANDAS or not return_series:
             return {}
         # Align series and clip to window.
-        trimmed = {
-            k: v[-window_days:] for k, v in return_series.items() if len(v) >= 2
-        }
+        trimmed = {k: v[-window_days:] for k, v in return_series.items() if len(v) >= 2}
         if not trimmed:
             return {}
         n = min(len(v) for v in trimmed.values())
@@ -565,10 +551,7 @@ class PortfolioService:
         trimmed = {k: v[-n:] for k, v in trimmed.items()}
         df = pd.DataFrame(trimmed)
         corr = df.corr().fillna(0.0)
-        return {
-            row: {col: float(corr.at[row, col]) for col in corr.columns}
-            for row in corr.index
-        }
+        return {row: {col: float(corr.at[row, col]) for col in corr.columns} for row in corr.index}
 
     def historical_var(
         self,
@@ -612,7 +595,9 @@ class PortfolioService:
             "n": len(returns),
         }
         if portfolio_value_inr is not None:
-            out["var_inr"] = str((Decimal(str(abs(var_ret_scaled))) * portfolio_value_inr).quantize(Decimal("0.01")))
+            out["var_inr"] = str(
+                (Decimal(str(abs(var_ret_scaled))) * portfolio_value_inr).quantize(Decimal("0.01"))
+            )
         return out
 
     async def concentration_score(
@@ -664,9 +649,7 @@ class PortfolioService:
             HoldingCategory.CRYPTO_SELF_CUSTODY,
             HoldingCategory.CRYPTO_EXCHANGE,
         ):
-            raise HoldingValidationError(
-                "is_self_custody=True is only valid for crypto categories"
-            )
+            raise HoldingValidationError("is_self_custody=True is only valid for crypto categories")
 
 
 # ---------------------------------------------------------------------------
@@ -693,7 +676,7 @@ def trailing_sharpe(returns: list[float], *, window: int = 30, rf: float = 0.0) 
         sd = statistics.pstdev(tail)
     if sd == 0:
         return 0.0
-    return (mu / sd) * (252 ** 0.5)
+    return (mu / sd) * (252**0.5)
 
 
 def peak_drawdown(nav_series: list[float]) -> float:

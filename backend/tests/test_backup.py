@@ -84,10 +84,10 @@ def _cand(path: str, days_ago: int, now: datetime) -> "backup.RetentionCandidate
 def test_select_for_pruning_basic():
     now = datetime(2026, 6, 6, 1, 0)
     cands = [
-        _cand("/b/fresh", 1, now),     # keep
-        _cand("/b/edge", 29, now),     # keep (< 30d)
-        _cand("/b/old", 31, now),      # prune
-        _cand("/b/ancient", 400, now), # prune
+        _cand("/b/fresh", 1, now),  # keep
+        _cand("/b/edge", 29, now),  # keep (< 30d)
+        _cand("/b/old", 31, now),  # prune
+        _cand("/b/ancient", 400, now),  # prune
     ]
     doomed = backup.select_for_pruning(cands, retention_days=30, now=now)
     names = {p.name for p in doomed}
@@ -123,7 +123,7 @@ def test_select_for_pruning_custom_window():
 def test_discover_backup_sets_ignores_non_stamp_dirs(tmp_path: Path):
     (tmp_path / "20260606-0100").mkdir()
     (tmp_path / "20260101-0100").mkdir()
-    (tmp_path / "monthly").mkdir()        # not a stamp -> ignored
+    (tmp_path / "monthly").mkdir()  # not a stamp -> ignored
     (tmp_path / "loose.txt").write_text("x")  # file -> ignored
     found = backup.discover_backup_sets(tmp_path)
     names = sorted(c.path.name for c in found)
@@ -150,16 +150,16 @@ def test_read_env_file_basic(tmp_path: Path):
                 'POSTGRES_DB="pfip"',
                 "POSTGRES_PASSWORD='secret'",
                 "QDRANT_HTTP_PORT=6333",
-                "MALFORMED",          # no '=' -> ignored
-                "=novalue",           # empty key -> ignored
+                "MALFORMED",  # no '=' -> ignored
+                "=novalue",  # empty key -> ignored
             ]
         ),
         encoding="utf-8",
     )
     env = backup.read_env_file(f)
     assert env["POSTGRES_USER"] == "pfip"
-    assert env["POSTGRES_DB"] == "pfip"            # quotes stripped
-    assert env["POSTGRES_PASSWORD"] == "secret"    # single quotes stripped
+    assert env["POSTGRES_DB"] == "pfip"  # quotes stripped
+    assert env["POSTGRES_PASSWORD"] == "secret"  # single quotes stripped
     assert env["QDRANT_HTTP_PORT"] == "6333"
     assert "MALFORMED" not in env
     assert "" not in env

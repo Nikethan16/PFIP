@@ -59,9 +59,7 @@ def evaluate_rules(
 
     reasons: list[str] = []
     if suspend:
-        reasons.append(
-            f"ECE > {ece_threshold} for {ece_n_consecutive} consecutive months"
-        )
+        reasons.append(f"ECE > {ece_threshold} for {ece_n_consecutive} consecutive months")
     if raise_floor:
         reasons.append(
             f"65-bucket win-rate < {bucket_floor_win_rate:.0%} "

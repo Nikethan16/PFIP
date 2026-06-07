@@ -59,9 +59,7 @@ async def list_watchlist(db: DbSession, _user: CurrentUser) -> list[WatchlistIte
 
 
 @router.post("", response_model=WatchlistItem, status_code=status.HTTP_201_CREATED)
-async def add_watchlist(
-    body: WatchlistCreate, db: DbSession, _user: CurrentUser
-) -> WatchlistItem:
+async def add_watchlist(body: WatchlistCreate, db: DbSession, _user: CurrentUser) -> WatchlistItem:
     """Add a symbol to the watchlist."""
     row = WatchlistRow(symbol=body.symbol, market=body.market or body.symbol, note=body.note)
     db.add(row)
@@ -78,9 +76,7 @@ async def add_watchlist(
 
 
 @router.delete("/{item_id}", response_class=Response, status_code=status.HTTP_204_NO_CONTENT)
-async def delete_watchlist(
-    item_id: UUID, db: DbSession, _user: CurrentUser
-) -> Response:
+async def delete_watchlist(item_id: UUID, db: DbSession, _user: CurrentUser) -> Response:
     """Remove a symbol from the watchlist."""
     row = await db.get(WatchlistRow, item_id)
     if row is None:

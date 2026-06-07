@@ -63,9 +63,7 @@ def _fetch_symbol_sync(symbol: str, start: date, end: date) -> list[dict[str, An
     return rows
 
 
-def fetch_jugaad(
-    symbols: Iterable[str], *, lookback_days: int = 400
-) -> list[dict[str, Any]]:
+def fetch_jugaad(symbols: Iterable[str], *, lookback_days: int = 400) -> list[dict[str, Any]]:
     """Pure function: fetch NSE EOD per symbol, return flat list of rows."""
     end = date.today()
     start = end - timedelta(days=lookback_days)

@@ -35,9 +35,7 @@ async def login(body: LoginRequest, settings: SettingsDep) -> TokenResponse:
     """
     configured_email = settings.pfip_user_email.lower().strip()
     if body.email.lower().strip() != configured_email:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     hashed = settings.pfip_user_password_hash.strip()
     if not hashed:
         raise HTTPException(
@@ -52,9 +50,7 @@ async def login(body: LoginRequest, settings: SettingsDep) -> TokenResponse:
             detail=f"Invalid stored password hash: {exc}",
         ) from exc
     if not ok:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     return _issue_token(configured_email, settings)
 
 

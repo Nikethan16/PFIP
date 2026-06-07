@@ -59,15 +59,11 @@ async def _load_3y_close(session, symbol: str, source: str, timeframe: str) -> p
     return df.set_index("time")
 
 
-async def _persist_regime(
-    session, symbol: str, regime: Regime, confidence: float
-) -> None:
+async def _persist_regime(session, symbol: str, regime: Regime, confidence: float) -> None:
     from pfip.models.regime import RegimeRow
 
     now = datetime.now(tz=timezone.utc)
-    row = RegimeRow(
-        symbol=symbol, regime=regime.value, since=now, confidence=float(confidence)
-    )
+    row = RegimeRow(symbol=symbol, regime=regime.value, since=now, confidence=float(confidence))
     session.add(row)
 
     # If the regime changed, log a transition row.
@@ -122,11 +118,7 @@ async def run_for_symbol(
         )
 
     returns = np.log(df["close"] / df["close"].shift(1)).dropna()
-    detector = (
-        build_three_state()
-        if n_states == 3
-        else HMMRegimeDetector(n_states=n_states)
-    )
+    detector = build_three_state() if n_states == 3 else HMMRegimeDetector(n_states=n_states)
     try:
         detector.fit(returns)
     except Exception as exc:

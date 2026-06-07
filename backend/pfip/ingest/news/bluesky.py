@@ -81,15 +81,17 @@ async def fetch_bluesky(keywords: Iterable[str] = DEFAULT_KEYWORDS) -> list[dict
             text = record.get("text") or ""
             created = record.get("createdAt")
             try:
-                t = datetime.fromisoformat(created.replace("Z", "+00:00")) if created else datetime.utcnow()
+                t = (
+                    datetime.fromisoformat(created.replace("Z", "+00:00"))
+                    if created
+                    else datetime.utcnow()
+                )
             except Exception:
                 t = datetime.utcnow()
             if not uri or not text:
                 continue
             web_url = (
-                f"https://bsky.app/profile/{author}/post/{uri.split('/')[-1]}"
-                if author
-                else uri
+                f"https://bsky.app/profile/{author}/post/{uri.split('/')[-1]}" if author else uri
             )
             out.append(
                 {

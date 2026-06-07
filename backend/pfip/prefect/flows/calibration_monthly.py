@@ -239,9 +239,7 @@ async def calibration_monthly_flow() -> dict[str, int]:
                 payload={"ece_history": hist, "market": str(market)},
             )
             suspensions += 1
-            log.warning(
-                f"calibration: suspending {model_name}/{model_version} for {market}"
-            )
+            log.warning(f"calibration: suspending {model_name}/{model_version} for {market}")
 
     log.info(f"calibration: wrote {reports} reports, {suspensions} suspensions")
     return {"reports": reports, "suspensions": suspensions}

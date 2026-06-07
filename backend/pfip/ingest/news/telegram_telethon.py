@@ -67,7 +67,9 @@ async def _read_channel(client: Any, username: str, limit: int = 50) -> list[dic
     return msgs
 
 
-async def fetch_telegram(channels: Iterable[str] = DEFAULT_CHANNELS, limit: int = 50) -> list[dict[str, Any]]:
+async def fetch_telegram(
+    channels: Iterable[str] = DEFAULT_CHANNELS, limit: int = 50
+) -> list[dict[str, Any]]:
     api_id = os.environ.get("TELEGRAM_API_ID", "").strip()
     api_hash = os.environ.get("TELEGRAM_API_HASH", "").strip()
     session_path = os.environ.get("TELEGRAM_SESSION_PATH", "pfip_telegram")

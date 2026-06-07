@@ -116,8 +116,7 @@ async def build_weekly_review(db: AsyncSession, as_of: datetime | None = None) -
         router = get_llm_router()
         persona = load_prompt("trader_persona")
         system = (
-            persona
-            + "\n\n---\nProduce a weekly review with exactly three sections:\n"
+            persona + "\n\n---\nProduce a weekly review with exactly three sections:\n"
             "1. **What the system did** (signal stats, calibration hits/misses).\n"
             "2. **What you did** (journal entries, closed positions, deviations).\n"
             "3. **What to change** (concrete, citable process tweaks).\n"
@@ -151,7 +150,9 @@ async def build_weekly_review(db: AsyncSession, as_of: datetime | None = None) -
         )
 
 
-async def persist_weekly_review(db: AsyncSession, review: WeeklyReview, symbol: str = "__META__") -> None:
+async def persist_weekly_review(
+    db: AsyncSession, review: WeeklyReview, symbol: str = "__META__"
+) -> None:
     """Store the weekly review as a journal row tagged ``kind:weekly_review``."""
     stmt = sql_text(
         """

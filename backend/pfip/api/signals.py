@@ -59,8 +59,7 @@ async def latest_signals(db: DbSession, _user: CurrentUser) -> list[Signal]:
     )
     stmt = select(SignalRow).join(
         max_by_asset,
-        (SignalRow.asset == max_by_asset.c.asset)
-        & (SignalRow.generated_at == max_by_asset.c.g),
+        (SignalRow.asset == max_by_asset.c.asset) & (SignalRow.generated_at == max_by_asset.c.g),
     )
     result = await db.execute(stmt)
     rows = result.scalars().all()

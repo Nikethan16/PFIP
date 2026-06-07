@@ -117,7 +117,9 @@ class ShadowPortfolio:
         # Drawdown halt
         equity = await self._mark_to_market_equity(signal.generated_at.date())
         peak = await self._peak_equity()
-        if peak > 0 and equity <= peak * (Decimal("1") - Decimal(str(self.rules.drawdown_halt_pct))):
+        if peak > 0 and equity <= peak * (
+            Decimal("1") - Decimal(str(self.rules.drawdown_halt_pct))
+        ):
             return ShadowPositionDecision(
                 accepted=False,
                 reason=f"drawdown halt (equity {equity:.2f} vs peak {peak:.2f})",
@@ -169,9 +171,7 @@ class ShadowPortfolio:
         )
         self.session.add(tx)
         await self.session.commit()
-        return ShadowPositionDecision(
-            accepted=True, reason="opened", holding_id=str(holding.id)
-        )
+        return ShadowPositionDecision(accepted=True, reason="opened", holding_id=str(holding.id))
 
     # ------------------------------------------------------------------
     # Lifecycle ops
@@ -202,9 +202,7 @@ class ShadowPortfolio:
             )
         return {"as_of": as_of.isoformat(), "equity_inr": float(equity), "lines": lines}
 
-    async def close_position(
-        self, holding_id: Any, price: Decimal | float, reason: str
-    ) -> bool:
+    async def close_position(self, holding_id: Any, price: Decimal | float, reason: str) -> bool:
         """Close the given holding at ``price``; record SELL tx."""
         price_d = Decimal(str(price))
         h = await self.session.get(ShadowHoldingRow, holding_id)
@@ -347,9 +345,7 @@ class ShadowPortfolio:
         first = res.scalars().first()
         return None if first is None else Decimal(str(first))
 
-    async def _close_symbol(
-        self, symbol: str, price: Decimal, reason: str
-    ) -> Any | None:
+    async def _close_symbol(self, symbol: str, price: Decimal, reason: str) -> Any | None:
         stmt = select(ShadowHoldingRow).where(
             ShadowHoldingRow.symbol == symbol, ShadowHoldingRow.closed_at.is_(None)
         )

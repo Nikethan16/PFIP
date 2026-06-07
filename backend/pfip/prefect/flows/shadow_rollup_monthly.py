@@ -50,9 +50,7 @@ async def shadow_rollup_monthly(days: int = 30) -> str | None:
         tx_rows = (
             (
                 await session.execute(
-                    select(ShadowPortfolioTxRow).where(
-                        ShadowPortfolioTxRow.executed_at >= cutoff
-                    )
+                    select(ShadowPortfolioTxRow).where(ShadowPortfolioTxRow.executed_at >= cutoff)
                 )
             )
             .scalars()
@@ -71,11 +69,7 @@ async def shadow_rollup_monthly(days: int = 30) -> str | None:
 
     total_pnls = [p for pnls in by_symbol.values() for p in pnls]
     avg_pnl = float(mean(total_pnls)) if total_pnls else 0.0
-    win_rate = (
-        float(sum(1 for p in total_pnls if p > 0) / len(total_pnls))
-        if total_pnls
-        else 0.0
-    )
+    win_rate = float(sum(1 for p in total_pnls if p > 0) / len(total_pnls)) if total_pnls else 0.0
 
     # Top 5 most-divergent symbols (by mean P&L magnitude).
     top_divergent = sorted(

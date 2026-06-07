@@ -94,9 +94,7 @@ class RiskManager:
         per_item: dict[str, bool] = {}
         reasons: list[str] = []
 
-        proposed_notional = (Decimal(str(qty)) * Decimal(str(price))).quantize(
-            Decimal("0.01")
-        )
+        proposed_notional = (Decimal(str(qty)) * Decimal(str(price))).quantize(Decimal("0.01"))
 
         # Normalise existing_holdings to plain symbols list.
         existing_symbols: list[str] = []
@@ -229,9 +227,7 @@ class RiskManager:
         if conflicts:
             return RiskCheckResult(
                 ok=False,
-                reason=(
-                    f"{new_symbol} is highly correlated to: " + ", ".join(conflicts)
-                ),
+                reason=(f"{new_symbol} is highly correlated to: " + ", ".join(conflicts)),
             )
         return RiskCheckResult(ok=True)
 
@@ -255,9 +251,7 @@ class RiskManager:
         per_unit_risk_inr = None
         units: Decimal | None = None
         if price_per_unit_inr is not None and Decimal(str(price_per_unit_inr)) > 0:
-            per_unit_risk_inr = (
-                Decimal(str(price_per_unit_inr)) * Decimal(str(stop_distance_pct))
-            )
+            per_unit_risk_inr = Decimal(str(price_per_unit_inr)) * Decimal(str(stop_distance_pct))
             units = (risk_amount / per_unit_risk_inr).quantize(Decimal("0.0001"))
         # notional cap
         cap_notional = (
@@ -271,9 +265,11 @@ class RiskManager:
         suggested_notional = min(suggested_notional, cap_notional)
         return {
             "risk_amount_inr": str(risk_amount.quantize(Decimal("0.01"))),
-            "per_unit_stop_risk_inr": str(per_unit_risk_inr.quantize(Decimal("0.0001")))
-            if per_unit_risk_inr is not None
-            else None,
+            "per_unit_stop_risk_inr": (
+                str(per_unit_risk_inr.quantize(Decimal("0.0001")))
+                if per_unit_risk_inr is not None
+                else None
+            ),
             "units": str(units) if units is not None else None,
             "suggested_notional_inr": str(suggested_notional),
             "notional_cap_inr": str(cap_notional),
@@ -282,9 +278,7 @@ class RiskManager:
 
     def daily_new_positions_remaining(self, positions_added_today: int) -> int:
         """Remaining slots on the daily new-position cap."""
-        return max(
-            0, self._settings.daily_new_positions_cap - int(positions_added_today)
-        )
+        return max(0, self._settings.daily_new_positions_cap - int(positions_added_today))
 
     # ------------------------------------------------------------------
     # Utility

@@ -361,9 +361,7 @@ def impact_score(article: Article, *, sentiment: Sentiment | None = None) -> int
         - 20 pts max for entity richness (more entities = more reach)
         - 10 pts max for recency (full 10 within 6h, 0 after 72h)
     """
-    sentiment = sentiment or classify_sentiment(
-        article.title + " " + (article.body or "")
-    )
+    sentiment = sentiment or classify_sentiment(article.title + " " + (article.body or ""))
     full = (article.title + " " + (article.body or "")).lower()
 
     # Keyword score

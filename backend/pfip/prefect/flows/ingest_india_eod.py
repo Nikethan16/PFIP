@@ -47,7 +47,11 @@ async def _watchlist_in_symbols() -> list[str]:
                     """
                 )
             )
-            syms = [row[0].replace(".NS", "").replace(".BO", "") for row in r.fetchall() if row and row[0]]
+            syms = [
+                row[0].replace(".NS", "").replace(".BO", "")
+                for row in r.fetchall()
+                if row and row[0]
+            ]
             return syms or list(FALLBACK_IN_SYMBOLS)
     except Exception:
         return list(FALLBACK_IN_SYMBOLS)

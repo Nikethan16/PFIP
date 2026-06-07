@@ -164,9 +164,7 @@ def render_markdown(summary: MarketCloseSummary) -> str:
 
     lines.append("---")
     lines.append("")
-    lines.append(
-        "_Auto-generated. The numbers come from your DB; the takeaways are yours._"
-    )
+    lines.append("_Auto-generated. The numbers come from your DB; the takeaways are yours._")
     return "\n".join(lines)
 
 
@@ -210,9 +208,7 @@ async def build_summary_from_db(today_ist: date | None = None) -> MarketCloseSum
                 today_close = float(rows[0][0])
                 yday_close = float(rows[1][0])
                 change_pct = (
-                    ((today_close - yday_close) / yday_close * 100.0)
-                    if yday_close
-                    else 0.0
+                    ((today_close - yday_close) / yday_close * 100.0) if yday_close else 0.0
                 )
                 summary.indexes.append(
                     IndexMove(symbol=sym, close=today_close, change_pct=change_pct)
@@ -222,9 +218,7 @@ async def build_summary_from_db(today_ist: date | None = None) -> MarketCloseSum
 
         # 2. Watchlist movers — top 3 by absolute % move.
         try:
-            wl_rows = (
-                await session.execute(select(WatchlistRow.symbol).distinct())
-            ).all()
+            wl_rows = (await session.execute(select(WatchlistRow.symbol).distinct())).all()
             wl_syms = [r[0] for r in wl_rows]
             moves: list[WatchlistMove] = []
             for sym in wl_syms:
@@ -286,9 +280,7 @@ async def build_summary_from_db(today_ist: date | None = None) -> MarketCloseSum
                 )
             ).all()
             for regime, n in counts:
-                summary.signal_counts.append(
-                    SignalCount(regime=str(regime), count=int(n))
-                )
+                summary.signal_counts.append(SignalCount(regime=str(regime), count=int(n)))
         except Exception:
             pass
 

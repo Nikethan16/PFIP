@@ -22,10 +22,10 @@ log = get_logger("pfip.ingest.macro.world_bank")
 BASE = "https://api.worldbank.org/v2"
 
 DEFAULT_INDICATORS: tuple[str, ...] = (
-    "NY.GDP.MKTP.CD",       # GDP current US$
-    "FP.CPI.TOTL.ZG",       # Inflation consumer prices annual %
-    "BX.KLT.DINV.CD.WD",    # FDI, net inflows
-    "NE.TRD.GNFS.ZS",       # Trade as % of GDP
+    "NY.GDP.MKTP.CD",  # GDP current US$
+    "FP.CPI.TOTL.ZG",  # Inflation consumer prices annual %
+    "BX.KLT.DINV.CD.WD",  # FDI, net inflows
+    "NE.TRD.GNFS.ZS",  # Trade as % of GDP
 )
 
 DEFAULT_COUNTRIES: tuple[str, ...] = ("USA", "IND", "CHN", "GBR", "JPN", "EUU")

@@ -58,21 +58,33 @@ _DB_QUERY_PATTERNS: list[tuple[str, float]] = [
     (r"\blist (my|all) (positions|holdings|signals|trades|journal entries)\b", 0.90),
     (r"\bcurrent (price|close|nav|holdings) (of|for)\b", 0.85),
     (r"\bbalance (of|for) (my )?\b", 0.80),
-    (r"\b(stcg|ltcg|vda|capital gain|tax (liability|payable|owed)) (for|in) (fy|2[0-9]{3})\b", 0.85),
+    (
+        r"\b(stcg|ltcg|vda|capital gain|tax (liability|payable|owed)) (for|in) (fy|2[0-9]{3})\b",
+        0.85,
+    ),
 ]
 
 _RAG_LOOKUP_PATTERNS: list[tuple[str, float]] = [
     (r"\bwhat does (wyckoff|graham|lefe?vre|taleb|dalio|tharp|ammous|lopez de prado)\b", 0.95),
-    (r"\b(define|explain|what is|what's) (an? )?(.*)(regime|accumulation|distribution|drawdown|sharpe|sortino|calmar)\b", 0.85),
+    (
+        r"\b(define|explain|what is|what's) (an? )?(.*)(regime|accumulation|distribution|drawdown|sharpe|sortino|calmar)\b",
+        0.85,
+    ),
     (r"\b(what'?s|whats|any|recent|latest) (the )?news (on|about|for)\b", 0.90),
     (r"\bsummariz?e .* (article|paper|news|filing)\b", 0.85),
     (r"\bcite (a|the) (source|reference)\b", 0.90),
 ]
 
 _REASONING_PATTERNS: list[tuple[str, float]] = [
-    (r"\b(should i|do you think i should|is it a good time to) (buy|sell|hold|add|trim|exit)\b", 0.95),
+    (
+        r"\b(should i|do you think i should|is it a good time to) (buy|sell|hold|add|trim|exit)\b",
+        0.95,
+    ),
     (r"\bwhy (did|does|is|are) .* (gap|spike|crash|fire|signal|recommend)\b", 0.90),
-    (r"\b(walk me through|explain) (your|the) (last |latest )?(signal|recommendation|reasoning|analysis)\b", 0.90),
+    (
+        r"\b(walk me through|explain) (your|the) (last |latest )?(signal|recommendation|reasoning|analysis)\b",
+        0.90,
+    ),
     (r"\b(compare|stack up|benchmark) .* (vs|versus|against)\b", 0.85),
     (r"\bif .* (then|would|happen)\b", 0.75),
 ]

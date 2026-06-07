@@ -31,9 +31,7 @@ BASE = "https://www.screener.in/company/"
 
 @retry_http(max_attempts=3)
 async def _fetch_page(symbol: str) -> str:
-    async with get_async_client(
-        headers={"Accept": "text/html"}, follow_redirects=True
-    ) as client:
+    async with get_async_client(headers={"Accept": "text/html"}, follow_redirects=True) as client:
         r = await client.get(f"{BASE}{symbol}/consolidated/")
         r.raise_for_status()
         return r.text

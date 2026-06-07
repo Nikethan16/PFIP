@@ -157,8 +157,15 @@ async def _seed_news(session) -> int:
 
 async def _seed_regime(session) -> int:
     """One regime label per demo asset."""
-    regimes = ["bull_trend", "sideways", "high_volatility", "bull_trend",
-               "bull_trend", "sideways", "sideways"]
+    regimes = [
+        "bull_trend",
+        "sideways",
+        "high_volatility",
+        "bull_trend",
+        "bull_trend",
+        "sideways",
+        "sideways",
+    ]
     now = datetime.now(tz=timezone.utc)
     n = 0
     for (symbol, _m, _src, _p, _v), regime in zip(ASSETS, regimes, strict=False):
@@ -189,18 +196,38 @@ async def _seed_signals(session) -> int:
     """A couple of fresh-ish signals so the Signals page renders."""
     now = datetime.now(tz=timezone.utc)
     rows = [
-        ("DEMO-BTC-USD", "BUY", 78, 24,
-         [("rsi_14", 0.32), ("macd", 0.18), ("on_chain_netflow", 0.15)],
-         [("funding_rate", -0.12), ("vix", -0.08)]),
-        ("DEMO-NVDA", "BUY", 71, 72,
-         [("earnings_surprise", 0.42), ("price_above_50ma", 0.21)],
-         [("p_e_ratio", -0.18)]),
-        ("DEMO-SOL-USD", "HOLD", 58, 24,
-         [("realized_vol_30d", 0.20), ("regime_high_vol", 0.30)],
-         [("price_momentum", -0.15)]),
-        ("DEMO-RELIANCE", "BUY", 66, 168,
-         [("eps_growth_yoy", 0.28), ("oi_buildup", 0.22)],
-         [("crude_oil_correlation", -0.20)]),
+        (
+            "DEMO-BTC-USD",
+            "BUY",
+            78,
+            24,
+            [("rsi_14", 0.32), ("macd", 0.18), ("on_chain_netflow", 0.15)],
+            [("funding_rate", -0.12), ("vix", -0.08)],
+        ),
+        (
+            "DEMO-NVDA",
+            "BUY",
+            71,
+            72,
+            [("earnings_surprise", 0.42), ("price_above_50ma", 0.21)],
+            [("p_e_ratio", -0.18)],
+        ),
+        (
+            "DEMO-SOL-USD",
+            "HOLD",
+            58,
+            24,
+            [("realized_vol_30d", 0.20), ("regime_high_vol", 0.30)],
+            [("price_momentum", -0.15)],
+        ),
+        (
+            "DEMO-RELIANCE",
+            "BUY",
+            66,
+            168,
+            [("eps_growth_yoy", 0.28), ("oi_buildup", 0.22)],
+            [("crude_oil_correlation", -0.20)],
+        ),
     ]
     n = 0
     for symbol, direction, conf, horizon, drivers, counters in rows:
@@ -235,6 +262,7 @@ async def _seed_signals(session) -> int:
 
 def _jsonify_drivers(items: list[tuple[str, float]]) -> str:
     import json
+
     return json.dumps([{"feature": f, "contribution": c} for f, c in items])
 
 
@@ -318,6 +346,7 @@ async def clear_demo() -> dict[str, int]:
 
 def main() -> int:
     import argparse
+
     parser = argparse.ArgumentParser(description="PFIP demo seed")
     parser.add_argument("--clear", action="store_true", help="remove demo data instead of seeding")
     args = parser.parse_args()

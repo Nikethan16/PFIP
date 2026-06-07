@@ -200,7 +200,9 @@ async def run_monthly_calibration(
         if len(y_true) < 10:
             log.info(
                 "calibration: skipping %s/%s (n=%d)",
-                model_name, market, len(y_true),
+                model_name,
+                market,
+                len(y_true),
             )
             continue
 
@@ -233,14 +235,11 @@ async def run_monthly_calibration(
             n_samples=len(y_true),
         )
 
-        ece_hist = await _ece_history(
-            session, str(model_name), str(model_version), str(market)
-        )
+        ece_hist = await _ece_history(session, str(model_name), str(model_version), str(market))
         # Compute the 65-bucket win rate (= calibrated hit-rate for the
         # current month) to feed the confidence-floor rule.
         bucket = [
-            yt for yt, yp in zip(y_true, y_prob, strict=False)
-            if yp >= confidence_floor / 100.0
+            yt for yt, yp in zip(y_true, y_prob, strict=False) if yp >= confidence_floor / 100.0
         ]
         bucket_win_rate = float(sum(bucket) / len(bucket)) if bucket else None
 

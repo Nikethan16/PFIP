@@ -206,9 +206,7 @@ def _apply_strategy(
     return net_ret, trade_returns
 
 
-def _trade_level_returns(
-    pos: pd.Series, bar_ret: pd.Series, cost: pd.Series
-) -> pd.Series:
+def _trade_level_returns(pos: pd.Series, bar_ret: pd.Series, cost: pd.Series) -> pd.Series:
     """Collapse consecutive equal positions into single trades."""
     trades: list[float] = []
     cur_ret = 0.0
@@ -282,9 +280,7 @@ def run_walkforward(
         else:
             net_ret = pd.Series(dtype=float)
         trade_ret = (
-            pd.concat(trade_pieces, ignore_index=True)
-            if trade_pieces
-            else pd.Series(dtype=float)
+            pd.concat(trade_pieces, ignore_index=True) if trade_pieces else pd.Series(dtype=float)
         )
 
     result = _result_from_returns(net_ret, trade_ret)
@@ -329,7 +325,11 @@ def run_monte_carlo(
     r = np.asarray(trade_returns.dropna(), dtype=float)
     n = len(r)
     if n < 2:
-        return {"sharpe_5th": float("nan"), "sharpe_50th": float("nan"), "sharpe_95th": float("nan")}
+        return {
+            "sharpe_5th": float("nan"),
+            "sharpe_50th": float("nan"),
+            "sharpe_95th": float("nan"),
+        }
 
     rng = np.random.default_rng(rng_seed)
     n_blocks = max(1, n // block_size)
@@ -361,9 +361,7 @@ def _bh_strategy(df: pd.DataFrame) -> pd.Series:
     return pd.Series(1, index=df.index)
 
 
-def _ma_crossover_strategy(
-    df: pd.DataFrame, fast: int = 50, slow: int = 200
-) -> pd.Series:
+def _ma_crossover_strategy(df: pd.DataFrame, fast: int = 50, slow: int = 200) -> pd.Series:
     close = pd.to_numeric(df["close"], errors="coerce").astype(float)
     ma_fast = close.rolling(fast).mean()
     ma_slow = close.rolling(slow).mean()
@@ -488,9 +486,7 @@ def lookahead_test(
     for _ in range(n_shuffles):
         shuffled = real_ret_vec.copy()
         rng.shuffle(shuffled)
-        shuffled_close = np.concatenate(
-            [[base], (1.0 + shuffled[1:]).cumprod() * base]
-        )[: len(df)]
+        shuffled_close = np.concatenate([[base], (1.0 + shuffled[1:]).cumprod() * base])[: len(df)]
         shuffled_df = df.copy()
         shuffled_df["close"] = shuffled_close
         try:

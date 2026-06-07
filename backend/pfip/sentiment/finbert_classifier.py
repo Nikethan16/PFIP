@@ -47,9 +47,7 @@ class SentimentResult:
 
 
 def _neutral(model_id: str) -> SentimentResult:
-    return SentimentResult(
-        pos=0.0, neg=0.0, neu=1.0, score=0.0, label="neutral", model=model_id
-    )
+    return SentimentResult(pos=0.0, neg=0.0, neu=1.0, score=0.0, label="neutral", model=model_id)
 
 
 class SentimentService:

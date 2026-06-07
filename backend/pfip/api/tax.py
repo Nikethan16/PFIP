@@ -93,8 +93,10 @@ async def _fetch_enriched_tx(db: Any, fy: str | None = None) -> list[dict]:
     if fy is not None:
         fy_start, fy_end = fy_bounds(fy)
         tx_stmt = tx_stmt.where(
-            PortfolioTxRow.time >= datetime(fy_start.year, fy_start.month, fy_start.day, tzinfo=timezone.utc),
-            PortfolioTxRow.time <= datetime(fy_end.year, fy_end.month, fy_end.day, 23, 59, 59, tzinfo=timezone.utc),
+            PortfolioTxRow.time
+            >= datetime(fy_start.year, fy_start.month, fy_start.day, tzinfo=timezone.utc),
+            PortfolioTxRow.time
+            <= datetime(fy_end.year, fy_end.month, fy_end.day, 23, 59, 59, tzinfo=timezone.utc),
         )
     tx_result = await db.execute(tx_stmt)
     txs = tx_result.scalars().all()
@@ -119,9 +121,7 @@ async def _fetch_enriched_tx(db: Any, fy: str | None = None) -> list[dict]:
         # per-unit price on tx; if absent and qty>0 derive from amount.
         price = t.price
         if price is None and t.qty and Decimal(str(t.qty)) != 0:
-            price = (Decimal(str(t.amount_inr)) / Decimal(str(t.qty))).quantize(
-                Decimal("0.0001")
-            )
+            price = (Decimal(str(t.amount_inr)) / Decimal(str(t.qty))).quantize(Decimal("0.0001"))
         enriched.append(
             {
                 "symbol": sym,
@@ -203,9 +203,7 @@ async def tax_events(db: DbSession, _user: CurrentUser, fy: str = Query(...)) ->
 # ---------------------------------------------------------------------------
 
 
-async def _fy_daily_closes(
-    db: Any, symbol: str, start: date, end: date
-) -> dict[date, Decimal]:
+async def _fy_daily_closes(db: Any, symbol: str, start: date, end: date) -> dict[date, Decimal]:
     """Return ``{date: close}`` for ``symbol``'s daily OHLCV bars within the FY.
 
     Uses the ``1d`` timeframe close (instrument quote currency — USD for US
@@ -217,8 +215,7 @@ async def _fy_daily_closes(
             .where(
                 OHLCVRow.symbol == symbol,
                 OHLCVRow.timeframe == "1d",
-                OHLCVRow.ts
-                >= datetime(start.year, start.month, start.day, tzinfo=timezone.utc),
+                OHLCVRow.ts >= datetime(start.year, start.month, start.day, tzinfo=timezone.utc),
                 OHLCVRow.ts
                 <= datetime(end.year, end.month, end.day, 23, 59, 59, tzinfo=timezone.utc),
             )
@@ -299,7 +296,7 @@ async def schedule_fa(
     # inside the sync tax math). Cover every peak date + the FY end date.
     needs: list[tuple[str, date]] = [("USD", end)]
     for h in us_holdings:
-        for d in (h.get("daily_balances_usd") or {}):
+        for d in h.get("daily_balances_usd") or {}:
             if start <= d <= end:
                 needs.append(("USD", d))
     rate_cache = await prefetch_fx_rates(db, needs)
@@ -329,9 +326,7 @@ async def form_67(
     # Pull dividend tx on USD-basis holdings in this FY.
     hold_res = await db.execute(select(HoldingRow).where(HoldingRow.cost_basis_ccy == "USD"))
     holdings = {h.id: h for h in hold_res.scalars().all()}
-    tx_res = await db.execute(
-        select(PortfolioTxRow).where(PortfolioTxRow.kind == "DIVIDEND")
-    )
+    tx_res = await db.execute(select(PortfolioTxRow).where(PortfolioTxRow.kind == "DIVIDEND"))
     dividends: list[dict] = []
     for t in tx_res.scalars().all():
         h = holdings.get(t.holding_id) if t.holding_id else None
@@ -342,9 +337,7 @@ async def form_67(
             continue
         # amount_inr stored; derive USD via fx_rate if available
         fx = Decimal(str(t.fx_rate)) if t.fx_rate else None
-        amount_usd = (
-            Decimal(str(t.amount_inr)) / fx if fx else Decimal(str(t.amount_inr))
-        )
+        amount_usd = Decimal(str(t.amount_inr)) / fx if fx else Decimal(str(t.amount_inr))
         wht_usd = Decimal(str(t.tax_withheld or 0))
         if fx and t.tax_withheld is not None:
             wht_usd = Decimal(str(t.tax_withheld)) / fx
@@ -360,9 +353,7 @@ async def form_67(
     # Pre-fetch FX rates async for any dividend lacking an explicit fx_rate.
     needs = [("USD", d["paid_on"]) for d in dividends if d.get("fx_rate") is None]
     rate_cache = await prefetch_fx_rates(db, needs)
-    rows = compute_form_67(
-        dividends, Decimal(str(slab_rate)), db=db, rate_cache=rate_cache
-    )
+    rows = compute_form_67(dividends, Decimal(str(slab_rate)), db=db, rate_cache=rate_cache)
     return _wrap({"fy": fy, **form_67_json(rows)})
 
 
@@ -381,9 +372,7 @@ class RegimeCompareRequest(BaseModel):
 async def regime_compare(body: RegimeCompareRequest, _user: CurrentUser) -> dict:
     result = compare_regimes(body.gross_income_inr, body.deductions, fy=body.fy)
     # Keep Decimal → str for JSON safety
-    return {
-        k: (str(v) if isinstance(v, Decimal) else v) for k, v in result.items()
-    }
+    return {k: (str(v) if isinstance(v, Decimal) else v) for k, v in result.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -406,9 +395,7 @@ async def optimizer(body: OptimizerRequest, _user: CurrentUser) -> dict:
     ]
     return {
         "ranked": ranked,
-        "total_tax_saved_if_max_all_inr": str(
-            out["total_tax_saved_if_max_all_inr"]
-        ),
+        "total_tax_saved_if_max_all_inr": str(out["total_tax_saved_if_max_all_inr"]),
         "note": out["note"],
         "disclaimer": DISCLAIMER,
     }
@@ -426,10 +413,7 @@ async def surcharge_check(
     result = surcharge_cliff_check(taxable_income_inr)
     result["taxable_income_inr"] = str(result["taxable_income_inr"])
     result["flags"] = [
-        {
-            k: (str(v) if isinstance(v, Decimal) else v)
-            for k, v in f.items()
-        }
+        {k: (str(v) if isinstance(v, Decimal) else v) for k, v in f.items()}
         for f in result["flags"]
     ]
     return result
@@ -586,9 +570,7 @@ async def tax_export(
     return Response(
         content=pdf,
         media_type=ct,
-        headers={
-            "Content-Disposition": f'attachment; filename="pfip-tax-{fy}.{ext}"'
-        },
+        headers={"Content-Disposition": f'attachment; filename="pfip-tax-{fy}.{ext}"'},
     )
 
 
@@ -643,13 +625,9 @@ async def tax_details(
     eighty_c_cap = DEDUCTION_LIMITS_INR["80C"]
 
     # Form 67 lines: descriptive strings for any FY US-dividend tx.
-    hold_res = await db.execute(
-        select(HoldingRow).where(HoldingRow.cost_basis_ccy == "USD")
-    )
+    hold_res = await db.execute(select(HoldingRow).where(HoldingRow.cost_basis_ccy == "USD"))
     us_holdings = {h.id: h for h in hold_res.scalars().all()}
-    tx_res = await db.execute(
-        select(PortfolioTxRow).where(PortfolioTxRow.kind == "DIVIDEND")
-    )
+    tx_res = await db.execute(select(PortfolioTxRow).where(PortfolioTxRow.kind == "DIVIDEND"))
     form_67_lines: list[str] = []
     for t in tx_res.scalars().all():
         h = us_holdings.get(t.holding_id) if t.holding_id else None
@@ -726,15 +704,7 @@ async def harvest(
     today = date.today()
 
     # Pull open holdings.
-    rows = (
-        (
-            await db.execute(
-                select(HoldingRow).where(HoldingRow.qty > 0)
-            )
-        )
-        .scalars()
-        .all()
-    )
+    rows = (await db.execute(select(HoldingRow).where(HoldingRow.qty > 0))).scalars().all()
 
     lots: list[OpenLot] = []
     for r in rows:
@@ -772,8 +742,7 @@ async def harvest(
                 asset_class=ac,
                 qty=Decimal(str(r.qty)),
                 cost_basis_inr_per_unit=Decimal(str(getattr(r, "avg_cost_inr", 0))),
-                acquired_on=getattr(r, "first_acquired_on", today)
-                or today,
+                acquired_on=getattr(r, "first_acquired_on", today) or today,
                 current_price_inr=current_price,
             )
         )

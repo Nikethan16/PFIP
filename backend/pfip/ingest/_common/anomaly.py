@@ -54,8 +54,8 @@ def _engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out["log_return"] = np.log(out["close"] / out["close"].shift(1))
     out["range_pct"] = (out["high"] - out["low"]) / out["close"].replace(0, np.nan)
-    out["gap_pct"] = (
-        (out["open"] - out["close"].shift(1)) / out["close"].shift(1).replace(0, np.nan)
+    out["gap_pct"] = (out["open"] - out["close"].shift(1)) / out["close"].shift(1).replace(
+        0, np.nan
     )
     rolling = out["volume"].rolling(window=30, min_periods=10)
     out["volume_z"] = (out["volume"] - rolling.mean()) / rolling.std().replace(0, np.nan)

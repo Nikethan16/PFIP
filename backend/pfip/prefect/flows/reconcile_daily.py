@@ -38,9 +38,7 @@ async def _fetch_latest_closes() -> list[PriceObservation]:
         # SQLAlchemy 2.0: use a window function / subquery to get max-ts per
         # (symbol, source). For simplicity, we fetch distinct pairs then
         # latest per pair.
-        pairs_q = await session.execute(
-            select(distinct(OHLCVRow.symbol), OHLCVRow.source)
-        )
+        pairs_q = await session.execute(select(distinct(OHLCVRow.symbol), OHLCVRow.source))
         pairs = list(pairs_q.all())
         out: list[PriceObservation] = []
         for symbol, source in pairs:
@@ -109,8 +107,7 @@ async def _maybe_alert(divergences: list[Divergence], *, threshold: float) -> No
         lines.append("Other divergences this run:")
         for d in divergences[1:5]:
             lines.append(
-                f"- `{d.symbol}` {d.source_a} vs {d.source_b}: "
-                f"{d.diff_pct * 100:+.2f}%"
+                f"- `{d.symbol}` {d.source_a} vs {d.source_b}: " f"{d.diff_pct * 100:+.2f}%"
             )
     lines.append("")
     lines.append("Open `data/reconciliation/<date>.jsonl` for the full list.")

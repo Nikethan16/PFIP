@@ -94,12 +94,16 @@ async def changes_today(
 
     # --- New signals -------------------------------------------------------
     sig_rows = (
-        await db.execute(
-            select(SignalRow)
-            .where(SignalRow.generated_at >= cutoff)
-            .order_by(SignalRow.generated_at.desc())
+        (
+            await db.execute(
+                select(SignalRow)
+                .where(SignalRow.generated_at >= cutoff)
+                .order_by(SignalRow.generated_at.desc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     signals = [
         SignalDelta(
             symbol=s.symbol,
@@ -112,12 +116,14 @@ async def changes_today(
 
     # --- Regime flips -----------------------------------------------------
     regime_rows = (
-        await db.execute(
-            select(RegimeRow)
-            .where(RegimeRow.since >= cutoff)
-            .order_by(RegimeRow.since.asc())
+        (
+            await db.execute(
+                select(RegimeRow).where(RegimeRow.since >= cutoff).order_by(RegimeRow.since.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     flips: list[RegimeFlip] = []
     by_sym: dict[str, list[RegimeRow]] = {}
     for r in regime_rows:
@@ -145,12 +151,16 @@ async def changes_today(
     # |z| >= z_threshold.
     movers: list[WatchlistMover] = []
     ohlcv_rows = (
-        await db.execute(
-            select(OHLCVRow)
-            .where(OHLCVRow.ts >= cutoff - timedelta(days=90))
-            .order_by(OHLCVRow.symbol.asc(), OHLCVRow.ts.asc())
+        (
+            await db.execute(
+                select(OHLCVRow)
+                .where(OHLCVRow.ts >= cutoff - timedelta(days=90))
+                .order_by(OHLCVRow.symbol.asc(), OHLCVRow.ts.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     by_symbol: dict[str, list[OHLCVRow]] = {}
     for r in ohlcv_rows:
         by_symbol.setdefault(r.symbol, []).append(r)
@@ -178,12 +188,15 @@ async def changes_today(
 
     # --- News -------------------------------------------------------------
     news_rows = (
-        await db.execute(
-            select(NewsRow)
-            .where(NewsRow.time >= cutoff)
-            .order_by(NewsRow.time.desc())
+        (
+            await db.execute(
+                select(NewsRow).where(NewsRow.time >= cutoff).order_by(NewsRow.time.desc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
+
     # Sort by impact_score if the column is populated; else by recency.
     def _impact(n: NewsRow) -> int:
         v = getattr(n, "impact_score", None)

@@ -29,12 +29,21 @@ import pytest
 
 
 class _MockResponse:
-    def __init__(self, *, status_code: int = 200, json_data: Any = None, text: str = "", content: bytes | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        status_code: int = 200,
+        json_data: Any = None,
+        text: str = "",
+        content: bytes | None = None,
+    ) -> None:
         self.status_code = status_code
         self._json = json_data
         self.text = text
         self.content = content if content is not None else text.encode("utf-8")
-        self.headers = {"Content-Type": "application/json" if json_data is not None else "text/plain"}
+        self.headers = {
+            "Content-Type": "application/json" if json_data is not None else "text/plain"
+        }
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
@@ -87,7 +96,8 @@ async def _patch_client(route_map: dict[str, _MockResponse], *target_modules: st
     targets = list(target_modules)
     if not targets:
         targets = [
-            name for name, mod in list(sys.modules.items())
+            name
+            for name, mod in list(sys.modules.items())
             if name.startswith("pfip.ingest") and hasattr(mod, "get_async_client")
         ]
     originals: dict[str, Any] = {}
@@ -129,6 +139,7 @@ def test_amfi_nav_parser_shape():
     async def _go():
         async def fake_dl():
             return sample
+
         parser_mod._download = fake_dl  # type: ignore[attr-defined]
         rows = await parser_mod.fetch_amfi_nav()
         return rows
@@ -184,8 +195,18 @@ def test_coingecko_market_caps_parse():
     from pfip.ingest.crypto import coingecko
 
     coins = [
-        {"symbol": "btc", "market_cap": 1_300_000_000_000, "total_volume": 50_000_000_000, "current_price": 67000},
-        {"symbol": "eth", "market_cap": 400_000_000_000, "total_volume": 20_000_000_000, "current_price": 3500},
+        {
+            "symbol": "btc",
+            "market_cap": 1_300_000_000_000,
+            "total_volume": 50_000_000_000,
+            "current_price": 67000,
+        },
+        {
+            "symbol": "eth",
+            "market_cap": 400_000_000_000,
+            "total_volume": 20_000_000_000,
+            "current_price": 3500,
+        },
     ]
     glob = {
         "data": {
@@ -340,7 +361,9 @@ def test_source_health_track_success(monkeypatch):
 
     captured: list[tuple[str, int, str | None]] = []
 
-    async def fake_record(source: str, *, rows: int, error: str | None = None, session=None):  # noqa: ANN001
+    async def fake_record(
+        source: str, *, rows: int, error: str | None = None, session=None
+    ):  # noqa: ANN001
         captured.append((source, rows, error))
 
     monkeypatch.setattr(source_health, "record_run", fake_record)
@@ -358,7 +381,9 @@ def test_source_health_track_failure(monkeypatch):
 
     captured: list[tuple[str, int, str | None]] = []
 
-    async def fake_record(source: str, *, rows: int, error: str | None = None, session=None):  # noqa: ANN001
+    async def fake_record(
+        source: str, *, rows: int, error: str | None = None, session=None
+    ):  # noqa: ANN001
         captured.append((source, rows, error))
 
     monkeypatch.setattr(source_health, "record_run", fake_record)

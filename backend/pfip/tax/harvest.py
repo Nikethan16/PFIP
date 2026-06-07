@@ -187,9 +187,7 @@ def suggest_harvest(
             (rounding / micro-positions noise).
     """
     today = today or date.today()
-    plan = HarvestPlan(
-        fy=f"{ctx.fy_start.year}-{ctx.fy_end.year % 100:02d}"
-    )
+    plan = HarvestPlan(fy=f"{ctx.fy_start.year}-{ctx.fy_end.year % 100:02d}")
 
     # Track remaining offsetable gains as we plan — first-fit greedy by
     # tax saved.
@@ -310,12 +308,8 @@ def suggest_harvest(
             pool_debt -= used
 
     plan.suggestions = committed
-    plan.total_loss_inr = sum(
-        (c.loss_inr for c in committed), Decimal("0")
-    )
-    plan.total_tax_saved_inr = sum(
-        (c.estimated_tax_saved_inr for c in committed), Decimal("0")
-    )
+    plan.total_loss_inr = sum((c.loss_inr for c in committed), Decimal("0"))
+    plan.total_tax_saved_inr = sum((c.estimated_tax_saved_inr for c in committed), Decimal("0"))
     return plan
 
 
@@ -341,9 +335,7 @@ def _score_lot(
         HarvestAssetClass.EQUITY_MF,
     ):
         offset_stcg = min(loss, pool_stcg)
-        savings_stcg = offset_stcg * _effective_rate(
-            _STCG_RATE[ac], ctx.surcharge_rate
-        )
+        savings_stcg = offset_stcg * _effective_rate(_STCG_RATE[ac], ctx.surcharge_rate)
         remainder = loss - offset_stcg
         offset_ltcg = min(remainder, pool_ltcg)
         # LTCG-spillover savings: again compute as delta in *taxable* LTCG,
@@ -351,9 +343,7 @@ def _score_lot(
         taxable_before_ltcg = max(pool_ltcg - ltcg_exemption_left, Decimal("0"))
         taxable_after_ltcg = max(pool_ltcg - offset_ltcg - ltcg_exemption_left, Decimal("0"))
         delta_ltcg = taxable_before_ltcg - taxable_after_ltcg
-        savings_ltcg = delta_ltcg * _effective_rate(
-            _LTCG_RATE[ac], ctx.surcharge_rate
-        )
+        savings_ltcg = delta_ltcg * _effective_rate(_LTCG_RATE[ac], ctx.surcharge_rate)
         savings = savings_stcg + savings_ltcg
         if savings <= 0:
             return ("", Decimal("0"))
@@ -390,9 +380,7 @@ def _score_lot(
         # No common pool for non-equity LTCG in this simplified model —
         # we can carry forward 8 years; estimate value at the surcharge-
         # adjusted marginal rate of the offset's natural counterpart.
-        savings = loss * _effective_rate(
-            _LTCG_RATE.get(ac, Decimal("0.20")), ctx.surcharge_rate
-        )
+        savings = loss * _effective_rate(_LTCG_RATE.get(ac, Decimal("0.20")), ctx.surcharge_rate)
         # Discount because we're estimating future-year offset.
         savings *= Decimal("0.5")
         return ("Carry-forward LTCG (8-year window)", savings)

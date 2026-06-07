@@ -45,7 +45,7 @@ LADDER_TIERS: tuple[tuple[str, float], ...] = (
 
 
 class LadderTier(str, Enum):
-    PAPER = "paper"   # pre-real-capital
+    PAPER = "paper"  # pre-real-capital
     PCT_5 = "5%"
     PCT_10 = "10%"
     PCT_25 = "25%"
@@ -55,6 +55,7 @@ class LadderTier(str, Enum):
 @dataclass
 class PreCommitment:
     """Parsed pre-commitment file."""
+
     minimum_capital_inr: Decimal
     drawdown_halt_pct: Decimal
     cooling_off_hours: int
@@ -173,7 +174,9 @@ def parse_signed(path: Path = PRECOMMITMENT_PATH) -> PreCommitment | None:
     try:
         signed_at = datetime.fromisoformat(signed_date_str.strip()).replace(tzinfo=timezone.utc)
     except Exception:  # noqa: BLE001
-        logger.warning(f"Could not parse pre-commitment date '{signed_date_str}'; treating as unsigned")
+        logger.warning(
+            f"Could not parse pre-commitment date '{signed_date_str}'; treating as unsigned"
+        )
         return None
     # Extract numeric params with safe defaults
     minimum_capital = _extract_currency(text, "Minimum capital") or Decimal("500000")
@@ -299,12 +302,16 @@ async def enforce_ladder(
     # otherwise default to tier 1.
     try:
         row = (
-            await db.execute(
-                sql_text(
-                    "SELECT tier, halt_active, halt_reason FROM ladder_state ORDER BY id DESC LIMIT 1"
+            (
+                await db.execute(
+                    sql_text(
+                        "SELECT tier, halt_active, halt_reason FROM ladder_state ORDER BY id DESC LIMIT 1"
+                    )
                 )
             )
-        ).mappings().first()
+            .mappings()
+            .first()
+        )
         if row is not None:
             tier = LadderTier(row["tier"])
             halt_active = bool(row["halt_active"])
@@ -338,9 +345,7 @@ async def enforce_ladder(
             f"Intended {intended_pct_of_portfolio:.1%} exceeds tier {tier.value} cap of {tier_pct:.1%}"
         )
     if intended_pct_of_portfolio > 0.10:
-        reasons.append(
-            "Per-position cap is 10% (set in env via MAX_POSITION_PCT)"
-        )
+        reasons.append("Per-position cap is 10% (set in env via MAX_POSITION_PCT)")
 
     allowed = len(reasons) == 0
     return LadderCheck(
@@ -402,9 +407,10 @@ async def can_advance_tier(db: AsyncSession, tier: LadderTier) -> tuple[bool, li
     # Consecutive losing months
     try:
         rows = (
-            await db.execute(
-                sql_text(
-                    """
+            (
+                await db.execute(
+                    sql_text(
+                        """
                     SELECT date_trunc('month', closed_at) AS month,
                            SUM(exit_price_inr - cost_basis_inr) AS pnl
                     FROM holdings
@@ -413,9 +419,12 @@ async def can_advance_tier(db: AsyncSession, tier: LadderTier) -> tuple[bool, li
                     ORDER BY month DESC
                     LIMIT 2
                     """
+                    )
                 )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
         if len(rows) >= 2 and all((r["pnl"] or 0) < 0 for r in rows):
             reasons.append("Last 2 months had negative P&L")
     except Exception as exc:  # noqa: BLE001

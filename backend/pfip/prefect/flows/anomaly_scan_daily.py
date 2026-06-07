@@ -51,9 +51,7 @@ async def _fetch_ohlcv() -> tuple[list[dict], int]:
         if not symbols:
             return ([], 0)
         rows_q = await session.execute(
-            select(OHLCVRow)
-            .where(OHLCVRow.symbol.in_(symbols))
-            .where(OHLCVRow.ts >= since)
+            select(OHLCVRow).where(OHLCVRow.symbol.in_(symbols)).where(OHLCVRow.ts >= since)
         )
         rows = rows_q.scalars().all()
 

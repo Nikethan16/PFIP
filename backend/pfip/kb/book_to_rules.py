@@ -43,11 +43,23 @@ class ExtractedRule:
 # Pattern catalogue. Each pattern has a regex + a confidence weight
 # representing how rule-shaped that grammar is.
 _PATTERNS: list[tuple[re.Pattern[str], float]] = [
-    (re.compile(r"^\s*(?:if|when|whenever)\s+([^,.;]{8,160}),?\s+(?:then\s+)?([^.]{8,200})\.", re.IGNORECASE), 0.85),
+    (
+        re.compile(
+            r"^\s*(?:if|when|whenever)\s+([^,.;]{8,160}),?\s+(?:then\s+)?([^.]{8,200})\.",
+            re.IGNORECASE,
+        ),
+        0.85,
+    ),
     (re.compile(r"^\s*never\s+([^.;]{8,180})\.", re.IGNORECASE), 0.80),
     (re.compile(r"^\s*always\s+([^.;]{8,180})\.", re.IGNORECASE), 0.80),
     (re.compile(r"^\s*do not\s+([^.;]{8,180})\.", re.IGNORECASE), 0.75),
-    (re.compile(r"^\s*(?:cut|exit|sell)\s+(?:your\s+)?(?:losses?|position)s?\s+(?:when|if)\s+([^.;]{8,180})\.", re.IGNORECASE), 0.85),
+    (
+        re.compile(
+            r"^\s*(?:cut|exit|sell)\s+(?:your\s+)?(?:losses?|position)s?\s+(?:when|if)\s+([^.;]{8,180})\.",
+            re.IGNORECASE,
+        ),
+        0.85,
+    ),
 ]
 
 
@@ -59,9 +71,7 @@ def _split_sentences(text: str) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
-def extract_rules_heuristic(
-    text: str, *, source: str | None = None
-) -> list[ExtractedRule]:
+def extract_rules_heuristic(text: str, *, source: str | None = None) -> list[ExtractedRule]:
     """Pattern-based rule extraction. No LLM required."""
     out: list[ExtractedRule] = []
     for sent in _split_sentences(text):
@@ -144,9 +154,7 @@ async def extract_rules_llm(
         out.append(
             ExtractedRule(
                 rule_text=rule_text,
-                preconditions=[
-                    str(p) for p in (item.get("preconditions") or [])
-                ],
+                preconditions=[str(p) for p in (item.get("preconditions") or [])],
                 source=source,
                 confidence=float(item.get("confidence") or 0.6),
                 method="llm",

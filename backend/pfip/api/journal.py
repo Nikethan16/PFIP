@@ -69,9 +69,7 @@ async def list_entries(db: DbSession, _user: CurrentUser) -> list[JournalEntry]:
 
 
 @router.post("/entries", response_model=JournalEntry, status_code=status.HTTP_201_CREATED)
-async def create_entry(
-    body: JournalEntryCreate, db: DbSession, _user: CurrentUser
-) -> JournalEntry:
+async def create_entry(body: JournalEntryCreate, db: DbSession, _user: CurrentUser) -> JournalEntry:
     """Create a journal entry. Pre-trade checklist MUST contain all required keys."""
     missing = [k for k in _REQUIRED_CHECKLIST_KEYS if k not in body.pre_trade_checklist]
     if missing:
@@ -132,9 +130,7 @@ class AutoDraftResponse(BaseModel):
     routed_to: str  # provider name for transparency
 
 
-@router.post(
-    "/entries/{entry_id}/auto_draft_post_mortem", response_model=AutoDraftResponse
-)
+@router.post("/entries/{entry_id}/auto_draft_post_mortem", response_model=AutoDraftResponse)
 async def auto_draft_post_mortem(
     entry_id: UUID,
     body: AutoDraftRequest,
@@ -223,9 +219,9 @@ def _build_post_mortem_prompt(
     realized_pnl_pct: float | None,
     extra_context: str | None,
 ) -> str:
-    checklist_bullets = "\n".join(
-        f"- {k}: {'✓' if v else '✗'}" for k, v in sorted(checklist.items())
-    ) or "(none)"
+    checklist_bullets = (
+        "\n".join(f"- {k}: {'✓' if v else '✗'}" for k, v in sorted(checklist.items())) or "(none)"
+    )
     pnl_line = (
         f"Realized P&L: **{realized_pnl_pct:+.2f}%**"
         if realized_pnl_pct is not None
@@ -308,6 +304,4 @@ async def list_failure_patterns(
         examples.setdefault(key, []).append(str(r.id))
 
     most = pattern_counter.most_common(top)
-    return [
-        FailurePattern(pattern=k, count=v, examples=examples[k][:3]) for k, v in most
-    ]
+    return [FailurePattern(pattern=k, count=v, examples=examples[k][:3]) for k, v in most]

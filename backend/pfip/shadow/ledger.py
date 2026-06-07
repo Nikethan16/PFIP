@@ -116,9 +116,7 @@ async def close_holding(
     return tx
 
 
-async def total_open_value(
-    session, *, mark_to_market: dict[str, Decimal] | None = None
-) -> Decimal:
+async def total_open_value(session, *, mark_to_market: dict[str, Decimal] | None = None) -> Decimal:
     """Sum of (qty * mark) across open holdings.
 
     When a symbol isn't in ``mark_to_market``, fall back to cost basis.

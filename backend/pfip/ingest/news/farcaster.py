@@ -27,13 +27,17 @@ BASE = "https://api.neynar.com/v2/farcaster"
 
 @retry_http(max_attempts=3)
 async def _search(query: str, api_key: str, limit: int = 25) -> dict[str, Any]:
-    async with get_async_client(headers={"api_key": api_key, "accept": "application/json"}) as client:
+    async with get_async_client(
+        headers={"api_key": api_key, "accept": "application/json"}
+    ) as client:
         r = await client.get(f"{BASE}/feed/search", params={"q": query, "limit": str(limit)})
         r.raise_for_status()
         return r.json()
 
 
-async def fetch_farcaster(queries: Iterable[str] = ("bitcoin", "base", "defi")) -> list[dict[str, Any]]:
+async def fetch_farcaster(
+    queries: Iterable[str] = ("bitcoin", "base", "defi")
+) -> list[dict[str, Any]]:
     key = os.environ.get("NEYNAR_API_KEY", "").strip()
     if not key:
         log.warning("NEYNAR_API_KEY not set, farcaster no-op")
@@ -55,7 +59,9 @@ async def fetch_farcaster(queries: Iterable[str] = ("bitcoin", "base", "defi")) 
             except Exception:
                 t = datetime.utcnow()
             author = (cast.get("author") or {}).get("username")
-            url = f"https://warpcast.com/{author}/{hash_[:10]}" if author else f"farcaster://{hash_}"
+            url = (
+                f"https://warpcast.com/{author}/{hash_[:10]}" if author else f"farcaster://{hash_}"
+            )
             out.append(
                 {
                     "time": t,

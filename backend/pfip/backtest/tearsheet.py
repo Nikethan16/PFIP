@@ -74,9 +74,7 @@ def monthly_returns_table(returns: pd.Series) -> pd.DataFrame:
     monthly = df.groupby(["y", "m"])["ret"].apply(lambda s: (1.0 + s).prod() - 1.0)
     grid = monthly.unstack("m")
     grid.columns = [
-        ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][
-            c - 1
-        ]
+        ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][c - 1]
         for c in grid.columns
     ]
     # Reindex to ensure all 12 months present.
@@ -183,10 +181,7 @@ def _fallback_html(
     bench_stats = _summary_stats(benchmark) if benchmark is not None else {}
 
     equity = (1.0 + returns.fillna(0.0)).cumprod()
-    equity_pairs = [
-        {"t": str(t), "equity": float(v)}
-        for t, v in equity.tail(500).items()
-    ]
+    equity_pairs = [{"t": str(t), "equity": float(v)} for t, v in equity.tail(500).items()]
 
     meta_block = _build_html_table(
         {

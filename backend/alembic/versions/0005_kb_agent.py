@@ -157,7 +157,9 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("now()"),
         ),
-        sa.Column("kind", sa.String(), nullable=False),  # e.g. 'prompt_injection', 'llm_timeout', 'hallucination'
+        sa.Column(
+            "kind", sa.String(), nullable=False
+        ),  # e.g. 'prompt_injection', 'llm_timeout', 'hallucination'
         sa.Column("severity", sa.String(), nullable=False, server_default="warn"),
         sa.Column("source", sa.String(), nullable=True),  # origin URL / book title / session id
         sa.Column(

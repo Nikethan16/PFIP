@@ -100,10 +100,7 @@ async def attach_news_to_signal(
     rows = (
         (
             await session.execute(
-                select(NewsRow)
-                .where(NewsRow.time >= since)
-                .order_by(desc(NewsRow.time))
-                .limit(200)
+                select(NewsRow).where(NewsRow.time >= since).order_by(desc(NewsRow.time)).limit(200)
             )
         )
         .scalars()

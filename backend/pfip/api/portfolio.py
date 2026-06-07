@@ -107,9 +107,7 @@ async def add_holding(body: Holding, db: DbSession, _user: CurrentUser) -> Holdi
     try:
         return await svc.add_holding(body)
     except HoldingValidationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.get("/holdings/{holding_id}", response_model=Holding)
@@ -171,9 +169,7 @@ async def summary(db: DbSession, _user: CurrentUser) -> PortfolioSummary:
     # NAV history (cumulative-net-flow proxy from the ledger) drives the
     # peak-to-current drawdown. Empty ⇒ drawdown stays 0.0.
     nav_history = await svc.nav_history()
-    return await svc.portfolio_summary(
-        mark_prices=marking.mark_prices, nav_history=nav_history
-    )
+    return await svc.portfolio_summary(mark_prices=marking.mark_prices, nav_history=nav_history)
 
 
 @router.get("/marking")
@@ -210,9 +206,7 @@ async def exposure(db: DbSession, _user: CurrentUser) -> dict:
     return {
         "total_inr": str(total),
         "exposure_inr": {k: str(v) for k, v in exp.items()},
-        "exposure_pct": {
-            k: (float(v / total) if total else 0.0) for k, v in exp.items()
-        },
+        "exposure_pct": {k: (float(v / total) if total else 0.0) for k, v in exp.items()},
         "disclaimer": DISCLAIMER,
     }
 
@@ -321,12 +315,8 @@ async def var_panel(
                 portfolio_returns.append(day_ret)
 
     pv_inr = total_value if total_value > 0 else None
-    var95 = svc.historical_var(
-        portfolio_returns, confidence=0.95, portfolio_value_inr=pv_inr
-    )
-    var99 = svc.historical_var(
-        portfolio_returns, confidence=0.99, portfolio_value_inr=pv_inr
-    )
+    var95 = svc.historical_var(portfolio_returns, confidence=0.95, portfolio_value_inr=pv_inr)
+    var99 = svc.historical_var(portfolio_returns, confidence=0.99, portfolio_value_inr=pv_inr)
 
     def _abs_pct(v: dict) -> float:
         return abs(float(v.get("var_pct", 0.0)))
@@ -355,14 +345,8 @@ async def var_panel(
         for d, nav in nav_history:
             if nav > running_peak:
                 running_peak = nav
-            dd_pct = (
-                float((Decimal("1") - nav / running_peak)) * 100.0
-                if running_peak > 0
-                else 0.0
-            )
-            drawdown_series.append(
-                {"date": d.isoformat(), "drawdown_pct": round(dd_pct, 4)}
-            )
+            dd_pct = float((Decimal("1") - nav / running_peak)) * 100.0 if running_peak > 0 else 0.0
+            drawdown_series.append({"date": d.isoformat(), "drawdown_pct": round(dd_pct, 4)})
         if len(nav_history) >= 2:
             prev_nav = nav_history[-2][1]
             last_nav = nav_history[-1][1]
@@ -420,9 +404,7 @@ async def pre_trade(body: PreTradeRequest, _user: CurrentUser) -> dict:
         "reasons": verdict.reasons,
         "per_item": verdict.per_item,
         "sizing": sizing,
-        "daily_positions_remaining": rm.daily_new_positions_remaining(
-            body.positions_added_today
-        ),
+        "daily_positions_remaining": rm.daily_new_positions_remaining(body.positions_added_today),
         "disclaimer": DISCLAIMER,
     }
 

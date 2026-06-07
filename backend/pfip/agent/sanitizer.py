@@ -29,8 +29,12 @@ from dataclasses import dataclass
 # Each pattern is case-insensitive.
 _INJECTION_PATTERNS: list[re.Pattern[str]] = [
     # Classic "ignore previous instructions" family.
-    re.compile(r"ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?|rules?)", re.IGNORECASE),
-    re.compile(r"disregard\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?)", re.IGNORECASE),
+    re.compile(
+        r"ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?|rules?)", re.IGNORECASE
+    ),
+    re.compile(
+        r"disregard\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?)", re.IGNORECASE
+    ),
     re.compile(r"forget\s+(everything|all\s+previous|your\s+instructions?)", re.IGNORECASE),
     # Role / persona injection.
     re.compile(r"\byou\s+are\s+now\b", re.IGNORECASE),

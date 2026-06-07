@@ -143,7 +143,9 @@ async def _economic_calendar(db: AsyncSession, day: datetime) -> list[dict[str, 
     return [dict(r) for r in rows]
 
 
-async def _top_news_per_watchlist(db: AsyncSession, limit_per: int = 3) -> dict[str, list[dict[str, Any]]]:
+async def _top_news_per_watchlist(
+    db: AsyncSession, limit_per: int = 3
+) -> dict[str, list[dict[str, Any]]]:
     try:
         wl_stmt = sql_text("SELECT symbol FROM watchlist ORDER BY added_at DESC LIMIT 10")
         watchlist = [r["symbol"] for r in (await db.execute(wl_stmt)).mappings()]
@@ -168,7 +170,9 @@ async def _top_news_per_watchlist(db: AsyncSession, limit_per: int = 3) -> dict[
                 """
             )
             rows = list(
-                (await db.execute(stmt, {"sym": sym, "cutoff": cutoff, "limit": limit_per})).mappings()
+                (
+                    await db.execute(stmt, {"sym": sym, "cutoff": cutoff, "limit": limit_per})
+                ).mappings()
             )
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"news fetch for {sym} failed: {exc}")
@@ -496,10 +500,7 @@ async def build_morning_brief(db: AsyncSession, target: datetime) -> str:
             _section8(shadow),
         ]
     )
-    footer = (
-        "\n---\n"
-        "<!-- TODO(user): trim the sections you don't read each morning. -->\n"
-    )
+    footer = "\n---\n" "<!-- TODO(user): trim the sections you don't read each morning. -->\n"
     return header + body + footer
 
 

@@ -112,7 +112,9 @@ def quarantine_chunk(text: str, source: str | None, matched: list[str]) -> Path:
     }
     try:
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        logger.warning(f"prompt_injection quarantined source={source} path={path.name} matched={matched[:3]}")
+        logger.warning(
+            f"prompt_injection quarantined source={source} path={path.name} matched={matched[:3]}"
+        )
     except OSError as exc:  # pragma: no cover
         logger.error(f"quarantine write failed: {exc}")
     return path

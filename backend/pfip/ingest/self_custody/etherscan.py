@@ -72,7 +72,9 @@ async def _recent_txs(address: str, api_key: str) -> list[dict[str, Any]]:
         return []
 
 
-async def fetch_addresses(addresses: Iterable[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+async def fetch_addresses(
+    addresses: Iterable[str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     api_key = os.environ.get("ETHERSCAN_API_KEY", "").strip()
     if not api_key:
         log.warning("ETHERSCAN_API_KEY not set, etherscan ingest no-op")

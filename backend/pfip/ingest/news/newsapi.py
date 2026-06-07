@@ -58,7 +58,11 @@ async def fetch_newsapi(queries: Iterable[str]) -> list[dict[str, Any]]:
                 continue
             t_str = art.get("publishedAt")
             try:
-                t = datetime.fromisoformat(t_str.replace("Z", "+00:00")) if t_str else datetime.now(tz=timezone.utc)
+                t = (
+                    datetime.fromisoformat(t_str.replace("Z", "+00:00"))
+                    if t_str
+                    else datetime.now(tz=timezone.utc)
+                )
             except Exception:
                 t = datetime.now(tz=timezone.utc)
             out.append(

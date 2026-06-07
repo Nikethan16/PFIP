@@ -16,9 +16,7 @@ def test_signals_empty_with_auth(client: TestClient, auth_headers: dict[str, str
     assert resp.json() == []
 
 
-def test_signals_latest_empty_with_auth(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_signals_latest_empty_with_auth(client: TestClient, auth_headers: dict[str, str]) -> None:
     resp = client.get("/api/v1/signals/latest", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json() == []

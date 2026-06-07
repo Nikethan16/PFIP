@@ -695,9 +695,7 @@ def compare_regimes(
     # Old regime applies deductions + standard deduction.
     old_taxable = max(
         Decimal("0"),
-        gross_income
-        - deduction_total
-        - DEDUCTION_LIMITS_INR["STANDARD_DEDUCTION_SALARY"],
+        gross_income - deduction_total - DEDUCTION_LIMITS_INR["STANDARD_DEDUCTION_SALARY"],
     )
     old_tax_base = _slab_tax(old_taxable, old_slabs)
     old_final = _apply_surcharge_and_cess(old_tax_base, old_taxable, new_regime=False)
@@ -747,9 +745,7 @@ def compute_80c_optimizer(
     )
     remaining_80c = max(Decimal("0"), DEDUCTION_LIMITS_INR["80C"] - used_80c)
     used_nps_1b = current_investments.get("NPS_1B", Decimal("0"))
-    remaining_80ccd_1b = max(
-        Decimal("0"), DEDUCTION_LIMITS_INR["80CCD_1B"] - used_nps_1b
-    )
+    remaining_80ccd_1b = max(Decimal("0"), DEDUCTION_LIMITS_INR["80CCD_1B"] - used_nps_1b)
 
     # Scoring: combination of (a) tax saved = amount * slab, (b) liquidity,
     # (c) lock-in, (d) post-tax return prior.
@@ -778,9 +774,7 @@ def compute_80c_optimizer(
             "code": "NPS_1B",
             "fits_under": "80CCD(1B)",
             "headroom_inr": remaining_80ccd_1b,
-            "tax_saved_if_maxed_inr": (remaining_80ccd_1b * income_slab).quantize(
-                Decimal("0.01")
-            ),
+            "tax_saved_if_maxed_inr": (remaining_80ccd_1b * income_slab).quantize(Decimal("0.01")),
             "lock_in_years": 60,  # till age 60
             "post_tax_return_pct": 9.0,  # assumed balanced
             "liquidity": "low",
@@ -883,13 +877,21 @@ def build_tax_summary(
     """Roll up STCG / LTCG / VDA / dividend + regime recommendation."""
     fy_events = [e for e in events if in_fy(e.sell_date, fy)]
     equity_stcg = sum(
-        (e.gain_inr for e in fy_events if e.term == GainTerm.STCG and e.asset_class
-         in (AssetClass.EQUITY, AssetClass.EQUITY_MF)),
+        (
+            e.gain_inr
+            for e in fy_events
+            if e.term == GainTerm.STCG
+            and e.asset_class in (AssetClass.EQUITY, AssetClass.EQUITY_MF)
+        ),
         Decimal("0"),
     )
     equity_ltcg = sum(
-        (e.gain_inr for e in fy_events if e.term == GainTerm.LTCG and e.asset_class
-         in (AssetClass.EQUITY, AssetClass.EQUITY_MF)),
+        (
+            e.gain_inr
+            for e in fy_events
+            if e.term == GainTerm.LTCG
+            and e.asset_class in (AssetClass.EQUITY, AssetClass.EQUITY_MF)
+        ),
         Decimal("0"),
     )
     vda_events = [e for e in fy_events if e.asset_class == AssetClass.VDA]
@@ -905,11 +907,13 @@ def build_tax_summary(
 
     regime_cmp = compare_regimes(gross_income, deductions, fy=fy)
     # Total tax = slab tax on ordinary income + CG-specific taxes + VDA tax
-    base_tax = Decimal(str(
-        regime_cmp["new_regime_tax_inr"]
-        if regime_cmp["recommended_regime"] == "new"
-        else regime_cmp["old_regime_tax_inr"]
-    ))
+    base_tax = Decimal(
+        str(
+            regime_cmp["new_regime_tax_inr"]
+            if regime_cmp["recommended_regime"] == "new"
+            else regime_cmp["old_regime_tax_inr"]
+        )
+    )
     total_tax = base_tax + stcg_tax + ltcg_tax + Decimal(str(vda_summary["tax_before_tds_inr"]))
 
     itr = itr_form_recommendation(

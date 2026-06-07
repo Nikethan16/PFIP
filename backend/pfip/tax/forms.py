@@ -54,8 +54,16 @@ def schedule_cg_json(events: list[CGEvent]) -> dict:
 
     Split out STCG / LTCG and per-asset-class totals.
     """
-    stcg_eq = [e for e in events if e.term == GainTerm.STCG and e.asset_class.value in ("equity", "equity_mf")]
-    ltcg_eq = [e for e in events if e.term == GainTerm.LTCG and e.asset_class.value in ("equity", "equity_mf")]
+    stcg_eq = [
+        e
+        for e in events
+        if e.term == GainTerm.STCG and e.asset_class.value in ("equity", "equity_mf")
+    ]
+    ltcg_eq = [
+        e
+        for e in events
+        if e.term == GainTerm.LTCG and e.asset_class.value in ("equity", "equity_mf")
+    ]
     vda = [e for e in events if e.asset_class.value == "vda"]
     debt = [e for e in events if e.asset_class.value in ("debt", "debt_mf")]
 
@@ -133,7 +141,10 @@ def form_67_json(rows: list[Form67Row]) -> dict:
     total_credit = sum((r.dtaa_credit_inr for r in rows), Decimal("0"))
     return {
         "form": "67",
-        "rows": [asdict(r) | {k: str(v) for k, v in asdict(r).items() if isinstance(v, Decimal)} for r in rows],
+        "rows": [
+            asdict(r) | {k: str(v) for k, v in asdict(r).items() if isinstance(v, Decimal)}
+            for r in rows
+        ],
         "total_dtaa_credit_inr": str(total_credit),
         "disclaimer": DISCLAIMER,
     }

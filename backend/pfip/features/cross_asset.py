@@ -67,9 +67,7 @@ def empty_snapshot(target_symbol: str, as_of: datetime) -> CrossAssetSnapshot:
     )
 
 
-def _rolling_corr_last(
-    a: pd.Series, b: pd.Series, window: int = 30
-) -> float | None:
+def _rolling_corr_last(a: pd.Series, b: pd.Series, window: int = 30) -> float | None:
     if a is None or b is None or a.empty or b.empty:
         return None
     al = a.astype(float).pct_change()
@@ -93,6 +91,7 @@ def derive_from_panel(
     ``closes`` keys are symbols (e.g. ``BTC/USD``, ``SPY``, ``GLD``,
     ``DX-Y.NYB``, ``^TNX``) plus the target symbol itself.
     """
+
     def _get(sym: str) -> pd.Series:
         s = closes.get(sym, pd.Series(dtype=float))
         if s.empty:

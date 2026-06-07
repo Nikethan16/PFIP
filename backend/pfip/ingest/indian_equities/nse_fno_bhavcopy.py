@@ -66,9 +66,7 @@ async def fetch_fno_bhavcopy(d: date | None = None) -> list[dict[str, Any]]:
         if not sym or not inst:
             continue
         # Contract identifier
-        suffix = (
-            inst if not opt or opt == "XX" else f"{inst}_{opt}_{int(float(strike))}"
-        )
+        suffix = inst if not opt or opt == "XX" else f"{inst}_{opt}_{int(float(strike))}"
         contract = f"{sym}_{exp}_{suffix}"
         rows.append(
             {
@@ -87,9 +85,7 @@ async def fetch_fno_bhavcopy(d: date | None = None) -> list[dict[str, Any]]:
     return rows
 
 
-async def ingest_fno_bhavcopy(
-    d: date | None = None, session: AsyncSession | None = None
-) -> int:
+async def ingest_fno_bhavcopy(d: date | None = None, session: AsyncSession | None = None) -> int:
     log.info("ingest.nse_fno_bhavcopy starting")
     rows = await fetch_fno_bhavcopy(d)
     if session is None:

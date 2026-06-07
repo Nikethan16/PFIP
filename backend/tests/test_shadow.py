@@ -29,17 +29,13 @@ def test_shadow_holdings_requires_auth(client: TestClient) -> None:
     assert resp.status_code == 401
 
 
-def test_shadow_holdings_empty_with_auth(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_shadow_holdings_empty_with_auth(client: TestClient, auth_headers: dict[str, str]) -> None:
     resp = client.get("/api/v1/shadow/holdings", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json() == []
 
 
-def test_shadow_vs_actual_returns_dict(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_shadow_vs_actual_returns_dict(client: TestClient, auth_headers: dict[str, str]) -> None:
     resp = client.get("/api/v1/shadow/vs-actual", headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()
@@ -174,9 +170,7 @@ async def test_apply_signal_opens_buy() -> None:
 @pytest.mark.asyncio
 async def test_apply_signal_respects_daily_cap() -> None:
     session = _InMemSession()
-    portfolio = ShadowPortfolio(
-        session=session, rules=RiskRules(daily_new_position_cap=1)
-    )
+    portfolio = ShadowPortfolio(session=session, rules=RiskRules(daily_new_position_cap=1))
     sig1 = _signal("BTC/USD", SignalDirection.BUY, confidence=80)
     sig2 = _signal("ETH/USD", SignalDirection.BUY, confidence=80)
     d1 = await portfolio.apply_signal(sig1, Decimal("1000"))
@@ -193,9 +187,7 @@ async def test_mark_to_market_returns_shape() -> None:
     sig = _signal("BTC/USD", SignalDirection.BUY, confidence=80)
     await portfolio.apply_signal(sig, Decimal("1000"))
     # Seed latest close for BTC/USD
-    session.ohlcv["BTC/USD"] = [
-        (datetime.now(tz=timezone.utc), Decimal("1100"))
-    ]
+    session.ohlcv["BTC/USD"] = [(datetime.now(tz=timezone.utc), Decimal("1100"))]
     mtm = await portfolio.mark_to_market()
     assert "equity_inr" in mtm
     assert mtm["equity_inr"] >= 0

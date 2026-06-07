@@ -40,9 +40,7 @@ def test_url_dedup_strips_query_and_fragment():
 
 
 def test_url_dedup_handles_trailing_slash():
-    assert url_dedup_key("https://x.com/news/") == url_dedup_key(
-        "https://x.com/news"
-    )
+    assert url_dedup_key("https://x.com/news/") == url_dedup_key("https://x.com/news")
 
 
 def test_url_dedup_distinguishes_different_paths():

@@ -144,12 +144,8 @@ async def test_close_is_idempotent_one_post_mortem_per_holding() -> None:
 
     # Partial close, then close the remainder. Only one stub should exist and
     # both responses must reference the same journal entry id.
-    first = await svc.close_holding(
-        holding.id, Decimal("2500"), qty=Decimal("5")
-    )
-    second = await svc.close_holding(
-        holding.id, Decimal("2500"), qty=Decimal("5")
-    )
+    first = await svc.close_holding(holding.id, Decimal("2500"), qty=Decimal("5"))
+    second = await svc.close_holding(holding.id, Decimal("2500"), qty=Decimal("5"))
 
     assert len(session.journals) == 1
     assert first["journal_entry_id"] == second["journal_entry_id"]

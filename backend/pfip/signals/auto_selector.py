@@ -182,9 +182,10 @@ async def select_for_watchlist(db: AsyncSession) -> list[dict[str, Any]]:
     """
     try:
         rows = (
-            await db.execute(
-                sql_text(
-                    """
+            (
+                await db.execute(
+                    sql_text(
+                        """
                     SELECT w.symbol AS asset,
                            COALESCE(r.regime, 'bull_trend') AS regime,
                            r.since AS regime_since,
@@ -199,9 +200,12 @@ async def select_for_watchlist(db: AsyncSession) -> list[dict[str, Any]]:
                     ) r ON true
                     ORDER BY w.added_at DESC
                     """
+                    )
                 )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"select_for_watchlist failed: {exc}")
         return []

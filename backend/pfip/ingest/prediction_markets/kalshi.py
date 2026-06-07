@@ -38,7 +38,7 @@ async def fetch_kalshi(limit: int = 100) -> list[dict[str, Any]]:
         return []
     today = date.today()
     rows: list[dict[str, Any]] = []
-    for m in (resp.get("markets") or []):
+    for m in resp.get("markets") or []:
         ticker = m.get("ticker") or m.get("market_ticker")
         if not ticker:
             continue

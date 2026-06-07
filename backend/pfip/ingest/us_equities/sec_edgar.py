@@ -69,9 +69,7 @@ async def fetch_submissions(cik: int | str) -> list[dict[str, Any]]:
         except Exception:
             continue
         acc_clean = acc.replace("-", "")
-        url = (
-            f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc_clean}/{doc}"
-        )
+        url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc_clean}/{doc}"
         items.append(
             {
                 "time": t,

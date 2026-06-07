@@ -29,7 +29,5 @@ class FundamentalRow(Base):
     source: Mapped[str] = mapped_column(String, nullable=False)
 
     __table_args__ = (
-        PrimaryKeyConstraint(
-            "as_of_date", "symbol", "field", "source", name="pk_fundamentals"
-        ),
+        PrimaryKeyConstraint("as_of_date", "symbol", "field", "source", name="pk_fundamentals"),
     )

@@ -123,9 +123,7 @@ async def reconcile_daily(
             )
         else:
             rejected += 1
-            decisions.append(
-                {"asset": row.asset, "result": "rejected", "reason": decision.reason}
-            )
+            decisions.append({"asset": row.asset, "result": "rejected", "reason": decision.reason})
 
     mtm = await portfolio.mark_to_market()
     return ReconcileSummary(

@@ -110,9 +110,7 @@ async def fetch_bhavcopy(d: date | None = None) -> list[dict[str, Any]]:
     return rows
 
 
-async def ingest_nse_bhavcopy(
-    d: date | None = None, session: AsyncSession | None = None
-) -> int:
+async def ingest_nse_bhavcopy(d: date | None = None, session: AsyncSession | None = None) -> int:
     """Ingest one day's NSE bhavcopy. Defaults to yesterday."""
     log.info("ingest.nse_bhavcopy starting")
     rows = await fetch_bhavcopy(d)

@@ -76,9 +76,7 @@ def _settings(**kwargs) -> Settings:  # type: ignore[no-untyped-def]
 )
 def test_sensitive_strict_forces_local(task: TaskType) -> None:
     """Any task + Sensitive + strict → ollama, no fallbacks."""
-    s = _settings(
-        groq_api_key="key", gemini_api_key="key", llm_privacy_strict=True
-    )
+    s = _settings(groq_api_key="key", gemini_api_key="key", llm_privacy_strict=True)
     decision = route(task, Sensitivity.SENSITIVE, settings=s)
     assert decision.provider == "ollama"
     assert decision.model == MODELS["ollama_default"]
@@ -193,9 +191,9 @@ def test_fallback_chain_contains_ollama_always() -> None:
     s = _settings(groq_api_key="g", gemini_api_key="x", deepseek_api_key="d")
     for task in (TaskType.MORNING_BRIEF, TaskType.CHAT_PUBLIC, TaskType.REASONING):
         decision = route(task, Sensitivity.PUBLIC, settings=s)
-        assert MODELS["ollama_default"] in decision.all_models, (
-            f"task={task} missing local fallback: {decision.all_models}"
-        )
+        assert (
+            MODELS["ollama_default"] in decision.all_models
+        ), f"task={task} missing local fallback: {decision.all_models}"
 
 
 # ---------------------------------------------------------------------------

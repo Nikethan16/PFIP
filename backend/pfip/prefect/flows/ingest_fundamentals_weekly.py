@@ -42,7 +42,9 @@ async def _watchlist_split() -> tuple[list[str], list[str]]:
             r = await s.execute(text("SELECT symbol, market FROM watchlist"))
             for sym, mkt in r.fetchall():
                 m = (mkt or "").upper()
-                if m in ("IN", "NSE", "BSE", "NIFTY50", "NIFTY500", "SENSEX") or sym.endswith((".NS", ".BO")):
+                if m in ("IN", "NSE", "BSE", "NIFTY50", "NIFTY500", "SENSEX") or sym.endswith(
+                    (".NS", ".BO")
+                ):
                     inn.append(sym.replace(".NS", "").replace(".BO", ""))
                 else:
                     us.append(sym)

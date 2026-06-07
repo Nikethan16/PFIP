@@ -144,9 +144,7 @@ async def fetch_coingecko_snapshot(
     return out
 
 
-async def ingest_coingecko(
-    *, top_n: int = 50, session: AsyncSession | None = None
-) -> int:
+async def ingest_coingecko(*, top_n: int = 50, session: AsyncSession | None = None) -> int:
     log.info("ingest.coingecko starting")
     rows = await fetch_coingecko_snapshot(top_n=top_n)
     if session is None:

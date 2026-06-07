@@ -42,7 +42,9 @@ async def _latest() -> int:
     return n
 
 
-@task(name="fx-rates-backfill", retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=10))
+@task(
+    name="fx-rates-backfill", retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=10)
+)
 async def _backfill(days: int) -> int:
     n = 0
     err: str | None = None

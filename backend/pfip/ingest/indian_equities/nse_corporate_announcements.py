@@ -70,7 +70,11 @@ def _from_json(payload: bytes) -> list[dict[str, Any]]:
             t = datetime.strptime(tstr, "%d-%b-%Y %H:%M:%S").replace(tzinfo=timezone.utc)
         except Exception:
             t = datetime.now(tz=timezone.utc)
-        url = link if link.startswith("http") else f"https://www.nseindia.com/companies-listing/corporate-filings-announcements?symbol={sym}"
+        url = (
+            link
+            if link.startswith("http")
+            else f"https://www.nseindia.com/companies-listing/corporate-filings-announcements?symbol={sym}"
+        )
         out.append(
             {
                 "time": t,

@@ -43,13 +43,37 @@ ARXIV_URLS: list[tuple[str, str, str]] = [
 
 # Default keywords — augmented at runtime by the active watchlist.
 DEFAULT_KEYWORDS: tuple[str, ...] = (
-    "bitcoin", "btc", "ethereum", "eth", "crypto",
-    "stock", "equity", "etf", "futures", "options",
-    "regime", "volatility", "garch", "kalman", "hmm",
-    "portfolio", "risk", "hedging", "factor",
-    "rsi", "macd", "momentum", "mean reversion",
-    "fed", "rbi", "inflation", "cpi",
-    "transformer", "lstm", "deep learning", "reinforcement",
+    "bitcoin",
+    "btc",
+    "ethereum",
+    "eth",
+    "crypto",
+    "stock",
+    "equity",
+    "etf",
+    "futures",
+    "options",
+    "regime",
+    "volatility",
+    "garch",
+    "kalman",
+    "hmm",
+    "portfolio",
+    "risk",
+    "hedging",
+    "factor",
+    "rsi",
+    "macd",
+    "momentum",
+    "mean reversion",
+    "fed",
+    "rbi",
+    "inflation",
+    "cpi",
+    "transformer",
+    "lstm",
+    "deep learning",
+    "reinforcement",
 )
 
 
@@ -64,12 +88,12 @@ async def _watchlist_keywords() -> list[str]:
         return []
 
 
-def _filter_by_keywords(items: list[dict[str, Any]], keywords: Iterable[str]) -> list[dict[str, Any]]:
+def _filter_by_keywords(
+    items: list[dict[str, Any]], keywords: Iterable[str]
+) -> list[dict[str, Any]]:
     if not items:
         return []
-    patterns = [
-        re.compile(rf"\b{re.escape(k)}\b", re.IGNORECASE) for k in keywords if k
-    ]
+    patterns = [re.compile(rf"\b{re.escape(k)}\b", re.IGNORECASE) for k in keywords if k]
     if not patterns:
         return items
     kept: list[dict[str, Any]] = []

@@ -59,7 +59,9 @@ async def fetch_marketaux(countries: str = "us,in") -> list[dict[str, Any]]:
                 "url": url,
                 "source": "marketaux",
                 "symbol": symbol,
-                "sentiment": art.get("sentiment") if isinstance(art.get("sentiment"), (int, float)) else None,
+                "sentiment": (
+                    art.get("sentiment") if isinstance(art.get("sentiment"), (int, float)) else None
+                ),
                 "summary": art.get("snippet") or art.get("description"),
                 "category": "news",
             }

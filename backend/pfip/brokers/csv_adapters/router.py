@@ -123,10 +123,12 @@ def route_and_parse(csv_bytes: bytes, broker: str | None = None) -> ImportResult
     # post-filter obviously invalid rows (qty=0 and amount=0 ⇒ noise line)
     for row in rows:
         try:
-            if (row.qty in (None,) or row.qty == 0) and row.amount_inr == 0 and row.kind not in {"TRANSFER", "FEE"}:
-                result.rejected.append(
-                    {"row": row.raw, "reason": "empty qty and amount"}
-                )
+            if (
+                (row.qty in (None,) or row.qty == 0)
+                and row.amount_inr == 0
+                and row.kind not in {"TRANSFER", "FEE"}
+            ):
+                result.rejected.append({"row": row.raw, "reason": "empty qty and amount"})
                 continue
             result.imported.append(row)
         except Exception as exc:  # noqa: BLE001

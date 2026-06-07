@@ -128,9 +128,7 @@ def test_vda_loss_never_suggested():
     # The harvest module's HarvestAssetClass enum does not include VDA, so
     # the only way to pass a crypto-looking row is via a different class —
     # which proves the API design: callers must classify before calling.
-    plan = suggest_harvest(
-        [lot, crypto], _ctx(stcg=Decimal("100000")), today=date(2025, 12, 1)
-    )
+    plan = suggest_harvest([lot, crypto], _ctx(stcg=Decimal("100000")), today=date(2025, 12, 1))
     # The equity_mf loss should be suggested (matches STCG pool).
     assert any(s.symbol != "BTC" for s in plan.suggestions)
 
@@ -225,25 +223,35 @@ def test_far_from_fy_end_no_warning():
         acquired_days_ago=90,
         today=date(2025, 7, 1),  # ~9 months from FY end
     )
-    plan = suggest_harvest(
-        [lot], _ctx(stcg=Decimal("100000")), today=date(2025, 7, 1)
-    )
+    plan = suggest_harvest([lot], _ctx(stcg=Decimal("100000")), today=date(2025, 7, 1))
     assert plan.suggestions
     assert plan.suggestions[0].warning is None
 
 
 def test_total_aggregates_match_individual_suggestions():
-    a = _lot(lot_id="a", symbol="A", cost=Decimal("100"), current=Decimal("80"), qty=100, acquired_days_ago=90)
-    b = _lot(lot_id="b", symbol="B", cost=Decimal("100"), current=Decimal("70"), qty=100, acquired_days_ago=90)
+    a = _lot(
+        lot_id="a",
+        symbol="A",
+        cost=Decimal("100"),
+        current=Decimal("80"),
+        qty=100,
+        acquired_days_ago=90,
+    )
+    b = _lot(
+        lot_id="b",
+        symbol="B",
+        cost=Decimal("100"),
+        current=Decimal("70"),
+        qty=100,
+        acquired_days_ago=90,
+    )
     plan = suggest_harvest(
         [a, b],
         _ctx(stcg=Decimal("100000")),
         today=date(2025, 12, 1),
     )
     sum_loss = sum((s.loss_inr for s in plan.suggestions), Decimal("0"))
-    sum_saved = sum(
-        (s.estimated_tax_saved_inr for s in plan.suggestions), Decimal("0")
-    )
+    sum_saved = sum((s.estimated_tax_saved_inr for s in plan.suggestions), Decimal("0"))
     assert plan.total_loss_inr == sum_loss
     assert plan.total_tax_saved_inr == sum_saved
 

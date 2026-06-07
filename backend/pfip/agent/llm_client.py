@@ -94,9 +94,7 @@ def _get_litellm():
     try:
         import litellm  # type: ignore
     except ImportError as exc:  # pragma: no cover
-        raise LLMUnavailable(
-            "litellm not installed. Run `pip install litellm>=1.50.0`."
-        ) from exc
+        raise LLMUnavailable("litellm not installed. Run `pip install litellm>=1.50.0`.") from exc
     return litellm
 
 
@@ -303,8 +301,7 @@ class MultiProviderClient:
                 continue
 
         raise LLMAllProvidersFailed(
-            f"All providers failed (stream) for task={task.value}. "
-            f"Last error: {last_err}"
+            f"All providers failed (stream) for task={task.value}. " f"Last error: {last_err}"
         )
 
     async def embed(
@@ -335,7 +332,10 @@ class MultiProviderClient:
                 # LiteLLM's EmbeddingResponse exposes .data
                 data = getattr(resp, "data", None)
                 if data:
-                    return [item["embedding"] if isinstance(item, dict) else item.embedding for item in data]
+                    return [
+                        item["embedding"] if isinstance(item, dict) else item.embedding
+                        for item in data
+                    ]
                 raise LLMError(f"unexpected embedding response shape: {type(resp)!r}")
             except Exception as exc:  # noqa: BLE001
                 latency_ms = (time.monotonic() - start) * 1000
@@ -604,7 +604,7 @@ class GroqClient:
                 async for line in resp.aiter_lines():
                     if not line or not line.startswith("data: "):
                         continue
-                    data_raw = line[len("data: "):].strip()
+                    data_raw = line[len("data: ") :].strip()
                     if data_raw == "[DONE]":
                         return
                     try:
@@ -643,7 +643,11 @@ class LLMRouter:
 
     @property
     def primary_model(self) -> str:
-        return MODELS.get("groq_70b", self._ollama.model) if self._settings.groq_api_key else self._ollama.model
+        return (
+            MODELS.get("groq_70b", self._ollama.model)
+            if self._settings.groq_api_key
+            else self._ollama.model
+        )
 
     @property
     def fallback_model(self) -> str | None:

@@ -79,9 +79,7 @@ async def fetch_economic_calendar(days_ahead: int = 30) -> list[dict[str, Any]]:
     return items
 
 
-async def ingest_finnhub_calendar(
-    days_ahead: int = 30, session: AsyncSession | None = None
-) -> int:
+async def ingest_finnhub_calendar(days_ahead: int = 30, session: AsyncSession | None = None) -> int:
     log.info("ingest.finnhub_calendar starting")
     earnings = await fetch_earnings_calendar(days_ahead=days_ahead)
     econ = await fetch_economic_calendar(days_ahead=days_ahead)

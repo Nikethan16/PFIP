@@ -16,9 +16,7 @@ def test_entries_empty_with_auth(client: TestClient, auth_headers: dict[str, str
     assert resp.json() == []
 
 
-def test_create_entry_enforces_checklist(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_create_entry_enforces_checklist(client: TestClient, auth_headers: dict[str, str]) -> None:
     resp = client.post(
         "/api/v1/journal/entries",
         headers=auth_headers,

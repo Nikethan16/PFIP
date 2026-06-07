@@ -71,7 +71,9 @@ def _fetch_sync(subs: Iterable[str], limit_per_sub: int) -> list[dict[str, Any]]
     return out
 
 
-async def fetch_reddit(subs: Iterable[str] = DEFAULT_SUBS, limit_per_sub: int = 25) -> list[dict[str, Any]]:
+async def fetch_reddit(
+    subs: Iterable[str] = DEFAULT_SUBS, limit_per_sub: int = 25
+) -> list[dict[str, Any]]:
     return await anyio.to_thread.run_sync(lambda: _fetch_sync(list(subs), limit_per_sub))
 
 

@@ -43,9 +43,7 @@ async def get_candles(
     Bounded to the most recent ``limit`` rows (default 1000, max 5000) so the
     endpoint can never stream an entire multi-year history in one response.
     """
-    stmt = select(OHLCVRow).where(
-        OHLCVRow.symbol == symbol, OHLCVRow.timeframe == timeframe
-    )
+    stmt = select(OHLCVRow).where(OHLCVRow.symbol == symbol, OHLCVRow.timeframe == timeframe)
     if since is not None:
         stmt = stmt.where(OHLCVRow.time >= since)
     if until is not None:
@@ -74,9 +72,7 @@ async def get_features(
     well-formed payload with null features rather than 501 (the Prefect compute
     flow may simply not have run for this symbol yet).
     """
-    stmt = select(FeatureRow).where(
-        FeatureRow.symbol == symbol, FeatureRow.timeframe == timeframe
-    )
+    stmt = select(FeatureRow).where(FeatureRow.symbol == symbol, FeatureRow.timeframe == timeframe)
     if as_of is not None:
         stmt = stmt.where(FeatureRow.time <= as_of)
     stmt = stmt.order_by(FeatureRow.time.desc()).limit(1)

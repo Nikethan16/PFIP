@@ -33,9 +33,7 @@ def test_import_unknown_schema_returns_400(
     assert body["detail"]["error"] == "unknown_schema"
 
 
-def test_import_zerodha_csv_dry_run_ok(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_import_zerodha_csv_dry_run_ok(client: TestClient, auth_headers: dict[str, str]) -> None:
     data = (FIX / "zerodha_tradebook.csv").read_bytes()
     resp = client.post(
         "/api/v1/portfolio/import",

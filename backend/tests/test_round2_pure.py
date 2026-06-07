@@ -79,9 +79,7 @@ def test_intent_classifier_no_match_falls_back():
 # ---------------------------------------------------------------------------
 
 
-def _news(
-    title: str, sentiment: float, impact: int, hours_ago: int = 1
-) -> NewsForSignal:
+def _news(title: str, sentiment: float, impact: int, hours_ago: int = 1) -> NewsForSignal:
     return NewsForSignal(
         title=title,
         url=f"https://example.com/{title.replace(' ', '_')}",
@@ -115,9 +113,7 @@ def test_sell_signal_picks_negative_sentiment_as_supporting():
 
 def test_top_k_caps_lists():
     items = [_news(f"item_{i}", sentiment=0.5, impact=100 - i) for i in range(20)]
-    sup, opp = select_news_for_signal(
-        items, direction="BUY", top_support=3, top_oppose=2
-    )
+    sup, opp = select_news_for_signal(items, direction="BUY", top_support=3, top_oppose=2)
     assert len(sup) == 3
     assert len(opp) == 0  # everything is positive
     # Top-3 should be the highest-impact items.
@@ -161,7 +157,9 @@ def test_debt_to_equity_basic():
 
 
 def test_compute_all_returns_dict_with_known_keys():
-    f = Fundamentals(price=100, eps_ttm=5, book_value_per_share=50, total_debt=200, total_equity=400)
+    f = Fundamentals(
+        price=100, eps_ttm=5, book_value_per_share=50, total_debt=200, total_equity=400
+    )
     out = compute_all(f)
     assert "pe_ratio" in out
     assert "pb_ratio" in out

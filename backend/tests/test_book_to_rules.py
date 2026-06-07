@@ -97,7 +97,7 @@ async def test_llm_parses_valid_json():
 
 @pytest.mark.asyncio
 async def test_llm_strips_code_fences():
-    payload = "```json\n[{\"rule_text\": \"Wait for confirmation.\", \"confidence\": 0.7}]\n```"
+    payload = '```json\n[{"rule_text": "Wait for confirmation.", "confidence": 0.7}]\n```'
     llm = _FakeLLM(payload)
     rules = await extract_rules_llm("...", llm)
     assert len(rules) == 1
@@ -107,9 +107,7 @@ async def test_llm_strips_code_fences():
 @pytest.mark.asyncio
 async def test_llm_falls_back_on_bad_json():
     llm = _FakeLLM("this is not json")
-    rules = await extract_rules_llm(
-        "Never chase a stock that has gapped up.", llm, source="ch1"
-    )
+    rules = await extract_rules_llm("Never chase a stock that has gapped up.", llm, source="ch1")
     # Heuristic must have caught the 'Never' sentence.
     assert len(rules) == 1
     assert rules[0].method == "heuristic"
@@ -128,9 +126,7 @@ async def test_llm_falls_back_on_generate_exception():
         async def generate(self, _prompt: str) -> str:
             raise RuntimeError("nope")
 
-    rules = await extract_rules_llm(
-        "Always honour your stop loss.", _Boom()
-    )
+    rules = await extract_rules_llm("Always honour your stop loss.", _Boom())
     # Heuristic recovered.
     assert any("always" in r.rule_text.lower() for r in rules)
 

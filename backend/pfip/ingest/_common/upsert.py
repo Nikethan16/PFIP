@@ -123,12 +123,16 @@ async def upsert_fundamentals(
         await session.execute(
             stmt,
             {
-                "as_of_date": row["as_of_date"]
-                if isinstance(row["as_of_date"], date)
-                else date.fromisoformat(str(row["as_of_date"])),
-                "report_date": row["report_date"]
-                if isinstance(row["report_date"], date)
-                else date.fromisoformat(str(row["report_date"])),
+                "as_of_date": (
+                    row["as_of_date"]
+                    if isinstance(row["as_of_date"], date)
+                    else date.fromisoformat(str(row["as_of_date"]))
+                ),
+                "report_date": (
+                    row["report_date"]
+                    if isinstance(row["report_date"], date)
+                    else date.fromisoformat(str(row["report_date"]))
+                ),
                 "symbol": row["symbol"],
                 "field": row["field"],
                 "value": value,

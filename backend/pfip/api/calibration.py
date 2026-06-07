@@ -61,11 +61,7 @@ async def history(
     model (event_type containing "suspend" ⇒ suspended, "reinstate"/"resume"
     ⇒ active). Shapes to the frontend ``CalibrationHistorySchema``.
     """
-    stmt = (
-        select(CalibrationReportRow)
-        .order_by(desc(CalibrationReportRow.created_at))
-        .limit(limit)
-    )
+    stmt = select(CalibrationReportRow).order_by(desc(CalibrationReportRow.created_at)).limit(limit)
     res = await db.execute(stmt)
     rows = list(res.scalars().all())
 
@@ -98,9 +94,7 @@ async def history(
         # rows came newest-first; emit points oldest→newest for charting.
         points = [
             {
-                "evaluated_at": (
-                    rr.created_at.isoformat() if rr.created_at else ""
-                ),
+                "evaluated_at": (rr.created_at.isoformat() if rr.created_at else ""),
                 "brier": float(rr.brier),
                 "ece": float(rr.ece),
             }

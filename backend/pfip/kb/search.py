@@ -87,9 +87,7 @@ def _filter_to_qdrant(filter_: dict[str, Any] | None) -> qmodels.Filter | None:
         return None
     conditions: list[qmodels.FieldCondition] = []
     for key, val in filter_.items():
-        conditions.append(
-            qmodels.FieldCondition(key=key, match=qmodels.MatchValue(value=val))
-        )
+        conditions.append(qmodels.FieldCondition(key=key, match=qmodels.MatchValue(value=val)))
     return qmodels.Filter(must=conditions)
 
 

@@ -36,8 +36,18 @@ log = get_logger("pfip.ingest.news._pipeline")
 
 # Crypto detection — used to pick between FinBERT and CryptoBERT downstream.
 _CRYPTO_KEYWORDS = (
-    "bitcoin", "btc", "ethereum", "eth", "crypto", "solana", "sol",
-    "binance", "bnb", "blockchain", "defi", "stablecoin",
+    "bitcoin",
+    "btc",
+    "ethereum",
+    "eth",
+    "crypto",
+    "solana",
+    "sol",
+    "binance",
+    "bnb",
+    "blockchain",
+    "defi",
+    "stablecoin",
 )
 
 
@@ -54,7 +64,8 @@ def _normalize_url(url: str) -> str:
     if "?" in u:
         base, q = u.split("?", 1)
         keep = [
-            kv for kv in q.split("&")
+            kv
+            for kv in q.split("&")
             if kv and not kv.lower().startswith(("utm_", "fbclid", "gclid"))
         ]
         u = base + ("?" + "&".join(keep) if keep else "")

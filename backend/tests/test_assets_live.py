@@ -83,9 +83,7 @@ def test_regime_requires_auth(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_features_returns_latest_row(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_features_returns_latest_row(client: TestClient, auth_headers: dict[str, str]) -> None:
     row = FeatureRow(
         time=datetime(2026, 6, 1, tzinfo=timezone.utc),
         symbol="BTC/USD",
@@ -138,9 +136,7 @@ def test_news_returns_items(client: TestClient, auth_headers: dict[str, str]) ->
     ]
     app.dependency_overrides[get_db] = _override_with(rows)
     try:
-        resp = client.get(
-            "/api/v1/assets/BTC/USD/news?limit=10", headers=auth_headers
-        )
+        resp = client.get("/api/v1/assets/BTC/USD/news?limit=10", headers=auth_headers)
     finally:
         app.dependency_overrides[get_db] = _override_with([])
     assert resp.status_code == 200
@@ -154,22 +150,14 @@ def test_news_returns_items(client: TestClient, auth_headers: dict[str, str]) ->
 def test_news_limit_bounds(client: TestClient, auth_headers: dict[str, str]) -> None:
     # limit must be ge=1 le=200 like the other endpoints.
     assert (
-        client.get(
-            "/api/v1/assets/BTC/USD/news?limit=0", headers=auth_headers
-        ).status_code
-        == 422
+        client.get("/api/v1/assets/BTC/USD/news?limit=0", headers=auth_headers).status_code == 422
     )
     assert (
-        client.get(
-            "/api/v1/assets/BTC/USD/news?limit=500", headers=auth_headers
-        ).status_code
-        == 422
+        client.get("/api/v1/assets/BTC/USD/news?limit=500", headers=auth_headers).status_code == 422
     )
 
 
-def test_regime_returns_latest_label(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_regime_returns_latest_label(client: TestClient, auth_headers: dict[str, str]) -> None:
     row = RegimeRow(
         symbol="BTC/USD",
         regime="bull_trend",

@@ -31,9 +31,7 @@ async def _addresses_by_chain() -> dict[str, list[str]]:
     out: dict[str, list[str]] = {"btc": [], "eth": [], "sol": []}
     try:
         async with factory() as s:
-            res = await s.execute(
-                text("SELECT chain, address FROM self_custody_addresses")
-            )
+            res = await s.execute(text("SELECT chain, address FROM self_custody_addresses"))
             for chain, addr in res.fetchall():
                 c = (chain or "").lower()
                 if c in out:
@@ -43,7 +41,11 @@ async def _addresses_by_chain() -> dict[str, list[str]]:
 
     # Env-var fallback so the flow is useful even before a user adds addresses
     # via the API.
-    for chain, envvar in (("btc", "BTC_ADDRESSES"), ("eth", "ETH_ADDRESSES"), ("sol", "SOL_ADDRESSES")):
+    for chain, envvar in (
+        ("btc", "BTC_ADDRESSES"),
+        ("eth", "ETH_ADDRESSES"),
+        ("sol", "SOL_ADDRESSES"),
+    ):
         raw = os.environ.get(envvar, "").strip()
         if raw:
             for a in raw.split(","):
@@ -53,7 +55,9 @@ async def _addresses_by_chain() -> dict[str, list[str]]:
     return out
 
 
-@task(name="btc-self-custody", retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=10))
+@task(
+    name="btc-self-custody", retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=10)
+)
 async def _btc(addrs: list[str]) -> int:
     n = 0
     err = None
@@ -67,7 +71,9 @@ async def _btc(addrs: list[str]) -> int:
     return n
 
 
-@task(name="eth-self-custody", retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=10))
+@task(
+    name="eth-self-custody", retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=10)
+)
 async def _eth(addrs: list[str]) -> int:
     n = 0
     err = None
@@ -81,7 +87,9 @@ async def _eth(addrs: list[str]) -> int:
     return n
 
 
-@task(name="sol-self-custody", retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=10))
+@task(
+    name="sol-self-custody", retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=10)
+)
 async def _sol(addrs: list[str]) -> int:
     # Solscan: user said skipped — adapter is wired in but logs and no-ops.
     n = 0

@@ -15,9 +15,7 @@ from pfip.alerts.dispatcher import escalate_unacked_warns
 @flow(name="escalate-unacked", log_prints=True)
 async def escalate_unacked(escalation_after_minutes: int = 120) -> dict[str, int]:
     logger = get_run_logger()
-    result = await escalate_unacked_warns(
-        escalation_after_minutes=escalation_after_minutes
-    )
+    result = await escalate_unacked_warns(escalation_after_minutes=escalation_after_minutes)
     logger.info(
         "escalation: checked={} escalated={}",
         result.get("checked", 0),

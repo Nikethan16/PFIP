@@ -58,13 +58,11 @@ def _macd_manual(
     return macd_line, signal_line, hist
 
 
-def _atr_manual(
-    high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14
-) -> pd.Series:
+def _atr_manual(high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14) -> pd.Series:
     prev_close = close.shift(1)
-    tr = pd.concat(
-        [high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1
-    ).max(axis=1)
+    tr = pd.concat([high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(
+        axis=1
+    )
     return tr.ewm(alpha=1 / length, adjust=False).mean()
 
 

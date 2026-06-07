@@ -56,11 +56,7 @@ async def fetch_fii_dii() -> list[dict[str, Any]]:
             continue
         d_str = r.get("date") or None
         try:
-            d = (
-                datetime.strptime(d_str, "%d-%b-%Y").date()
-                if d_str
-                else today
-            )
+            d = datetime.strptime(d_str, "%d-%b-%Y").date() if d_str else today
         except Exception:
             d = today
         sym = f"{cat}_FLOW"

@@ -41,9 +41,9 @@ from pfip.agent.router import Sensitivity
     ],
 )
 def test_sensitive_positive_cases(prompt: str) -> None:
-    assert classify_sensitivity(prompt) == Sensitivity.SENSITIVE, (
-        f"Should be SENSITIVE: {prompt!r} signals={explain(prompt)}"
-    )
+    assert (
+        classify_sensitivity(prompt) == Sensitivity.SENSITIVE
+    ), f"Should be SENSITIVE: {prompt!r} signals={explain(prompt)}"
 
 
 def test_holdings_ticker_match_flips_sensitive() -> None:
@@ -52,10 +52,7 @@ def test_holdings_ticker_match_flips_sensitive() -> None:
         classify_sensitivity("RELIANCE quarterly earnings analysis", holdings)
         == Sensitivity.SENSITIVE
     )
-    assert (
-        classify_sensitivity("BTC technical setup this week", holdings)
-        == Sensitivity.SENSITIVE
-    )
+    assert classify_sensitivity("BTC technical setup this week", holdings) == Sensitivity.SENSITIVE
 
 
 def test_broker_name_flips_sensitive() -> None:
@@ -83,9 +80,9 @@ def test_broker_name_flips_sensitive() -> None:
     ],
 )
 def test_public_negative_cases(prompt: str) -> None:
-    assert classify_sensitivity(prompt) == Sensitivity.PUBLIC, (
-        f"Should be PUBLIC: {prompt!r} signals={explain(prompt)}"
-    )
+    assert (
+        classify_sensitivity(prompt) == Sensitivity.PUBLIC
+    ), f"Should be PUBLIC: {prompt!r} signals={explain(prompt)}"
 
 
 # ---------------------------------------------------------------------------
@@ -115,10 +112,7 @@ def test_edge_common_word_ticker_not_matched_when_not_owned() -> None:
 def test_edge_common_word_ticker_does_match_when_owned() -> None:
     """If user holds ticker 'ALL', then the word 'ALL' flips sensitive."""
     holdings = {"ALL", "BIG"}
-    assert (
-        classify_sensitivity("ALL signals are bullish today", holdings)
-        == Sensitivity.SENSITIVE
-    )
+    assert classify_sensitivity("ALL signals are bullish today", holdings) == Sensitivity.SENSITIVE
 
 
 def test_empty_prompt_is_public() -> None:
@@ -133,10 +127,7 @@ def test_holdings_none_still_catches_pronoun() -> None:
 
 def test_holdings_normalises_suffixes() -> None:
     """Tickers stored as RELIANCE.NS still match the bare word RELIANCE."""
-    assert (
-        classify_sensitivity("RELIANCE earnings beat", {"RELIANCE.NS"})
-        == Sensitivity.SENSITIVE
-    )
+    assert classify_sensitivity("RELIANCE earnings beat", {"RELIANCE.NS"}) == Sensitivity.SENSITIVE
 
 
 def test_explain_returns_per_signal_map() -> None:

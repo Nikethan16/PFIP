@@ -96,19 +96,22 @@ def _pct_change(series: pd.Series, n: int) -> float | None:
         return None
 
 
-def derive_from_panel(
-    closes: dict[str, pd.Series], as_of: datetime
-) -> MacroSnapshot:
+def derive_from_panel(closes: dict[str, pd.Series], as_of: datetime) -> MacroSnapshot:
     """Take a dict of ``{macro_key: close_series}`` and build a snapshot.
 
     Each series must be ascending in time and cover at least the last 10 days
     for the change features to be available.
     """
+
     def _last(key: str) -> float | None:
         s = closes.get(key)
         if s is None or s.empty:
             return None
-        s = s[s.index <= as_of] if hasattr(s.index, "tz_convert") or hasattr(s.index, "tz_localize") else s
+        s = (
+            s[s.index <= as_of]
+            if hasattr(s.index, "tz_convert") or hasattr(s.index, "tz_localize")
+            else s
+        )
         if s.empty:
             return None
         return float(s.dropna().iloc[-1])

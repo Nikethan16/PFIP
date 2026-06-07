@@ -82,10 +82,7 @@ async def backup_daily(retention_days: int = 30, skip_qdrant: bool = False) -> d
         kind=AlertKind.SYSTEM_HEALTH,
         severity=AlertSeverity.WARN,
         title_override="Nightly backup FAILED",
-        body_override=(
-            f"❌ PFIP nightly backup exited {proc.returncode}.\n\n"
-            + "\n".join(tail)
-        ),
+        body_override=(f"❌ PFIP nightly backup exited {proc.returncode}.\n\n" + "\n".join(tail)),
     )
     raise RuntimeError(f"backup.py exited {proc.returncode}")
 

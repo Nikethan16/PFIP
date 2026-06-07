@@ -39,12 +39,12 @@ class ShuffleTestResult:
             "ok": self.ok,
             "original_sharpe": self.original_sharpe,
             "n_shuffles": self.n_shuffles,
-            "shuffled_mean_sharpe": float(np.mean(self.shuffled_sharpes))
-            if self.shuffled_sharpes
-            else float("nan"),
-            "shuffled_max_sharpe": float(np.max(self.shuffled_sharpes))
-            if self.shuffled_sharpes
-            else float("nan"),
+            "shuffled_mean_sharpe": (
+                float(np.mean(self.shuffled_sharpes)) if self.shuffled_sharpes else float("nan")
+            ),
+            "shuffled_max_sharpe": (
+                float(np.max(self.shuffled_sharpes)) if self.shuffled_sharpes else float("nan")
+            ),
         }
 
 

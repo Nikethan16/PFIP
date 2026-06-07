@@ -152,9 +152,11 @@ async def upsert_fx_rates(session: AsyncSession, rows: Iterable[dict[str, Any]])
         await session.execute(
             stmt,
             {
-                "rate_date": row["rate_date"]
-                if isinstance(row["rate_date"], date)
-                else date.fromisoformat(str(row["rate_date"])),
+                "rate_date": (
+                    row["rate_date"]
+                    if isinstance(row["rate_date"], date)
+                    else date.fromisoformat(str(row["rate_date"]))
+                ),
                 "base": str(row["base"]).upper(),
                 "quote": str(row["quote"]).upper(),
                 "rate": row["rate"],

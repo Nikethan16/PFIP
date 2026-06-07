@@ -16,16 +16,12 @@ def test_candles_requires_auth(client: TestClient) -> None:
 
 
 def test_candles_empty(client: TestClient, auth_headers: dict[str, str]) -> None:
-    resp = client.get(
-        "/api/v1/assets/BTC/USD/candles?timeframe=1d", headers=auth_headers
-    )
+    resp = client.get("/api/v1/assets/BTC/USD/candles?timeframe=1d", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json() == []
 
 
-def test_features_empty_well_formed(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_features_empty_well_formed(client: TestClient, auth_headers: dict[str, str]) -> None:
     # No feature rows in the fake session ⇒ well-formed empty payload (not 501).
     resp = client.get("/api/v1/assets/BTC/USD/features", headers=auth_headers)
     assert resp.status_code == 200
@@ -42,9 +38,7 @@ def test_news_empty_list(client: TestClient, auth_headers: dict[str, str]) -> No
     assert resp.json() == []
 
 
-def test_regime_unknown_when_empty(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_regime_unknown_when_empty(client: TestClient, auth_headers: dict[str, str]) -> None:
     resp = client.get("/api/v1/assets/BTC/USD/regime", headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()

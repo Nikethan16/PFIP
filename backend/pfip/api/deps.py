@@ -46,9 +46,7 @@ async def get_current_user_email(
         )
     token = credentials.credentials
     try:
-        payload = jwt.decode(
-            token, settings.nextauth_secret, algorithms=[settings.jwt_algorithm]
-        )
+        payload = jwt.decode(token, settings.nextauth_secret, algorithms=[settings.jwt_algorithm])
     except jwt.PyJWTError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

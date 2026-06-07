@@ -109,9 +109,7 @@ async def ingest_ohlcv(
     # ccxt is synchronous; run in a thread so we don't block the event loop.
     import anyio
 
-    log.info(
-        f"Fetching {symbol} {timeframe} from {exchange} (since={since}, limit={limit})"
-    )
+    log.info(f"Fetching {symbol} {timeframe} from {exchange} (since={since}, limit={limit})")
     rows: list[list[Any]] = await anyio.to_thread.run_sync(
         _fetch_candles_sync, exchange, symbol, timeframe, since_ms, limit
     )

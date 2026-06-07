@@ -24,16 +24,16 @@ BASE = "https://community-api.coinmetrics.io/v4"
 
 # Community-tier metrics (each is free and covers BTC+ETH on the community API).
 _METRICS: tuple[str, ...] = (
-    "AdrActCnt",          # active addresses
-    "TxCnt",              # tx count
-    "TxTfrValAdjUSD",     # adjusted tx volume USD
-    "FeeTotUSD",          # total fees USD
-    "SplyCur",            # current supply
-    "CapMrktCurUSD",      # market cap USD
-    "HashRate",           # hash rate (BTC only — silently dropped for ETH)
-    "BlkCnt",             # block count
-    "IssTotUSD",          # issuance USD
-    "VelCur1yr",          # velocity
+    "AdrActCnt",  # active addresses
+    "TxCnt",  # tx count
+    "TxTfrValAdjUSD",  # adjusted tx volume USD
+    "FeeTotUSD",  # total fees USD
+    "SplyCur",  # current supply
+    "CapMrktCurUSD",  # market cap USD
+    "HashRate",  # hash rate (BTC only — silently dropped for ETH)
+    "BlkCnt",  # block count
+    "IssTotUSD",  # issuance USD
+    "VelCur1yr",  # velocity
 )
 
 
@@ -71,9 +71,7 @@ async def fetch_coinmetrics(
         data = j.get("data") or []
         for row in data:
             try:
-                obs_date = datetime.fromisoformat(
-                    row["time"].replace("Z", "+00:00")
-                ).date()
+                obs_date = datetime.fromisoformat(row["time"].replace("Z", "+00:00")).date()
             except Exception:
                 obs_date = today
             for metric in _METRICS:

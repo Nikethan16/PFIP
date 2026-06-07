@@ -37,7 +37,11 @@ DEFAULT_FEEDS: list[tuple[str, str, str]] = [
     ("business_standard_markets", "news", "https://www.business-standard.com/rss/markets-106.rss"),
     # US
     ("marketwatch_top", "news", "https://feeds.content.dowjones.io/public/rss/mw_topstories"),
-    ("reuters_business", "news", "https://www.reutersagency.com/feed/?best-topics=business-finance&post_type=best"),
+    (
+        "reuters_business",
+        "news",
+        "https://www.reutersagency.com/feed/?best-topics=business-finance&post_type=best",
+    ),
     ("benzinga_news", "news", "https://www.benzinga.com/feed"),
     # Crypto
     ("cointelegraph", "news", "https://cointelegraph.com/rss"),
@@ -45,7 +49,11 @@ DEFAULT_FEEDS: list[tuple[str, str, str]] = [
     ("theblock", "news", "https://www.theblock.co/rss.xml"),
     ("coindesk", "news", "https://www.coindesk.com/arc/outboundfeeds/rss/"),
     # Regulatory
-    ("sec_8k", "sec_filing", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&type=8-K&dateb=&owner=include&count=40&output=atom"),
+    (
+        "sec_8k",
+        "sec_filing",
+        "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&type=8-K&dateb=&owner=include&count=40&output=atom",
+    ),
 ]
 
 
@@ -60,7 +68,9 @@ def yahoo_ticker_rss(symbol: str) -> tuple[str, str, str]:
 
 @retry_http(max_attempts=3)
 async def _download(url: str) -> bytes:
-    async with get_async_client(headers={"Accept": "application/rss+xml,application/atom+xml,*/*"}) as client:
+    async with get_async_client(
+        headers={"Accept": "application/rss+xml,application/atom+xml,*/*"}
+    ) as client:
         r = await client.get(url)
         r.raise_for_status()
         return r.content
@@ -93,10 +103,7 @@ def _parse_feed(xml_bytes: bytes) -> list[dict[str, Any]]:
         tag = entry.tag.split("}", 1)[-1]
         if tag not in ("item", "entry"):
             continue
-        title_el = (
-            entry.find("title")
-            or entry.find(f"{ns_atom}title")
-        )
+        title_el = entry.find("title") or entry.find(f"{ns_atom}title")
         link_el = entry.find("link") or entry.find(f"{ns_atom}link")
         desc_el = (
             entry.find("description")
@@ -137,7 +144,9 @@ async def fetch_feed(name: str, category: str, url: str) -> list[dict[str, Any]]
     return parsed
 
 
-async def fetch_feeds(feeds: Iterable[tuple[str, str, str]] = tuple(DEFAULT_FEEDS)) -> list[dict[str, Any]]:
+async def fetch_feeds(
+    feeds: Iterable[tuple[str, str, str]] = tuple(DEFAULT_FEEDS)
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for name, category, url in feeds:
         out.extend(await fetch_feed(name, category, url))

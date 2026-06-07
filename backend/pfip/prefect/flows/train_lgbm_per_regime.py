@@ -41,9 +41,7 @@ _HORIZONS = (1, 5, 21)
 
 
 @task(name="lgbm-load-training-data")
-async def _load_training_data(
-    symbol: str, *, since: datetime | None = None
-) -> pd.DataFrame:
+async def _load_training_data(symbol: str, *, since: datetime | None = None) -> pd.DataFrame:
     """Return a wide DataFrame indexed by ts with feature columns and a
     `regime` column.
 
@@ -60,21 +58,15 @@ async def _load_training_data(
 
     factory = get_sessionmaker()
     async with factory() as session:
-        feat_q = await session.execute(
-            select(FeaturesRow).where(FeaturesRow.symbol == symbol)
-        )
+        feat_q = await session.execute(select(FeaturesRow).where(FeaturesRow.symbol == symbol))
         features = feat_q.scalars().all()
         if not features:
             return pd.DataFrame()
 
-        regime_q = await session.execute(
-            select(RegimeRow).where(RegimeRow.symbol == symbol)
-        )
+        regime_q = await session.execute(select(RegimeRow).where(RegimeRow.symbol == symbol))
         regimes = sorted(regime_q.scalars().all(), key=lambda r: r.since)
 
-        ohlcv_q = await session.execute(
-            select(OHLCVRow).where(OHLCVRow.symbol == symbol)
-        )
+        ohlcv_q = await session.execute(select(OHLCVRow).where(OHLCVRow.symbol == symbol))
         ohlcv = ohlcv_q.scalars().all()
 
     # Build a per-ts DataFrame.
@@ -156,9 +148,7 @@ def _train_slot(
     model, metrics = result
 
     # Pickle to a temp file and upload to the registry.
-    with tempfile.NamedTemporaryFile(
-        suffix=".pkl", delete=False
-    ) as fp:
+    with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as fp:
         pickle.dump(model, fp)
         path = Path(fp.name)
     try:
@@ -206,7 +196,9 @@ async def train_lgbm_per_regime(
         for h in horizons:
             out = _train_slot(df, symbol=symbol, regime=regime, horizon=h)
             if out is None:
-                logger.info("Skipped: {} regime={} horizon={}d (insufficient data)", symbol, regime, h)
+                logger.info(
+                    "Skipped: {} regime={} horizon={}d (insufficient data)", symbol, regime, h
+                )
                 continue
             results.append(out)
             logger.info(

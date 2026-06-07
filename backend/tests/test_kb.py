@@ -81,8 +81,9 @@ async def test_search_filters_below_threshold() -> None:
     ]
     fake_client = SimpleNamespace(search=AsyncMock(return_value=fake_points))
 
-    with patch.object(_search_mod, "_embed", AsyncMock(return_value=[0.1] * 8)), patch.object(
-        _search_mod, "get_qdrant", return_value=fake_client
+    with (
+        patch.object(_search_mod, "_embed", AsyncMock(return_value=[0.1] * 8)),
+        patch.object(_search_mod, "get_qdrant", return_value=fake_client),
     ):
         hits = await _search_mod.search("test query", k=5)
 

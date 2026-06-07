@@ -37,15 +37,15 @@ from pfip.core.config import Settings, get_settings
 class TaskType(str, Enum):
     """Coarse task categories from LLM_ROUTING.md §3."""
 
-    SENTIMENT_CLASSIFY = "sentiment_classify"   # local FinBERT — never hits LLM
-    EMBEDDING = "embedding"                      # NVIDIA NIM (or local Ollama)
-    QUICK_SUMMARY = "quick_summary"              # Groq 8B
-    MORNING_BRIEF = "morning_brief"              # Groq 70B (mixed sensitivity)
-    CHAT_PUBLIC = "chat_public"                  # Groq 70B
-    CHAT_SENSITIVE = "chat_sensitive"            # local Ollama (forced)
-    POST_MORTEM = "post_mortem"                  # DeepSeek-R1 or Gemini Pro
-    REASONING = "reasoning"                      # DeepSeek-R1
-    BULK_PREPROCESS = "bulk_preprocess"          # Groq 8B
+    SENTIMENT_CLASSIFY = "sentiment_classify"  # local FinBERT — never hits LLM
+    EMBEDDING = "embedding"  # NVIDIA NIM (or local Ollama)
+    QUICK_SUMMARY = "quick_summary"  # Groq 8B
+    MORNING_BRIEF = "morning_brief"  # Groq 70B (mixed sensitivity)
+    CHAT_PUBLIC = "chat_public"  # Groq 70B
+    CHAT_SENSITIVE = "chat_sensitive"  # local Ollama (forced)
+    POST_MORTEM = "post_mortem"  # DeepSeek-R1 or Gemini Pro
+    REASONING = "reasoning"  # DeepSeek-R1
+    BULK_PREPROCESS = "bulk_preprocess"  # Groq 8B
 
 
 class Sensitivity(str, Enum):
@@ -238,9 +238,14 @@ def route(
 
     if task in (TaskType.MORNING_BRIEF, TaskType.CHAT_PUBLIC):
         # 70B workhorse. Try Groq first (free 14k req/day), Gemini second.
-        primary_provider, primary_model = ("groq", MODELS["groq_70b"]) if s.groq_api_key else (
-            ("gemini", MODELS["gemini_flash"]) if s.gemini_api_key else
-            ("ollama", MODELS["ollama_default"])
+        primary_provider, primary_model = (
+            ("groq", MODELS["groq_70b"])
+            if s.groq_api_key
+            else (
+                ("gemini", MODELS["gemini_flash"])
+                if s.gemini_api_key
+                else ("ollama", MODELS["ollama_default"])
+            )
         )
         chain = _filter_chain_by_keys(
             [
@@ -273,10 +278,17 @@ def route(
     if task in (TaskType.POST_MORTEM, TaskType.REASONING):
         # Best chain-of-thought. DeepSeek-R1 primary, Gemini Thinking second.
         primary_provider, primary_model = (
-            ("deepseek", MODELS["deepseek_reasoner"]) if s.deepseek_api_key else
-            ("gemini", MODELS["gemini_thinking"]) if s.gemini_api_key else
-            ("groq", MODELS["groq_70b"]) if s.groq_api_key else
-            ("ollama", MODELS["ollama_default"])
+            ("deepseek", MODELS["deepseek_reasoner"])
+            if s.deepseek_api_key
+            else (
+                ("gemini", MODELS["gemini_thinking"])
+                if s.gemini_api_key
+                else (
+                    ("groq", MODELS["groq_70b"])
+                    if s.groq_api_key
+                    else ("ollama", MODELS["ollama_default"])
+                )
+            )
         )
         chain = _filter_chain_by_keys(
             [

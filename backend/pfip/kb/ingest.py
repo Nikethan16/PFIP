@@ -80,9 +80,7 @@ def _load_pdf(path: Path) -> list[tuple[str, dict[str, Any]]]:
     try:
         from pypdf import PdfReader
     except ImportError as exc:  # pragma: no cover — dependency absent
-        raise RuntimeError(
-            "pypdf is required for PDF ingest. `pip install pypdf`."
-        ) from exc
+        raise RuntimeError("pypdf is required for PDF ingest. `pip install pypdf`.") from exc
     reader = PdfReader(str(path))
     out: list[tuple[str, dict[str, Any]]] = []
     for i, page in enumerate(reader.pages, start=1):
@@ -99,9 +97,7 @@ def _load_epub(path: Path) -> list[tuple[str, dict[str, Any]]]:
         from ebooklib import epub
         from bs4 import BeautifulSoup
     except ImportError as exc:  # pragma: no cover
-        raise RuntimeError(
-            "ebooklib + beautifulsoup4 required for EPUB ingest."
-        ) from exc
+        raise RuntimeError("ebooklib + beautifulsoup4 required for EPUB ingest.") from exc
     book = epub.read_epub(str(path))
     out: list[tuple[str, dict[str, Any]]] = []
     for idx, item in enumerate(book.get_items_of_type(ebooklib.ITEM_DOCUMENT), start=1):
@@ -146,8 +142,7 @@ def _get_splitter():
             from langchain.text_splitter import RecursiveCharacterTextSplitter  # type: ignore
         except ImportError as exc:
             raise RuntimeError(
-                "langchain-text-splitters is required. "
-                "`pip install langchain-text-splitters`."
+                "langchain-text-splitters is required. " "`pip install langchain-text-splitters`."
             ) from exc
     return RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
@@ -189,9 +184,7 @@ async def _already_ingested(path_hash: str) -> bool:
     factory = get_sessionmaker()
     async with factory() as session:
         try:
-            stmt = sql_text(
-                "SELECT 1 FROM kb_ingestions WHERE path_hash = :h LIMIT 1"
-            )
+            stmt = sql_text("SELECT 1 FROM kb_ingestions WHERE path_hash = :h LIMIT 1")
             result = await session.execute(stmt, {"h": path_hash})
             return result.scalar() is not None
         except Exception as exc:  # noqa: BLE001 — migrations may not yet be applied
@@ -242,9 +235,7 @@ async def _ensure_collection(dim: int) -> None:
     logger.info(f"Creating Qdrant collection '{KB_COLLECTION}' dim={dim}")
     await client.create_collection(
         collection_name=KB_COLLECTION,
-        vectors_config=qmodels.VectorParams(
-            size=dim, distance=qmodels.Distance.COSINE
-        ),
+        vectors_config=qmodels.VectorParams(size=dim, distance=qmodels.Distance.COSINE),
     )
 
 
@@ -253,9 +244,7 @@ async def _ensure_collection(dim: int) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def ingest_book(
-    path: Path, *, title: str, author: str, category: str
-) -> IngestResult:
+async def ingest_book(path: Path, *, title: str, author: str, category: str) -> IngestResult:
     """Ingest one book. Returns a summary; idempotent."""
     path = Path(path)
     if not path.exists():
@@ -266,12 +255,16 @@ async def ingest_book(
     h = _path_hash(path)
     if await _already_ingested(h):
         logger.info(f"Skipping already-ingested: {path.name}")
-        return IngestResult(path=path, title=title, chunks_written=0, skipped=True, reason="already ingested")
+        return IngestResult(
+            path=path, title=title, chunks_written=0, skipped=True, reason="already ingested"
+        )
 
     # 1. Load source -> list of (text, metadata).
     sections = _load_by_suffix(path)
     if not sections:
-        return IngestResult(path=path, title=title, chunks_written=0, skipped=True, reason="empty source")
+        return IngestResult(
+            path=path, title=title, chunks_written=0, skipped=True, reason="empty source"
+        )
 
     # 2. Chunk each section.
     chunks: list[tuple[str, dict[str, Any]]] = []
@@ -279,7 +272,9 @@ async def ingest_book(
         for chunk_idx, chunk in enumerate(chunk_text(section_text)):
             chunks.append((chunk, {**section_meta, "chunk_idx": chunk_idx}))
     if not chunks:
-        return IngestResult(path=path, title=title, chunks_written=0, skipped=True, reason="no chunks produced")
+        return IngestResult(
+            path=path, title=title, chunks_written=0, skipped=True, reason="no chunks produced"
+        )
 
     # 3. Embed.
     router = get_llm_router()
@@ -300,9 +295,7 @@ async def ingest_book(
     client = get_qdrant()
     points = []
     for i, ((chunk, meta), vec) in enumerate(zip(chunks, vectors, strict=True)):
-        point_id = int(
-            hashlib.sha1(f"{h}:{i}".encode()).hexdigest()[:15], 16
-        )
+        point_id = int(hashlib.sha1(f"{h}:{i}".encode()).hexdigest()[:15], 16)
         payload: dict[str, Any] = {
             "text": chunk,
             "title": title,
@@ -312,9 +305,7 @@ async def ingest_book(
             "source_type": "book",
             **meta,
         }
-        points.append(
-            qmodels.PointStruct(id=point_id, vector=vec, payload=payload)
-        )
+        points.append(qmodels.PointStruct(id=point_id, vector=vec, payload=payload))
     await client.upsert(collection_name=KB_COLLECTION, points=points)
 
     # 5. Ledger row.
@@ -337,12 +328,12 @@ async def _iter_folder(folder: Path) -> list[IngestResult]:
             continue
         title = p.stem.replace("_", " ").title()
         try:
-            res = await ingest_book(
-                p, title=title, author="unknown", category="unsorted"
-            )
+            res = await ingest_book(p, title=title, author="unknown", category="unsorted")
         except Exception as exc:  # noqa: BLE001 — keep chugging on per-file errors
             logger.error(f"Failed to ingest {p}: {exc}")
-            results.append(IngestResult(path=p, title=title, chunks_written=0, skipped=True, reason=str(exc)))
+            results.append(
+                IngestResult(path=p, title=title, chunks_written=0, skipped=True, reason=str(exc))
+            )
             continue
         results.append(res)
     return results

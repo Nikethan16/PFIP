@@ -73,13 +73,17 @@ async def recent_notifications(
 
     # --- New ML signals ---------------------------------------------------
     sig_rows = (
-        await db.execute(
-            select(SignalRow)
-            .where(SignalRow.generated_at >= cutoff)
-            .order_by(SignalRow.generated_at.desc())
-            .limit(limit)
+        (
+            await db.execute(
+                select(SignalRow)
+                .where(SignalRow.generated_at >= cutoff)
+                .order_by(SignalRow.generated_at.desc())
+                .limit(limit)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for s in sig_rows:
         direction = str(s.direction).upper()
         conf = int(getattr(s, "confidence", 0) or 0)
@@ -97,13 +101,17 @@ async def recent_notifications(
 
     # --- Regime transitions ----------------------------------------------
     regime_rows = (
-        await db.execute(
-            select(RegimeTransitionRow)
-            .where(RegimeTransitionRow.at >= cutoff)
-            .order_by(RegimeTransitionRow.at.desc())
-            .limit(limit)
+        (
+            await db.execute(
+                select(RegimeTransitionRow)
+                .where(RegimeTransitionRow.at >= cutoff)
+                .order_by(RegimeTransitionRow.at.desc())
+                .limit(limit)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for r in regime_rows:
         frm = r.from_regime or "?"
         items.append(
@@ -118,13 +126,17 @@ async def recent_notifications(
 
     # --- Model lifecycle events ------------------------------------------
     event_rows = (
-        await db.execute(
-            select(ModelEventRow)
-            .where(ModelEventRow.at >= cutoff)
-            .order_by(ModelEventRow.at.desc())
-            .limit(limit)
+        (
+            await db.execute(
+                select(ModelEventRow)
+                .where(ModelEventRow.at >= cutoff)
+                .order_by(ModelEventRow.at.desc())
+                .limit(limit)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for e in event_rows:
         etype = str(e.event_type)
         severity = "CRITICAL" if "suspend" in etype.lower() else "INFO"

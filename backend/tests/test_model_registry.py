@@ -102,12 +102,8 @@ def test_pin_and_get_pinned(tmp_registry, fitted_model, tmp_path):
         horizon="1d",
         root=tmp_registry,
     )
-    pin_model(
-        e.id, task="signal", regime="bull_trend", horizon="1d", root=tmp_registry
-    )
-    pinned = get_pinned(
-        task="signal", regime="bull_trend", horizon="1d", root=tmp_registry
-    )
+    pin_model(e.id, task="signal", regime="bull_trend", horizon="1d", root=tmp_registry)
+    pinned = get_pinned(task="signal", regime="bull_trend", horizon="1d", root=tmp_registry)
     assert pinned is not None
     assert pinned.id == e.id
     # The entry's reverse pinned_for list should reflect this.
@@ -121,9 +117,7 @@ def test_pin_missing_model_raises(tmp_registry):
 
 
 def test_get_pinned_returns_none_for_unset_slot(tmp_registry):
-    assert (
-        get_pinned(task="signal", regime="bull_trend", root=tmp_registry) is None
-    )
+    assert get_pinned(task="signal", regime="bull_trend", root=tmp_registry) is None
 
 
 def test_load_pickle_schema_mismatch_raises(tmp_registry, fitted_model, tmp_path):
@@ -151,14 +145,18 @@ def test_load_pickle_no_revision_check_loads(tmp_registry, fitted_model, tmp_pat
 def test_filter_by_task_regime_horizon(tmp_registry, fitted_model, tmp_path):
     # Three uploads, two matching the filter.
     src1 = _save_pkl(tmp_path, fitted_model, "a.pkl")
-    src2 = _save_pkl(tmp_path, LogisticRegression().fit([[0, 1], [1, 0], [1, 1]], [0, 1, 1]), "b.pkl")
-    src3 = _save_pkl(tmp_path, LogisticRegression().fit([[0], [1]], [0, 1]), "c.pkl")
-    upload_model(src1, name="m1", task="signal", regime="bull_trend", horizon="1d", root=tmp_registry)
-    upload_model(src2, name="m2", task="signal", regime="bull_trend", horizon="5d", root=tmp_registry)
-    upload_model(src3, name="m3", task="regime", regime=None, horizon=None, root=tmp_registry)
-    only_bull_1d = list_models(
-        task="signal", regime="bull_trend", horizon="1d", root=tmp_registry
+    src2 = _save_pkl(
+        tmp_path, LogisticRegression().fit([[0, 1], [1, 0], [1, 1]], [0, 1, 1]), "b.pkl"
     )
+    src3 = _save_pkl(tmp_path, LogisticRegression().fit([[0], [1]], [0, 1]), "c.pkl")
+    upload_model(
+        src1, name="m1", task="signal", regime="bull_trend", horizon="1d", root=tmp_registry
+    )
+    upload_model(
+        src2, name="m2", task="signal", regime="bull_trend", horizon="5d", root=tmp_registry
+    )
+    upload_model(src3, name="m3", task="regime", regime=None, horizon=None, root=tmp_registry)
+    only_bull_1d = list_models(task="signal", regime="bull_trend", horizon="1d", root=tmp_registry)
     assert len(only_bull_1d) == 1
     assert only_bull_1d[0].name == "m1"
     only_regime = list_models(task="regime", root=tmp_registry)

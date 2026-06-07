@@ -31,8 +31,6 @@ class WatchlistRow(Base):
     # delisted *before* that date (and include rows delisted after). See
     # `pfip.signals.universe.as_of_universe`.
     is_delisted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    delisted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    delisted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (UniqueConstraint("symbol", "market", name="uq_watchlist_symbol_market"),)

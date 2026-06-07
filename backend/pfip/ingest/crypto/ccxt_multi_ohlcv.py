@@ -19,4 +19,6 @@ __all__ = ["SUPPORTED_EXCHANGES", "fetch_watchlist", "ingest_watchlist"]
 if __name__ == "__main__":
     import asyncio
 
-    asyncio.run(ingest_watchlist(symbols=("BTC/USD", "ETH/USD", "SOL/USD", "BNB/USD"), timeframe="1h"))
+    asyncio.run(
+        ingest_watchlist(symbols=("BTC/USD", "ETH/USD", "SOL/USD", "BNB/USD"), timeframe="1h")
+    )

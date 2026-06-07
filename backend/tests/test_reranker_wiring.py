@@ -103,7 +103,9 @@ class _RerankSpy:
     def __init__(self) -> None:
         self.calls: list[Sensitivity] = []
 
-    async def rerank(self, query, docs, *, top_n=None, sensitivity=Sensitivity.PUBLIC):  # noqa: ANN001
+    async def rerank(
+        self, query, docs, *, top_n=None, sensitivity=Sensitivity.PUBLIC
+    ):  # noqa: ANN001
         from pfip.agent.reranker import RerankResult
 
         self.calls.append(sensitivity)
@@ -168,9 +170,9 @@ def test_public_query_invokes_reranker_and_reorders(monkeypatch: pytest.MonkeyPa
     spy, source_titles = _drive(monkeypatch, kb_hits=kb, query="explain MACD divergence on Nifty")
 
     assert spy.calls, "reranker should be invoked for a public query"
-    assert all(s == Sensitivity.PUBLIC for s in spy.calls), (
-        f"public query must rerank with PUBLIC sensitivity, got {spy.calls}"
-    )
+    assert all(
+        s == Sensitivity.PUBLIC for s in spy.calls
+    ), f"public query must rerank with PUBLIC sensitivity, got {spy.calls}"
     # PUBLIC path reversed the order → proves the reranker output was applied.
     assert source_titles == ["third", "second", "first"]
 
@@ -189,9 +191,9 @@ def test_sensitive_query_never_reorders_via_cloud(monkeypatch: pytest.MonkeyPatc
     )
 
     assert spy.calls, "reranker should still be called (it self-gates) for sensitive query"
-    assert all(s == Sensitivity.SENSITIVE for s in spy.calls), (
-        f"sensitive query must pass SENSITIVE to reranker, got {spy.calls}"
-    )
+    assert all(
+        s == Sensitivity.SENSITIVE for s in spy.calls
+    ), f"sensitive query must pass SENSITIVE to reranker, got {spy.calls}"
     # Identity order preserved — the cloud reorder path was NOT taken.
     assert source_titles == ["first", "second", "third"]
 
@@ -234,9 +236,9 @@ def test_holdings_present_forces_sensitive_rerank(monkeypatch: pytest.MonkeyPatc
             pass
 
     asyncio.run(_collect())
-    assert spy.calls and all(s == Sensitivity.SENSITIVE for s in spy.calls), (
-        f"holdings-present must force SENSITIVE rerank, got {spy.calls}"
-    )
+    assert spy.calls and all(
+        s == Sensitivity.SENSITIVE for s in spy.calls
+    ), f"holdings-present must force SENSITIVE rerank, got {spy.calls}"
 
 
 # ---------------------------------------------------------------------------
@@ -284,11 +286,7 @@ def test_rerank_failure_degrades_gracefully(monkeypatch: pytest.MonkeyPatch) -> 
 
     events = asyncio.run(_collect())
     # Stream still completes with a `done` event and original KB order intact.
-    source_titles = [
-        json.loads(e["data"]).get("title")
-        for e in events
-        if e["event"] == "source"
-    ]
+    source_titles = [json.loads(e["data"]).get("title") for e in events if e["event"] == "source"]
     assert source_titles == ["first", "second"], "fallback must preserve original order"
     assert any(e["event"] == "done" for e in events), "stream must still finish on rerank failure"
 

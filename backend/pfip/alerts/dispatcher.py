@@ -294,9 +294,7 @@ async def send_alert(
                 pass
 
 
-async def escalate_unacked_warns(
-    *, escalation_after_minutes: int = 120
-) -> dict[str, int]:
+async def escalate_unacked_warns(*, escalation_after_minutes: int = 120) -> dict[str, int]:
     """Promote unacknowledged WARN alerts to CRITICAL after `escalation_after_minutes`.
 
     Implementation:

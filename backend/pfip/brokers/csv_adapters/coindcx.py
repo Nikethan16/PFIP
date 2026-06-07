@@ -26,9 +26,7 @@ WALLET_COLS = {"date", "coin", "amount", "type"}
 
 
 def detect(sample_bytes: bytes) -> bool:
-    return detect_headers(sample_bytes, TRADE_COLS) or detect_headers(
-        sample_bytes, WALLET_COLS
-    )
+    return detect_headers(sample_bytes, TRADE_COLS) or detect_headers(sample_bytes, WALLET_COLS)
 
 
 def _parse_trades(csv_bytes: bytes) -> list[ParsedRow]:
@@ -45,7 +43,9 @@ def _parse_trades(csv_bytes: bytes) -> list[ParsedRow]:
         price = to_decimal(r.get(idx.get("price", ""), ""))
         total = to_decimal(r.get(idx.get("total", ""), ""), default=qty * price)
         kind = normalize_kind(r.get(idx.get("side", ""), "BUY"))
-        tds = (total * Decimal("0.01")).quantize(Decimal("0.01")) if kind == "SELL" else Decimal("0")
+        tds = (
+            (total * Decimal("0.01")).quantize(Decimal("0.01")) if kind == "SELL" else Decimal("0")
+        )
         out.append(
             ParsedRow(
                 broker="coindcx",

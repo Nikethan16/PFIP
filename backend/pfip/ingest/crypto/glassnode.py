@@ -38,7 +38,9 @@ _METRICS: dict[str, str] = {
 
 
 @retry_http(max_attempts=3)
-async def _fetch(endpoint: str, api_key: str, asset: str = "BTC", interval: str = "24h") -> list[dict[str, Any]]:
+async def _fetch(
+    endpoint: str, api_key: str, asset: str = "BTC", interval: str = "24h"
+) -> list[dict[str, Any]]:
     async with get_async_client() as client:
         r = await client.get(
             f"{BASE}{endpoint}",
@@ -84,9 +86,7 @@ async def fetch_glassnode_metrics(asset: str = "BTC") -> list[dict[str, Any]]:
     return out
 
 
-async def ingest_glassnode(
-    asset: str = "BTC", session: AsyncSession | None = None
-) -> int:
+async def ingest_glassnode(asset: str = "BTC", session: AsyncSession | None = None) -> int:
     """Fetch Glassnode metrics and upsert into fundamentals."""
     log.info("ingest.glassnode starting")
     rows = await fetch_glassnode_metrics(asset=asset)

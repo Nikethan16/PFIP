@@ -73,9 +73,7 @@ def _predict_proba_safely(model: Any, x: np.ndarray) -> np.ndarray:
     )
 
 
-def _shap_explain(
-    model: Any, x_row: np.ndarray, background: np.ndarray
-) -> np.ndarray | None:
+def _shap_explain(model: Any, x_row: np.ndarray, background: np.ndarray) -> np.ndarray | None:
     """Try real SHAP. Returns None if unavailable; never raises."""
     try:
         import shap  # type: ignore  # pragma: no cover — optional dep
@@ -187,8 +185,7 @@ def top_k_drivers(drivers: list[Driver], *, k: int = 5) -> list[Driver]:
 def drivers_to_dicts(drivers: list[Driver]) -> list[dict[str, Any]]:
     """Serialize for the JSONB column."""
     return [
-        {"feature": d.feature, "value": d.value, "contribution": d.contribution}
-        for d in drivers
+        {"feature": d.feature, "value": d.value, "contribution": d.contribution} for d in drivers
     ]
 
 

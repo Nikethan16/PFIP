@@ -53,9 +53,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("false"),
         ),
-        sa.Column(
-            "tds_inr", sa.Numeric(), nullable=False, server_default=sa.text("0")
-        ),
+        sa.Column("tds_inr", sa.Numeric(), nullable=False, server_default=sa.text("0")),
         sa.Column("notes", sa.Text(), nullable=True),
         sa.Column(
             "computed_at",
@@ -67,9 +65,7 @@ def upgrade() -> None:
     )
     op.create_index("ix_cg_events_fy", "cg_events", ["fy"])
     op.create_index("ix_cg_events_symbol", "cg_events", ["symbol"])
-    op.create_index(
-        "ix_cg_events_fy_asset_class", "cg_events", ["fy", "asset_class"]
-    )
+    op.create_index("ix_cg_events_fy_asset_class", "cg_events", ["fy", "asset_class"])
 
     # --- tax_snapshots ---
     op.create_table(
@@ -213,9 +209,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_schedule_fa_rows_fy", "schedule_fa_rows", ["fy"])
-    op.create_index(
-        "ix_schedule_fa_rows_symbol", "schedule_fa_rows", ["symbol"]
-    )
+    op.create_index("ix_schedule_fa_rows_symbol", "schedule_fa_rows", ["symbol"])
 
 
 def downgrade() -> None:

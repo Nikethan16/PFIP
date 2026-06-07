@@ -44,9 +44,7 @@ async def _ensure_news_collection(dim: int) -> None:
     logger.info(f"Creating Qdrant collection '{NEWS_COLLECTION}' dim={dim}")
     await client.create_collection(
         collection_name=NEWS_COLLECTION,
-        vectors_config=qmodels.VectorParams(
-            size=dim, distance=qmodels.Distance.COSINE
-        ),
+        vectors_config=qmodels.VectorParams(size=dim, distance=qmodels.Distance.COSINE),
     )
 
 

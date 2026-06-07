@@ -74,10 +74,7 @@ async def _regression_guard(latest: dict[str, float]) -> None:
             prior_score = _faithfulness_from_csv(prior_csv)
 
     breached_floor = faith < _FLOOR_FAITHFULNESS
-    regressed = (
-        prior_score is not None
-        and (prior_score - faith) > _REGRESSION_FAITHFULNESS_DROP
-    )
+    regressed = prior_score is not None and (prior_score - faith) > _REGRESSION_FAITHFULNESS_DROP
 
     if not (breached_floor or regressed):
         logger.info("RAGAS faithfulness {:.3f} — within tolerance", faith)
@@ -93,8 +90,7 @@ async def _regression_guard(latest: dict[str, float]) -> None:
         body_lines.append(f"floor: `{_FLOOR_FAITHFULNESS:.2f}` — BREACHED")
     if regressed:
         body_lines.append(
-            f"drop: `{prior_score - faith:.3f}` "
-            f"(> {_REGRESSION_FAITHFULNESS_DROP:.2f})"
+            f"drop: `{prior_score - faith:.3f}` " f"(> {_REGRESSION_FAITHFULNESS_DROP:.2f})"
         )
     body_lines.append("")
     body_lines.append(

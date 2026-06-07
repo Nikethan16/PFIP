@@ -23,9 +23,9 @@ log = get_logger("pfip.ingest.macro.dbnomics")
 BASE = "https://api.db.nomics.world/v22/series"
 
 DEFAULT_SERIES: tuple[str, ...] = (
-    "ECB/EXR/D.USD.EUR.SP00.A",         # ECB USD/EUR daily
-    "OECD/MEI/IND.CPALTT01.IXOB.M",     # OECD CPI index
-    "IMF/IFS/M.IN.FILR_PA",             # IMF India CPI
+    "ECB/EXR/D.USD.EUR.SP00.A",  # ECB USD/EUR daily
+    "OECD/MEI/IND.CPALTT01.IXOB.M",  # OECD CPI index
+    "IMF/IFS/M.IN.FILR_PA",  # IMF India CPI
 )
 
 

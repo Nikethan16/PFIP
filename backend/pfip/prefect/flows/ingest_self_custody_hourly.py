@@ -26,9 +26,7 @@ async def _addresses_by_chain() -> dict[str, list[str]]:
     out: dict[str, list[str]] = {"btc": [], "eth": [], "sol": []}
     try:
         async with factory() as s:
-            res = await s.execute(
-                text("SELECT chain, address FROM self_custody_addresses")
-            )
+            res = await s.execute(text("SELECT chain, address FROM self_custody_addresses"))
             for chain, addr in res.fetchall():
                 if chain in out:
                     out[chain].append(addr)
@@ -57,7 +55,9 @@ async def _sol(addrs: list[str]) -> int:
 async def ingest_self_custody_hourly() -> int:
     log = get_run_logger()
     by_chain = await _addresses_by_chain()
-    log.info(f"self-custody addresses: btc={len(by_chain['btc'])} eth={len(by_chain['eth'])} sol={len(by_chain['sol'])}")
+    log.info(
+        f"self-custody addresses: btc={len(by_chain['btc'])} eth={len(by_chain['eth'])} sol={len(by_chain['sol'])}"
+    )
     n_btc = await _btc(by_chain["btc"])
     n_eth = await _eth(by_chain["eth"])
     n_sol = await _sol(by_chain["sol"])

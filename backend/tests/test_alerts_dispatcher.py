@@ -35,13 +35,13 @@ from pfip.alerts.dispatcher import (
     "ist_hour,ist_min,expect_quiet",
     [
         # Quiet zone (23:00–07:00 IST)
-        (23, 0, True),    # exact start
+        (23, 0, True),  # exact start
         (23, 30, True),
         (0, 0, True),
         (3, 14, True),
-        (6, 59, True),    # last quiet minute
+        (6, 59, True),  # last quiet minute
         # Loud zone (07:00–22:59 IST)
-        (7, 0, False),    # exact end — first loud minute
+        (7, 0, False),  # exact end — first loud minute
         (10, 30, False),
         (12, 0, False),
         (17, 30, False),  # market-close time
@@ -69,9 +69,7 @@ def test_render_template_unknown_kind_falls_back():
     """A kind without a template file falls back to a deterministic title + body
     that lists the context keys/values verbatim — never raises."""
     # CUSTOM has no template file by design (it's the catch-all kind).
-    title, body = _render_template(
-        AlertKind.CUSTOM, {"symbol": "BTC/USD", "score": 0.82}
-    )
+    title, body = _render_template(AlertKind.CUSTOM, {"symbol": "BTC/USD", "score": 0.82})
     assert title == "Custom"
     assert "BTC/USD" in body
     assert "score" in body

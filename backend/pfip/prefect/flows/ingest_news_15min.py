@@ -74,7 +74,9 @@ async def _rss() -> int:
 
 @task(name="google-news", retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=5))
 async def _google(queries: list[str]) -> int:
-    return await _guard("google-news", lambda: ingest_google_news(queries=queries), timeout=_GOOGLE_TIMEOUT)
+    return await _guard(
+        "google-news", lambda: ingest_google_news(queries=queries), timeout=_GOOGLE_TIMEOUT
+    )
 
 
 @task(name="gdelt", retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=5))

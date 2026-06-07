@@ -68,12 +68,7 @@ ALL_EXTRA_COLS: tuple[str, ...] = (
 
 def _is_crypto(symbol: str) -> bool:
     s = symbol.upper()
-    return (
-        "/" in s
-        or s.endswith("USD")
-        or s.endswith("USDT")
-        or s.endswith("USDC")
-    )
+    return "/" in s or s.endswith("USD") or s.endswith("USDT") or s.endswith("USDC")
 
 
 def _is_equity(symbol: str) -> bool:
@@ -232,15 +227,11 @@ async def compute_and_persist(
                 extras_computed = True
 
             if _is_crypto(request.symbol):
-                on_chain_hist = await load_on_chain_history(
-                    session, request.symbol, as_of_dt
-                )
+                on_chain_hist = await load_on_chain_history(session, request.symbol, as_of_dt)
                 oc = derive_on_chain(on_chain_hist, request.symbol, as_of_dt)
                 extras_blob.update(oc.as_dict())
 
-                deriv_hist = await load_derivatives_history(
-                    session, request.symbol, as_of_dt
-                )
+                deriv_hist = await load_derivatives_history(session, request.symbol, as_of_dt)
                 d = derive_derivatives(deriv_hist, request.symbol, as_of_dt)
                 extras_blob.update(d.as_dict())
                 extras_computed = True
@@ -249,9 +240,7 @@ async def compute_and_persist(
             macro = derive_macro(macro_panel, as_of_dt)
             extras_blob.update(macro.as_dict())
 
-            ca_panel = await load_cross_asset_panel(
-                session, request.symbol, as_of_dt
-            )
+            ca_panel = await load_cross_asset_panel(session, request.symbol, as_of_dt)
             ca = derive_cross_asset(ca_panel, request.symbol, as_of_dt)
             extras_blob.update(ca.as_dict())
             extras_computed = True

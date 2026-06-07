@@ -147,13 +147,9 @@ class PinRequest(BaseModel):
 
 
 @router.post("/{model_id}/pin", response_model=ModelEntryPayload)
-async def pin_(
-    model_id: str, body: PinRequest, _user: CurrentUser
-) -> ModelEntryPayload:
+async def pin_(model_id: str, body: PinRequest, _user: CurrentUser) -> ModelEntryPayload:
     try:
-        pin_model(
-            model_id, task=body.task, regime=body.regime, horizon=body.horizon
-        )
+        pin_model(model_id, task=body.task, regime=body.regime, horizon=body.horizon)
         return _to_payload(get_model(model_id))
     except ModelRegistryError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

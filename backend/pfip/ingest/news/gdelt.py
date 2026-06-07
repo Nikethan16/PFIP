@@ -23,7 +23,7 @@ BASE = "https://api.gdeltproject.org/api/v2/doc/doc"
 
 DEFAULT_QUERIES: tuple[str, ...] = (
     "bitcoin OR ethereum",
-    "RBI OR \"reserve bank of india\"",
+    'RBI OR "reserve bank of india"',
     "federal reserve OR FOMC",
     "nifty OR sensex",
     "inflation",

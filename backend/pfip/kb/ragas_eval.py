@@ -140,9 +140,7 @@ _GROUNDED_PROMPT = (
 def _format_contexts(hits: list[KBHit]) -> str:
     if not hits:
         return "(no snippets retrieved)"
-    return "\n\n---\n\n".join(
-        f"[{i + 1}] {h.text[:1500]}" for i, h in enumerate(hits)
-    )
+    return "\n\n---\n\n".join(f"[{i + 1}] {h.text[:1500]}" for i, h in enumerate(hits))
 
 
 async def _answer_one(q: EvalQuestion, *, k: int) -> EvalRow:
@@ -356,9 +354,7 @@ def _log_mlflow(
             "w", suffix=".csv", delete=False, newline="", encoding="utf-8"
         ) as fp:
             writer = csv.writer(fp)
-            writer.writerow(
-                ["qid", "question", "answer", "expected", "n_ctx", "error"]
-            )
+            writer.writerow(["qid", "question", "answer", "expected", "n_ctx", "error"])
             for r in rows:
                 writer.writerow(
                     [

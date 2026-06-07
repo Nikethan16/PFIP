@@ -30,7 +30,14 @@ from pfip.ingest.us_equities.tiingo_ohlcv import ingest_tiingo
 from pfip.ingest.us_equities.yfinance_ohlcv import ingest_yfinance
 
 FALLBACK_US_SYMBOLS = ("SPY", "QQQ", "DIA", "VTI", "AAPL", "MSFT", "GOOGL", "NVDA", "META", "TSLA")
-FALLBACK_CIKS = (320193, 789019, 1652044, 1045810, 1326801, 1318605)  # AAPL/MSFT/GOOGL/NVDA/META/TSLA
+FALLBACK_CIKS = (
+    320193,
+    789019,
+    1652044,
+    1045810,
+    1326801,
+    1318605,
+)  # AAPL/MSFT/GOOGL/NVDA/META/TSLA
 
 
 async def _watchlist_us_symbols() -> list[str]:

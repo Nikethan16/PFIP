@@ -50,9 +50,7 @@ async def _load_ohlcv(symbol: str, source: str, timeframe: str) -> pd.DataFrame:
 
 
 @task(name="write-features")
-async def _write_features(
-    features: pd.DataFrame, symbol: str, source: str, timeframe: str
-) -> int:
+async def _write_features(features: pd.DataFrame, symbol: str, source: str, timeframe: str) -> int:
     if features.empty:
         return 0
     factory = get_sessionmaker()
@@ -85,15 +83,13 @@ async def _write_features(
                 "timeframe": timeframe,
                 "rsi_14": None if pd.isna(row["rsi_14"]) else float(row["rsi_14"]),
                 "macd": None if pd.isna(row["macd"]) else float(row["macd"]),
-                "macd_signal": None
-                if pd.isna(row["macd_signal"])
-                else float(row["macd_signal"]),
+                "macd_signal": None if pd.isna(row["macd_signal"]) else float(row["macd_signal"]),
                 "macd_hist": None if pd.isna(row["macd_hist"]) else float(row["macd_hist"]),
                 "atr_14": None if pd.isna(row["atr_14"]) else float(row["atr_14"]),
                 "return_7d": None if pd.isna(row["return_7d"]) else float(row["return_7d"]),
-                "volatility_30d": None
-                if pd.isna(row["volatility_30d"])
-                else float(row["volatility_30d"]),
+                "volatility_30d": (
+                    None if pd.isna(row["volatility_30d"]) else float(row["volatility_30d"])
+                ),
                 "extras": "{}",
             }
             await session.execute(stmt, params)

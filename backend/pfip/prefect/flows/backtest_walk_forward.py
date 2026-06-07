@@ -198,8 +198,16 @@ async def backtest_walk_forward(
         await _persist_run(
             market=symbol,
             strategy=strategy_name,
-            start_date=df.index[0].to_pydatetime() if hasattr(df.index[0], "to_pydatetime") else datetime.now(tz=timezone.utc),
-            end_date=df.index[-1].to_pydatetime() if hasattr(df.index[-1], "to_pydatetime") else datetime.now(tz=timezone.utc),
+            start_date=(
+                df.index[0].to_pydatetime()
+                if hasattr(df.index[0], "to_pydatetime")
+                else datetime.now(tz=timezone.utc)
+            ),
+            end_date=(
+                df.index[-1].to_pydatetime()
+                if hasattr(df.index[-1], "to_pydatetime")
+                else datetime.now(tz=timezone.utc)
+            ),
             metrics=metrics_payload,
             params={
                 "train_window": train_window,

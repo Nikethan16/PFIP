@@ -55,7 +55,9 @@ async def _holding(db: AsyncSession, hid: UUID) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
-async def _entry_signal(db: AsyncSession, symbol: str, entry_time: datetime) -> dict[str, Any] | None:
+async def _entry_signal(
+    db: AsyncSession, symbol: str, entry_time: datetime
+) -> dict[str, Any] | None:
     try:
         stmt = sql_text(
             """
@@ -70,14 +72,20 @@ async def _entry_signal(db: AsyncSession, symbol: str, entry_time: datetime) -> 
             """
         )
         cutoff = entry_time - timedelta(hours=48)
-        row = (await db.execute(stmt, {"asset": symbol, "t": entry_time, "cutoff": cutoff})).mappings().first()
+        row = (
+            (await db.execute(stmt, {"asset": symbol, "t": entry_time, "cutoff": cutoff}))
+            .mappings()
+            .first()
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"entry signal fetch failed: {exc}")
         return None
     return dict(row) if row else None
 
 
-async def _calibration_at(db: AsyncSession, model_name: str, model_version: str, as_of: datetime) -> dict[str, Any] | None:
+async def _calibration_at(
+    db: AsyncSession, model_name: str, model_version: str, as_of: datetime
+) -> dict[str, Any] | None:
     try:
         stmt = sql_text(
             """
@@ -88,14 +96,20 @@ async def _calibration_at(db: AsyncSession, model_name: str, model_version: str,
             LIMIT 1
             """
         )
-        row = (await db.execute(stmt, {"mn": model_name, "mv": model_version, "t": as_of})).mappings().first()
+        row = (
+            (await db.execute(stmt, {"mn": model_name, "mv": model_version, "t": as_of}))
+            .mappings()
+            .first()
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"calibration fetch failed: {exc}")
         return None
     return dict(row) if row else None
 
 
-async def _news_around(db: AsyncSession, symbol: str, around: datetime, window_hours: int = 48) -> list[dict[str, Any]]:
+async def _news_around(
+    db: AsyncSession, symbol: str, around: datetime, window_hours: int = 48
+) -> list[dict[str, Any]]:
     start = around - timedelta(hours=window_hours)
     end = around + timedelta(hours=window_hours)
     try:
@@ -109,7 +123,12 @@ async def _news_around(db: AsyncSession, symbol: str, around: datetime, window_h
             LIMIT 3
             """
         )
-        rows = [dict(r) for r in (await db.execute(stmt, {"sym": symbol, "start": start, "end": end})).mappings()]
+        rows = [
+            dict(r)
+            for r in (
+                await db.execute(stmt, {"sym": symbol, "start": start, "end": end})
+            ).mappings()
+        ]
     except Exception as exc:  # noqa: BLE001
         logger.debug(f"news fetch failed: {exc}")
         rows = []
@@ -127,7 +146,11 @@ async def _journal_row(db: AsyncSession, symbol: str, since: datetime) -> dict[s
             LIMIT 1
             """
         )
-        row = (await db.execute(stmt, {"sym": symbol, "since": since - timedelta(days=1)})).mappings().first()
+        row = (
+            (await db.execute(stmt, {"sym": symbol, "since": since - timedelta(days=1)}))
+            .mappings()
+            .first()
+        )
     except Exception as exc:  # noqa: BLE001
         logger.debug(f"journal fetch failed: {exc}")
         return None
@@ -196,7 +219,9 @@ async def draft_post_mortem(db: AsyncSession, holding_id: UUID) -> PostMortemDra
     if signal:
         chunks.append((f"ENTRY_SIGNAL: {signal!r}", f"db://signals/{signal['id']}"))
     if calibration:
-        chunks.append((f"CALIBRATION_AT_ENTRY: {calibration!r}", f"db://calibration/{calibration['id']}"))
+        chunks.append(
+            (f"CALIBRATION_AT_ENTRY: {calibration!r}", f"db://calibration/{calibration['id']}")
+        )
     if journal:
         chunks.append((f"JOURNAL: {journal!r}", f"db://journal/{journal['id']}"))
     for n in news_entry:
@@ -232,9 +257,7 @@ async def draft_post_mortem(db: AsyncSession, holding_id: UUID) -> PostMortemDra
             temperature=0.2,
         )
         md = md_raw.strip()
-        return PostMortemDraft(
-            holding_id=holding_id, markdown=md, used_llm=True, warnings=warnings
-        )
+        return PostMortemDraft(holding_id=holding_id, markdown=md, used_llm=True, warnings=warnings)
     except (LLMUnavailable, LLMAllProvidersFailed) as exc:
         warnings.append(f"LLM unavailable: {exc}")
         md = _fallback_markdown(holding, warnings)

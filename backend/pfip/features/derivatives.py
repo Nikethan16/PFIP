@@ -81,9 +81,7 @@ def _z_score(series: pd.Series, window: int = 30) -> float | None:
     return float((tail.iloc[-1] - tail.mean()) / std)
 
 
-def derive_from_history(
-    history: pd.DataFrame, symbol: str, as_of: datetime
-) -> DerivativesSnapshot:
+def derive_from_history(history: pd.DataFrame, symbol: str, as_of: datetime) -> DerivativesSnapshot:
     """Reduce a long-form (time, field, value) history into a derivatives snapshot."""
     if history is None or history.empty:
         return empty_snapshot(symbol, as_of)
@@ -109,11 +107,7 @@ def derive_from_history(
             funding_mean = float(recent.mean())
 
     oi = _latest(FIELD_OPEN_INTEREST)
-    oi_z = (
-        _z_score(wide[FIELD_OPEN_INTEREST], 30)
-        if FIELD_OPEN_INTEREST in wide.columns
-        else None
-    )
+    oi_z = _z_score(wide[FIELD_OPEN_INTEREST], 30) if FIELD_OPEN_INTEREST in wide.columns else None
     lsr = _latest(FIELD_LONG_SHORT_RATIO)
 
     return DerivativesSnapshot(
@@ -143,9 +137,7 @@ async def load_derivatives_history(
             ORDER BY time ASC
             """
         )
-        res = await session.execute(
-            stmt, {"symbol": symbol, "since": since, "as_of": as_of}
-        )
+        res = await session.execute(stmt, {"symbol": symbol, "since": since, "as_of": as_of})
         rows = res.all()
     except Exception:
         # A missing ``derivatives_metrics`` table raises UndefinedTable, which

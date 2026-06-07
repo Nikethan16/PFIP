@@ -86,11 +86,7 @@ async def annual_itr_drill(fy: str | None = None) -> dict[str, Any]:
 
         factory = get_sessionmaker()
         async with factory() as session:
-            tx = (
-                (await session.execute(select(PortfolioTxRow)))
-                .scalars()
-                .all()
-            )
+            tx = (await session.execute(select(PortfolioTxRow))).scalars().all()
         events = classify_capital_gains([dict(t.__dict__) for t in tx])
         computed_summary = build_tax_summary(fy, events, gross_income=Decimal("0"))
         computed = {
@@ -129,9 +125,7 @@ async def annual_itr_drill(fy: str | None = None) -> dict[str, Any]:
     ]
     for k, f_val, c_val, delta, is_oob in rows:
         status = "❌ OOB" if is_oob else "✅"
-        lines.append(
-            f"| {k} | ₹{f_val:,.2f} | ₹{c_val:,.2f} | {delta * 100:.2f}% | {status} |"
-        )
+        lines.append(f"| {k} | ₹{f_val:,.2f} | ₹{c_val:,.2f} | {delta * 100:.2f}% | {status} |")
     lines.append("")
     if out_of_band:
         lines.append(f"**{len(out_of_band)} line(s) out of ±2% band**: {', '.join(out_of_band)}")

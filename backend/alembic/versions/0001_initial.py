@@ -57,9 +57,7 @@ def upgrade() -> None:
         sa.Column("field", sa.String(), nullable=False),
         sa.Column("value", sa.Numeric(), nullable=True),
         sa.Column("source", sa.String(), nullable=False),
-        sa.PrimaryKeyConstraint(
-            "as_of_date", "symbol", "field", "source", name="pk_fundamentals"
-        ),
+        sa.PrimaryKeyConstraint("as_of_date", "symbol", "field", "source", name="pk_fundamentals"),
     )
     # Hypertable on as_of_date (fundamentals are PIT by discovery date).
     op.execute(
@@ -139,9 +137,7 @@ def upgrade() -> None:
         sa.Column("price", sa.Numeric(), nullable=True),
         sa.Column("amount_inr", sa.Numeric(), nullable=False),
         sa.Column("fx_rate", sa.Numeric(), nullable=True),
-        sa.Column(
-            "tax_withheld", sa.Numeric(), nullable=False, server_default=sa.text("0")
-        ),
+        sa.Column("tax_withheld", sa.Numeric(), nullable=False, server_default=sa.text("0")),
         sa.Column("note", sa.Text(), nullable=True),
         sa.ForeignKeyConstraint(["holding_id"], ["holdings.id"]),
         sa.PrimaryKeyConstraint("id"),
@@ -195,9 +191,7 @@ def upgrade() -> None:
         sa.Column("price", sa.Numeric(), nullable=True),
         sa.Column("amount_inr", sa.Numeric(), nullable=False),
         sa.Column("fx_rate", sa.Numeric(), nullable=True),
-        sa.Column(
-            "tax_withheld", sa.Numeric(), nullable=False, server_default=sa.text("0")
-        ),
+        sa.Column("tax_withheld", sa.Numeric(), nullable=False, server_default=sa.text("0")),
         sa.Column("note", sa.Text(), nullable=True),
         sa.ForeignKeyConstraint(["holding_id"], ["shadow_holdings.id"]),
         sa.PrimaryKeyConstraint("id"),
@@ -318,9 +312,7 @@ def upgrade() -> None:
         sa.Column("as_of", sa.DateTime(timezone=True), nullable=False),
         sa.Column("brier_score", sa.Float(), nullable=False),
         sa.Column("ece", sa.Float(), nullable=False),
-        sa.Column(
-            "reliability", postgresql.JSONB(astext_type=sa.Text()), nullable=False
-        ),
+        sa.Column("reliability", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("n_samples", sa.Integer(), nullable=False),
         sa.Column(
             "created_at",

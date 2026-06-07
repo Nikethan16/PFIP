@@ -133,8 +133,7 @@ class HMMRegimeDetector:
             self._model = {"fallback_edges": edges, "means": means, "stds": stds}
 
         self._state_stats = {
-            int(s): {"mean": float(means[s]), "std": float(stds[s])}
-            for s in range(self.n_states)
+            int(s): {"mean": float(means[s]), "std": float(stds[s])} for s in range(self.n_states)
         }
         self._state_to_regime = self._map_states_to_regimes(means, stds)
         self._fitted = True
@@ -203,9 +202,7 @@ class HMMRegimeDetector:
             else:
                 regimes.append(self._state_to_regime[int(s)].value)
 
-        return pd.DataFrame(
-            {"regime": regimes, "confidence": confs}, index=df.index
-        )
+        return pd.DataFrame({"regime": regimes, "confidence": confs}, index=df.index)
 
     # ------------------------------------------------------------------
     # MLflow persistence
@@ -242,9 +239,7 @@ class HMMRegimeDetector:
                 joblib.dump(
                     {
                         "model": self._model,
-                        "state_to_regime": {
-                            k: v.value for k, v in self._state_to_regime.items()
-                        },
+                        "state_to_regime": {k: v.value for k, v in self._state_to_regime.items()},
                         "state_stats": self._state_stats,
                         "hmmlearn_ok": _HMMLEARN_OK,
                     },
@@ -262,9 +257,7 @@ class HMMRegimeDetector:
                 joblib.dump(
                     {
                         "model": self._model,
-                        "state_to_regime": {
-                            k: v.value for k, v in self._state_to_regime.items()
-                        },
+                        "state_to_regime": {k: v.value for k, v in self._state_to_regime.items()},
                         "state_stats": self._state_stats,
                     },
                     out_dir / "hmm_detector.joblib",
@@ -299,9 +292,7 @@ class HMMRegimeDetector:
                 states[i] = self.n_states - 1
         return states
 
-    def _map_states_to_regimes(
-        self, means: np.ndarray, stds: np.ndarray
-    ) -> dict[int, Regime]:
+    def _map_states_to_regimes(self, means: np.ndarray, stds: np.ndarray) -> dict[int, Regime]:
         """Deterministic mapping by mean return and vol.
 
         Algorithm:

@@ -74,9 +74,7 @@ def test_run_walkforward_returns_metrics() -> None:
 
 def test_run_walkforward_lookahead_ok_for_clean_strategy() -> None:
     df = _synthetic_prices()
-    result = run_walkforward(
-        df, _always_long, window=200, step=21, embargo=5, test_window=21
-    )
+    result = run_walkforward(df, _always_long, window=200, step=21, embargo=5, test_window=21)
     assert result.lookahead_ok is True
 
 
@@ -131,8 +129,6 @@ def test_benchmark_comparison_reports_all() -> None:
 @pytest.mark.parametrize("n", [200, 500])
 def test_walkforward_handles_short_data(n: int) -> None:
     df = _synthetic_prices(n=n)
-    result = run_walkforward(
-        df, _always_long, window=400, step=21, embargo=5, test_window=21
-    )
+    result = run_walkforward(df, _always_long, window=400, step=21, embargo=5, test_window=21)
     # Must still return a BacktestResult, no exceptions.
     assert result.n_trades >= 0

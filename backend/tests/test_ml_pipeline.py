@@ -92,14 +92,8 @@ def test_fundamentals_derive_pe_from_eps_and_price() -> None:
 def test_on_chain_derive_mvrv_and_z_score() -> None:
     times = pd.date_range("2025-01-01", periods=40, freq="D", tz="UTC")
     hist = pd.DataFrame(
-        [
-            {"time": t, "field": "market_value", "value": 100.0 + i}
-            for i, t in enumerate(times)
-        ]
-        + [
-            {"time": t, "field": "realised_value", "value": 50.0}
-            for t in times
-        ]
+        [{"time": t, "field": "market_value", "value": 100.0 + i} for i, t in enumerate(times)]
+        + [{"time": t, "field": "realised_value", "value": 50.0} for t in times]
         + [
             {"time": t, "field": "exchange_netflow", "value": float(i % 7)}
             for i, t in enumerate(times)
@@ -114,7 +108,10 @@ def test_derivatives_derive_funding_and_oi() -> None:
     times = pd.date_range("2025-01-01", periods=20, freq="8H", tz="UTC")
     hist = pd.DataFrame(
         [{"time": t, "field": "funding_rate", "value": 0.0001 * i} for i, t in enumerate(times)]
-        + [{"time": t, "field": "open_interest", "value": 1e9 + 1e6 * i} for i, t in enumerate(times)]
+        + [
+            {"time": t, "field": "open_interest", "value": 1e9 + 1e6 * i}
+            for i, t in enumerate(times)
+        ]
         + [{"time": t, "field": "long_short_ratio", "value": 1.2} for t in times]
     )
     snap = derive_deriv(hist, "BTC-PERP", times[-1].to_pydatetime())
@@ -303,6 +300,7 @@ def test_shadow_metrics_from_synthetic_closed_lots() -> None:
     class _H:
         def __init__(self, cost: float, qty: float, exit: float, closed_at):
             from decimal import Decimal
+
             self.cost_basis_inr = Decimal(str(cost))
             self.qty = Decimal(str(qty))
             self.exit_price_inr = Decimal(str(exit))
@@ -311,6 +309,7 @@ def test_shadow_metrics_from_synthetic_closed_lots() -> None:
     class _T:
         def __init__(self, time, kind, amount):
             from decimal import Decimal
+
             self.time = time
             self.kind = kind
             self.amount_inr = Decimal(str(amount))

@@ -54,7 +54,5 @@ class ShadowPortfolioTxRow(Base):
     price: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     amount_inr: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     fx_rate: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
-    tax_withheld: Mapped[Decimal] = mapped_column(
-        Numeric, default=Decimal("0"), nullable=False
-    )
+    tax_withheld: Mapped[Decimal] = mapped_column(Numeric, default=Decimal("0"), nullable=False)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)

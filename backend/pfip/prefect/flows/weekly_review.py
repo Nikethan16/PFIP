@@ -166,9 +166,7 @@ async def _regime_changes_section(since: datetime) -> str:
             prev = r.regime
         if len(transitions) <= 1:
             continue
-        chain = " → ".join(
-            f"{t[1]}({t[2]:.2f})@{t[0].strftime('%a')}" for t in transitions
-        )
+        chain = " → ".join(f"{t[1]}({t[2]:.2f})@{t[0].strftime('%a')}" for t in transitions)
         lines.append(f"- **{symbol}**: {chain}")
 
     if len(lines) == 2:
@@ -226,12 +224,8 @@ async def weekly_review(days: int = 7) -> str | None:
         f"Closed trades: *{int(closed_stats.get('n_closed', 0))}*",
     ]
     if closed_stats.get("n_closed", 0) > 0:
-        digest_lines.append(
-            f"Avg P&L: *{closed_stats.get('avg_pnl_pct', 0.0):+.2f}%*"
-        )
-        digest_lines.append(
-            f"Win rate: *{closed_stats.get('win_rate', 0.0) * 100:.0f}%*"
-        )
+        digest_lines.append(f"Avg P&L: *{closed_stats.get('avg_pnl_pct', 0.0):+.2f}%*")
+        digest_lines.append(f"Win rate: *{closed_stats.get('win_rate', 0.0) * 100:.0f}%*")
     digest_lines.append("")
     digest_lines.append(f"Full review on disk: `{out_path}`")
     await send_alert(

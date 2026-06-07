@@ -46,7 +46,9 @@ async def process_unscored(
         news_texts, news_ids, crypto_texts, crypto_ids = [], [], [], []
         for r in rows:
             text = f"{r.title}. {r.summary or ''}".strip()
-            if (r.source or "").lower().startswith(("crypto", "cointel", "x_")) or _looks_crypto(r.symbol):
+            if (r.source or "").lower().startswith(("crypto", "cointel", "x_")) or _looks_crypto(
+                r.symbol
+            ):
                 crypto_texts.append(text)
                 crypto_ids.append(r.id)
             else:
@@ -74,12 +76,7 @@ def _looks_crypto(sym: str | None) -> bool:
     if not sym:
         return False
     s = sym.upper()
-    return (
-        "/" in s
-        or s.endswith("USD")
-        or s.endswith("USDT")
-        or s in {"BTC", "ETH", "SOL", "BNB"}
-    )
+    return "/" in s or s.endswith("USD") or s.endswith("USDT") or s in {"BTC", "ETH", "SOL", "BNB"}
 
 
 async def drain_redis_queue(

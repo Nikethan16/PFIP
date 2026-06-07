@@ -71,18 +71,53 @@ Intent = str  # Literal["market_question","portfolio_question","tax_question","g
 
 _INTENT_KEYWORDS: dict[Intent, tuple[str, ...]] = {
     "portfolio_question": (
-        "my portfolio", "my holdings", "my position", "my pnl", "my p&l",
-        "nav", "drawdown", "exposure", "allocation", "concentration",
+        "my portfolio",
+        "my holdings",
+        "my position",
+        "my pnl",
+        "my p&l",
+        "nav",
+        "drawdown",
+        "exposure",
+        "allocation",
+        "concentration",
     ),
     "tax_question": (
-        "tax", "stcg", "ltcg", "itr", "schedule fa", "tds", "capital gains",
-        "vda", "section 80", "grandfathering", "indexation",
+        "tax",
+        "stcg",
+        "ltcg",
+        "itr",
+        "schedule fa",
+        "tds",
+        "capital gains",
+        "vda",
+        "section 80",
+        "grandfathering",
+        "indexation",
     ),
     "market_question": (
-        "price", "chart", "regime", "trend", "sentiment", "volume",
-        "signal", "rsi", "macd", "breakout", "support", "resistance",
-        "fomc", "fed", "rbi", "nifty", "bank nifty", "btc", "eth", "sol",
-        "earnings", "fundamental",
+        "price",
+        "chart",
+        "regime",
+        "trend",
+        "sentiment",
+        "volume",
+        "signal",
+        "rsi",
+        "macd",
+        "breakout",
+        "support",
+        "resistance",
+        "fomc",
+        "fed",
+        "rbi",
+        "nifty",
+        "bank nifty",
+        "btc",
+        "eth",
+        "sol",
+        "earnings",
+        "fundamental",
     ),
 }
 
@@ -222,7 +257,8 @@ def _render_db_block(rows: list[dict[str, Any]]) -> str:
         # Convert any datetime to ISO for safe serialization.
         safe = {
             k: (v.isoformat() if hasattr(v, "isoformat") else str(v))
-            for k, v in r.items() if k != "kind"
+            for k, v in r.items()
+            if k != "kind"
         }
         lines.append(f"[{kind}] " + json.dumps(safe, default=str))
     return "\n".join(lines)
@@ -287,7 +323,11 @@ def _violates_decide_contract(text: str) -> bool:
     """
     if _SIGNAL_JSON_RE.search(text):
         return True
-    if re.search(r"direction\s*[:=]\s*(BUY|SELL)\b.*\bconfidence\s*[:=]\s*\d", text, re.IGNORECASE | re.DOTALL):
+    if re.search(
+        r"direction\s*[:=]\s*(BUY|SELL)\b.*\bconfidence\s*[:=]\s*\d",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    ):
         return True
     return False
 
@@ -389,9 +429,7 @@ async def run_agent_stream(
     for h in state.retrieved_kb:
         yield {
             "event": "source",
-            "data": json.dumps(
-                {"type": "kb", "title": h.metadata.get("title"), "score": h.score}
-            ),
+            "data": json.dumps({"type": "kb", "title": h.metadata.get("title"), "score": h.score}),
         }
     for h in state.retrieved_news:
         yield {

@@ -169,9 +169,7 @@ async def load_on_chain_history(
             ORDER BY time ASC
             """
         )
-        res = await session.execute(
-            stmt, {"symbol": symbol, "since": since, "as_of": as_of}
-        )
+        res = await session.execute(stmt, {"symbol": symbol, "since": since, "as_of": as_of})
         rows = res.all()
     except Exception:
         # A missing ``onchain_metrics`` table raises UndefinedTable, which aborts

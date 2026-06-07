@@ -24,18 +24,18 @@ log = get_logger("pfip.ingest.macro.fred")
 BASE = "https://api.stlouisfed.org/fred/series/observations"
 
 DEFAULT_SERIES: tuple[str, ...] = (
-    "CPIAUCSL",    # CPI All Urban Consumers
-    "CPILFESL",    # Core CPI
-    "FEDFUNDS",    # Fed Funds
-    "DFF",         # Effective Fed Funds Rate
-    "DGS2",        # 2Y UST yield
-    "DGS10",       # 10Y UST yield
-    "DGS30",       # 30Y UST yield
-    "T10Y2Y",      # 10Y-2Y spread
-    "VIXCLS",      # VIX close
-    "DTWEXBGS",    # USD broad index (DXY proxy)
-    "UNRATE",      # Unemployment
-    "PAYEMS",      # Nonfarm payrolls
+    "CPIAUCSL",  # CPI All Urban Consumers
+    "CPILFESL",  # Core CPI
+    "FEDFUNDS",  # Fed Funds
+    "DFF",  # Effective Fed Funds Rate
+    "DGS2",  # 2Y UST yield
+    "DGS10",  # 10Y UST yield
+    "DGS30",  # 30Y UST yield
+    "T10Y2Y",  # 10Y-2Y spread
+    "VIXCLS",  # VIX close
+    "DTWEXBGS",  # USD broad index (DXY proxy)
+    "UNRATE",  # Unemployment
+    "PAYEMS",  # Nonfarm payrolls
 )
 
 

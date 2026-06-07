@@ -59,9 +59,7 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("source"),
     )
-    op.create_index(
-        "ix_source_health_last_run_at", "source_health", [sa.text("last_run_at DESC")]
-    )
+    op.create_index("ix_source_health_last_run_at", "source_health", [sa.text("last_run_at DESC")])
 
     # ------------------------------------------------------------------
     # mf_nav — AMFI daily NAVs
@@ -102,7 +100,9 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("rate_date", "base", "quote", "source"),
     )
-    op.create_index("ix_fx_rates_base_quote_date", "fx_rates", ["base", "quote", sa.text("rate_date DESC")])
+    op.create_index(
+        "ix_fx_rates_base_quote_date", "fx_rates", ["base", "quote", sa.text("rate_date DESC")]
+    )
 
     # ------------------------------------------------------------------
     # macro_series — long-form macro time series

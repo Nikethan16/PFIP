@@ -38,9 +38,7 @@ async def _run_watchlist(timeframe: str) -> list[SignalRunResult]:
 async def _run_default(symbol: str, source: str, timeframe: str) -> SignalRunResult:
     factory = get_sessionmaker()
     async with factory() as session:
-        return await run_for_symbol(
-            session, symbol=symbol, source=source, timeframe=timeframe
-        )
+        return await run_for_symbol(session, symbol=symbol, source=source, timeframe=timeframe)
 
 
 @flow(name="signals-generate-daily", log_prints=True)

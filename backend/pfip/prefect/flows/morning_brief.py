@@ -29,9 +29,7 @@ _OUT_DIR = Path("data/morning_brief")
 async def morning_brief() -> str:
     """Compose + persist + alert the daily morning brief. Returns the file path."""
     logger = get_run_logger()
-    target = datetime.now(tz=timezone.utc).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    target = datetime.now(tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
     factory = get_sessionmaker()
     async with factory() as db:

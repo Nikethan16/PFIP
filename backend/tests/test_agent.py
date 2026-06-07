@@ -35,9 +35,7 @@ def test_morning_brief_requires_auth(client: TestClient) -> None:
     assert resp.status_code == 401
 
 
-def test_morning_brief_returns_markdown(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_morning_brief_returns_markdown(client: TestClient, auth_headers: dict[str, str]) -> None:
     resp = client.get("/api/v1/agent/morning-brief", headers=auth_headers)
     assert resp.status_code == 200
     assert "# PFIP Morning Brief" in resp.text
@@ -124,6 +122,7 @@ def test_chat_sse_handles_ollama_unavailable_gracefully(
 ) -> None:
     """If the router raises LLMUnavailable we should still get a clean
     SSE stream ending with `event: done`."""
+
     # Patch the node retrievers and stream so the endpoint doesn't hit
     # a real Qdrant or Ollama.
     async def _empty_stream(*_a, **_k):
@@ -177,9 +176,7 @@ def test_post_mortem_404_on_unknown_holding(
 # ---------------------------------------------------------------------------
 
 
-def test_weekly_review_returns_markdown(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_weekly_review_returns_markdown(client: TestClient, auth_headers: dict[str, str]) -> None:
     resp = client.get("/api/v1/agent/weekly-review", headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
@@ -187,9 +184,7 @@ def test_weekly_review_returns_markdown(
     assert body["markdown"].startswith("## Weekly Review")
 
 
-def test_arxiv_digest_returns_markdown(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_arxiv_digest_returns_markdown(client: TestClient, auth_headers: dict[str, str]) -> None:
     resp = client.get("/api/v1/agent/arxiv-digest", headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()

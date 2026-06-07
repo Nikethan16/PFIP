@@ -22,10 +22,7 @@ log = get_logger("pfip.ingest.indian_equities.bse_bhavcopy")
 
 
 def _url(d: date) -> str:
-    return (
-        "https://www.bseindia.com/download/BhavCopy/Equity/"
-        f"EQ{d.strftime('%d%m%y')}_CSV.ZIP"
-    )
+    return "https://www.bseindia.com/download/BhavCopy/Equity/" f"EQ{d.strftime('%d%m%y')}_CSV.ZIP"
 
 
 @retry_http(max_attempts=3)
@@ -77,9 +74,7 @@ async def fetch_bse_bhavcopy(d: date | None = None) -> list[dict[str, Any]]:
     return rows
 
 
-async def ingest_bse_bhavcopy(
-    d: date | None = None, session: AsyncSession | None = None
-) -> int:
+async def ingest_bse_bhavcopy(d: date | None = None, session: AsyncSession | None = None) -> int:
     log.info("ingest.bse_bhavcopy starting")
     rows = await fetch_bse_bhavcopy(d)
     if session is None:

@@ -32,13 +32,7 @@ class StrategicTargets:
     cash_pct: float = 0.05
 
     def validate(self) -> None:
-        total = (
-            self.equity_pct
-            + self.debt_pct
-            + self.gold_pct
-            + self.crypto_pct
-            + self.cash_pct
-        )
+        total = self.equity_pct + self.debt_pct + self.gold_pct + self.crypto_pct + self.cash_pct
         if abs(total - 1.0) > 1e-6:
             raise ValueError(f"StrategicTargets must sum to 1.0, got {total}")
 

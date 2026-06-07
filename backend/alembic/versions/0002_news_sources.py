@@ -65,9 +65,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(), nullable=False),
         sa.Column("type", sa.String(), nullable=False),  # rss, api, scrape, social
         sa.Column("url", sa.Text(), nullable=False),
-        sa.Column(
-            "active", sa.Boolean(), nullable=False, server_default=sa.text("true")
-        ),
+        sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("last_fetched_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "created_at",
@@ -89,9 +87,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("gen_random_uuid()"),
         ),
-        sa.Column(
-            "watchlist_id", postgresql.UUID(as_uuid=True), nullable=False
-        ),
+        sa.Column("watchlist_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("google_news_query", sa.Text(), nullable=True),
         sa.Column("yahoo_rss_url", sa.Text(), nullable=True),
         sa.Column(
@@ -100,13 +96,9 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("now()"),
         ),
-        sa.ForeignKeyConstraint(
-            ["watchlist_id"], ["watchlist.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["watchlist_id"], ["watchlist.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "watchlist_id", name="uq_watchlist_news_feeds_watchlist"
-        ),
+        sa.UniqueConstraint("watchlist_id", name="uq_watchlist_news_feeds_watchlist"),
     )
 
     # --- self_custody_addresses ---
@@ -129,19 +121,13 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "user_id", "chain", "address", name="uq_self_custody_user_chain_addr"
-        ),
+        sa.UniqueConstraint("user_id", "chain", "address", name="uq_self_custody_user_chain_addr"),
     )
-    op.create_index(
-        "ix_self_custody_user_chain", "self_custody_addresses", ["user_id", "chain"]
-    )
+    op.create_index("ix_self_custody_user_chain", "self_custody_addresses", ["user_id", "chain"])
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_self_custody_user_chain", table_name="self_custody_addresses"
-    )
+    op.drop_index("ix_self_custody_user_chain", table_name="self_custody_addresses")
     op.drop_table("self_custody_addresses")
     op.drop_table("watchlist_news_feeds")
     op.drop_index("ix_news_sources_active", table_name="news_sources")
