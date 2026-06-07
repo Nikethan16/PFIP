@@ -28,6 +28,7 @@ from pfip.api import (
     notifications,
     portfolio,
     schedules,
+    self_custody,
     settings as settings_router,
     setup,
     shadow,
@@ -137,6 +138,7 @@ def create_app() -> FastAPI:
     app.include_router(notifications.router, prefix=prefix)
     app.include_router(schedules.router, prefix=prefix)
     app.include_router(settings_router.router, prefix=prefix)
+    app.include_router(self_custody.router, prefix=prefix)
 
     return app
 

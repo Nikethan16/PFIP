@@ -32,6 +32,11 @@ from pfip.portfolio.allocation import (
 )
 from pfip.portfolio.marking import build_marking, fetch_return_series
 from pfip.portfolio.risk_manager import RiskManager
+from pfip.portfolio.rollup import (
+    asset_class_for,
+    encode_tx_note,
+    rebuild_holdings_from_tx,
+)
 from pfip.portfolio.service import (
     HoldingNotFoundError,
     HoldingValidationError,
@@ -146,6 +151,36 @@ async def close_holding(
         "sell_tx": result["sell_tx"],
         "post_mortem_required": True,
         "journal_entry_id": result["journal_entry_id"],
+        "disclaimer": DISCLAIMER,
+    }
+
+
+@router.post("/holdings/rebuild")
+async def rebuild_holdings(
+    db: DbSession,
+    _user: CurrentUser,
+    asset_class: str | None = Query(
+        None,
+        description="Optional filter: only rebuild this asset class "
+        "(equity / us_stock / vda / equity_mf / debt_mf / gold).",
+    ),
+) -> dict:
+    """Materialize ``holdings`` from the ``portfolio_tx`` ledger.
+
+    Groups import-originated ledger rows by position, computes net quantity and
+    weighted-average cost basis, and UPSERTs the still-open positions into
+    ``holdings``. Idempotent — re-running recomputes from the ledger and replaces
+    the rollup-owned rows (manual holdings are never touched). This is what makes
+    a broker-CSV import show up in the portfolio.
+
+    Response::
+
+        {"rebuilt": int, "holdings": [Holding, ...], "disclaimer": str}
+    """
+    holdings = await rebuild_holdings_from_tx(db, asset_class=asset_class)
+    return {
+        "rebuilt": len(holdings),
+        "holdings": [h.model_dump(mode="json") for h in holdings],
         "disclaimer": DISCLAIMER,
     }
 
@@ -328,8 +363,8 @@ async def var_panel(
     conc = await svc.concentration_score(mark_prices=mark_prices)
     hhi = float(conc.get("hhi", 0.0))
 
-    # Daily new-positions remaining.
-    rm = RiskManager()
+    # Daily new-positions remaining (honours the operator's persisted cap).
+    rm = await RiskManager.from_prefs(db)
     remaining = rm.daily_new_positions_remaining(positions_added_today)
 
     # 30d Sharpe from the same portfolio return series.
@@ -375,9 +410,9 @@ async def var_panel(
 
 
 @router.post("/pre-trade")
-async def pre_trade(body: PreTradeRequest, _user: CurrentUser) -> dict:
+async def pre_trade(body: PreTradeRequest, db: DbSession, _user: CurrentUser) -> dict:
     """Run the 10-item Appendix B pre-trade checklist (automatable subset)."""
-    rm = RiskManager()
+    rm = await RiskManager.from_prefs(db)
     verdict = rm.check_pre_trade(
         symbol=body.symbol,
         qty=body.qty,
@@ -453,11 +488,28 @@ async def import_csv(
     broker: str | None = Form(default=None),
     dry_run: bool = Form(default=True),
 ) -> dict:
-    """Import a portfolio CSV. Returns ``{imported, rejected, errors}``.
+    """Import a portfolio CSV.
 
     When ``dry_run`` is False (default True for safety), the parsed rows are
-    persisted as portfolio_tx rows. Holdings inference for new symbols is
-    deferred — the user maps symbols to holdings in a follow-up step.
+    persisted as ``portfolio_tx`` ledger rows **and** immediately rolled up into
+    ``holdings`` so the import → portfolio/dashboard path is one step. Each
+    persisted tx stamps its symbol + asset class into ``note`` (via
+    ``encode_tx_note``) so the rollup can group the ledger by position; see
+    ``pfip.portfolio.rollup``.
+
+    Response (superset of the parser summary)::
+
+        {
+          "broker": str, "schema_version": str,
+          "imported": int, "rejected": int,
+          "rows": [{symbol, time, kind, qty, amount_inr, cost_basis_ccy}, ...],
+          "errors": [...],
+          "persisted": int,            # tx rows written (0 on dry_run)
+          "dry_run": bool,
+          "holdings_rebuilt": int,     # holdings materialized (0 on dry_run)
+          "holdings": [Holding, ...],  # the materialized open holdings
+          "disclaimer": str
+        }
     """
     payload = await file.read()
     try:
@@ -469,9 +521,10 @@ async def import_csv(
         ) from exc
 
     persisted = 0
+    rebuilt: list[Holding] = []
     if not dry_run and result.imported:
-        # Persist each row as a PortfolioTxRow; holding_id is None until the
-        # user maps it.
+        # Persist each row as a PortfolioTxRow. ``holding_id`` stays None — the
+        # rollup materializes holdings from the ledger rather than pinning rows.
         for r in result.imported:
             tx = PortfolioTxRow(
                 holding_id=None,
@@ -482,7 +535,12 @@ async def import_csv(
                 amount_inr=r.amount_inr,
                 fx_rate=r.fx_rate,
                 tax_withheld=r.tax_withheld,
-                note=f"[{r.broker}:{r.symbol}] {r.note or ''}".strip(),
+                note=encode_tx_note(
+                    broker=r.broker,
+                    symbol=r.symbol,
+                    asset_class=asset_class_for(r.broker, None),
+                    free=r.note,
+                ),
             )
             db.add(tx)
             persisted += 1
@@ -495,8 +553,21 @@ async def import_csv(
                 detail=f"Commit failed: {exc}",
             ) from exc
 
+        # Materialize holdings from the (now-persisted) ledger so the portfolio
+        # is populated in a single import call. Idempotent — safe to re-run.
+        try:
+            rebuilt = await rebuild_holdings_from_tx(db)
+        except Exception as exc:  # noqa: BLE001
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Holdings rebuild failed after import: {exc}",
+            ) from exc
+
     summary = result.summary()
     summary["persisted"] = persisted
     summary["dry_run"] = dry_run
+    summary["holdings_rebuilt"] = len(rebuilt)
+    summary["holdings"] = [h.model_dump(mode="json") for h in rebuilt]
     summary["disclaimer"] = DISCLAIMER
     return summary

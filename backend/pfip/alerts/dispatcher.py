@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime, time, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -31,6 +31,9 @@ from loguru import logger
 from redis.asyncio import Redis
 
 from pfip.core.config import get_settings
+
+if TYPE_CHECKING:
+    from pfip.core.user_prefs import UserPrefs
 
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -46,6 +49,16 @@ class AlertSeverity(str, Enum):
     INFO = "INFO"
     WARN = "WARN"
     CRITICAL = "CRITICAL"
+
+
+# Ordinal ranking so an alert's severity can be compared against the operator's
+# ``alert_severity_threshold`` preference — anything strictly below the
+# threshold is suppressed (digested), never delivered live.
+_SEVERITY_RANK: dict[str, int] = {
+    AlertSeverity.INFO.value: 0,
+    AlertSeverity.WARN.value: 1,
+    AlertSeverity.CRITICAL.value: 2,
+}
 
 
 class AlertKind(str, Enum):
@@ -109,9 +122,27 @@ def _render_template(kind: AlertKind, context: dict[str, Any]) -> tuple[str, str
 # ---------------------------------------------------------------------------
 
 
-def _is_quiet_hour(now_utc: datetime) -> bool:
+def _is_quiet_hour(
+    now_utc: datetime,
+    start: time | None = None,
+    end: time | None = None,
+) -> bool:
+    """True if ``now_utc`` (converted to IST) is inside the quiet window.
+
+    ``start``/``end`` default to the module constants (23:00–07:00 IST) but the
+    dispatcher passes the operator's persisted ``quiet_hours_start/end`` so the
+    window is editable from the settings page. Handles a window that wraps
+    midnight (start > end, e.g. 23:00→07:00) as well as a same-day window
+    (start < end, e.g. 09:00→17:00).
+    """
+    start = start if start is not None else QUIET_HOURS_START
+    end = end if end is not None else QUIET_HOURS_END
     now_ist = now_utc.astimezone(IST).time()
-    return now_ist >= QUIET_HOURS_START or now_ist < QUIET_HOURS_END
+    if start == end:
+        return False  # zero-width window ⇒ never quiet
+    if start > end:  # wraps midnight
+        return now_ist >= start or now_ist < end
+    return start <= now_ist < end
 
 
 async def _get_redis() -> Redis | None:
@@ -193,13 +224,24 @@ async def flush_digest() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-async def _send_telegram(alert: Alert, *, force: bool = False) -> dict[str, Any]:
+async def _send_telegram(
+    alert: Alert, *, force: bool = False, enabled: bool | None = None
+) -> dict[str, Any]:
     settings = get_settings()
     token = getattr(settings, "telegram_bot_token", None)
     chat_id = getattr(settings, "telegram_bot_chat_id", None)
     if not token or not chat_id:
         return {"ok": False, "reason": "telegram_unconfigured"}
-    if not force and not getattr(settings, "feature_telegram_alerts", False):
+    # Enablement gate: the operator's persisted ``telegram_alerts_enabled``
+    # pref (passed as ``enabled``) is authoritative when provided; otherwise we
+    # fall back to the legacy env/config ``feature_telegram_alerts`` flag.
+    # ``force`` (digest flush, CRITICAL) always bypasses the gate.
+    is_enabled = (
+        enabled
+        if enabled is not None
+        else bool(getattr(settings, "feature_telegram_alerts", False))
+    )
+    if not force and not is_enabled:
         return {"ok": False, "reason": "feature_disabled"}
     severity_emoji = {
         AlertSeverity.INFO: "🟢",
@@ -226,6 +268,27 @@ async def _send_telegram(alert: Alert, *, force: bool = False) -> dict[str, Any]
     except httpx.HTTPError as exc:
         logger.warning(f"telegram send failed: {exc}")
         return {"ok": False, "reason": str(exc)[:200]}
+
+
+# ---------------------------------------------------------------------------
+# Operator preferences (best-effort)
+# ---------------------------------------------------------------------------
+
+
+async def _load_prefs_safe() -> "UserPrefs":
+    """Load the operator's persisted alert prefs, never raising.
+
+    Opens its own short-lived DB session. Any failure (DB down, no row,
+    import error) degrades gracefully to the config-default snapshot so an
+    alert is never lost to a settings-lookup hiccup.
+    """
+    from pfip.core.user_prefs import UserPrefs, load_user_prefs
+
+    try:
+        return await load_user_prefs()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"alert prefs lookup failed; using config defaults: {exc}")
+        return UserPrefs.from_config()
 
 
 # ---------------------------------------------------------------------------
@@ -264,14 +327,26 @@ async def send_alert(
         kind=kind, severity=severity, title=title, body=body, context=context, timestamp=now
     )
 
+    # Operator-editable knobs (severity threshold, quiet window, telegram gate).
+    # Best-effort: a DB hiccup must never block an alert, so fall back to the
+    # config-default snapshot.
+    prefs = await _load_prefs_safe()
+    enabled = prefs.telegram_alerts_enabled
+    threshold_rank = _SEVERITY_RANK.get(prefs.alert_severity_threshold, 1)
+
     redis = await _get_redis()
     try:
-        # CRITICAL always sends — bypasses quiet hours + rate cap.
+        # CRITICAL always sends — bypasses quiet hours + rate cap + threshold.
         if severity == AlertSeverity.CRITICAL:
             return await _send_telegram(alert, force=True)
 
-        # INFO + WARN: respect quiet hours
-        if _is_quiet_hour(now):
+        # Below the operator's minimum severity ⇒ suppress (digest, don't send).
+        if _SEVERITY_RANK.get(severity.value, 0) < threshold_rank:
+            await _queue_digest(redis, alert)
+            return {"ok": True, "deferred": "below_threshold"}
+
+        # INFO + WARN: respect the operator's quiet window.
+        if _is_quiet_hour(now, prefs.quiet_hours_start, prefs.quiet_hours_end):
             await _queue_digest(redis, alert)
             return {"ok": True, "deferred": "quiet_hours"}
 
@@ -285,7 +360,7 @@ async def send_alert(
             await _queue_digest(redis, alert)
             return {"ok": True, "deferred": "rate_cap_exceeded"}
 
-        return await _send_telegram(alert)
+        return await _send_telegram(alert, enabled=enabled)
     finally:
         if redis is not None:
             try:

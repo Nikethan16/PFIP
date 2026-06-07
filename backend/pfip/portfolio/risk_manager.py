@@ -4,10 +4,16 @@ Implements the 10-item Appendix B pre-trade checklist (automatable items),
 portfolio-level drawdown halt, correlation gate, Van Tharp position sizing,
 and the daily new-positions cap.
 
-Rules come from ``pfip.core.config.Settings``:
+Rule values are resolved per-instance: if the operator's persisted
+:class:`~pfip.core.user_prefs.UserPrefs` are supplied they win, otherwise we
+fall back to the immutable ``pfip.core.config.Settings`` constants:
     - ``max_position_pct``       per-trade position cap (default 10%)
     - ``drawdown_halt_pct``      halt threshold (default 20%)
     - ``daily_new_positions_cap``  (default 2)
+
+Use :meth:`RiskManager.from_prefs` to build an instance that honours the
+settings page; the plain constructor remains config-only for callers that
+don't have a DB session.
 """
 
 from __future__ import annotations
@@ -15,10 +21,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
 from pfip.core.config import Settings, get_settings
 from pfip.core.contracts import Holding
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from pfip.core.user_prefs import UserPrefs
 
 
 # ---------------------------------------------------------------------------
@@ -55,10 +66,66 @@ class PreTradeVerdict:
 
 
 class RiskManager:
-    """Risk engine. Stateless; pass inputs per call."""
+    """Risk engine. Stateless; pass inputs per call.
 
-    def __init__(self, settings: Settings | None = None) -> None:
+    Rule values (position cap / drawdown halt / daily cap) come from the
+    operator's persisted preferences when an instance is built with them
+    (``RiskManager(prefs=...)`` or :meth:`from_prefs`), otherwise from
+    ``core.config.Settings``. The constructor stays config-only and
+    backward-compatible so existing ``RiskManager()`` call sites are unaffected.
+    """
+
+    def __init__(
+        self, settings: Settings | None = None, *, prefs: "UserPrefs | None" = None
+    ) -> None:
         self._settings = settings or get_settings()
+        self._prefs = prefs
+
+    @classmethod
+    async def from_prefs(
+        cls,
+        session: "AsyncSession | None" = None,
+        *,
+        settings: Settings | None = None,
+    ) -> "RiskManager":
+        """Build a manager whose limits honour the persisted settings row.
+
+        Falls back to config defaults for any unset pref (and for the whole
+        thing if no row exists yet). ``session`` is reused when provided,
+        otherwise a short-lived one is opened.
+        """
+        from pfip.core.user_prefs import load_user_prefs
+
+        prefs = await load_user_prefs(session, settings=settings)
+        return cls(settings=settings, prefs=prefs)
+
+    # ------------------------------------------------------------------
+    # Resolved rule values — prefs win, else config
+    # ------------------------------------------------------------------
+
+    @property
+    def _max_position_pct(self) -> float:
+        return (
+            self._prefs.max_position_pct
+            if self._prefs is not None
+            else self._settings.max_position_pct
+        )
+
+    @property
+    def _drawdown_halt_pct(self) -> float:
+        return (
+            self._prefs.drawdown_halt_pct
+            if self._prefs is not None
+            else self._settings.drawdown_halt_pct
+        )
+
+    @property
+    def _daily_new_positions_cap(self) -> int:
+        return (
+            self._prefs.daily_new_positions_cap
+            if self._prefs is not None
+            else self._settings.daily_new_positions_cap
+        )
 
     # ------------------------------------------------------------------
     # Pre-trade — 10-item Appendix B checklist (automatable subset)
@@ -111,11 +178,10 @@ class RiskManager:
         # Item 4 — position size <= cap.
         if portfolio_value_inr > 0:
             pct = float(proposed_notional / portfolio_value_inr)
-            per_item["position_size_within_cap"] = pct <= self._settings.max_position_pct
-            if pct > self._settings.max_position_pct:
-                reasons.append(
-                    f"Position {pct:.1%} exceeds cap {self._settings.max_position_pct:.0%}."
-                )
+            cap = self._max_position_pct
+            per_item["position_size_within_cap"] = pct <= cap
+            if pct > cap:
+                reasons.append(f"Position {pct:.1%} exceeds cap {cap:.0%}.")
         else:
             per_item["position_size_within_cap"] = True
 
@@ -151,20 +217,16 @@ class RiskManager:
         # --- Portfolio-level guards (also from Section 8.3) ---
 
         # Drawdown halt.
-        per_item["no_drawdown_halt"] = current_drawdown_pct < self._settings.drawdown_halt_pct
+        halt_pct = self._drawdown_halt_pct
+        per_item["no_drawdown_halt"] = current_drawdown_pct < halt_pct
         if not per_item["no_drawdown_halt"]:
-            reasons.append(
-                f"Drawdown {current_drawdown_pct:.1%} >= halt {self._settings.drawdown_halt_pct:.0%}."
-            )
+            reasons.append(f"Drawdown {current_drawdown_pct:.1%} >= halt {halt_pct:.0%}.")
 
         # Daily new-positions cap.
-        per_item["daily_cap_not_reached"] = (
-            positions_added_today < self._settings.daily_new_positions_cap
-        )
+        daily_cap = self._daily_new_positions_cap
+        per_item["daily_cap_not_reached"] = positions_added_today < daily_cap
         if not per_item["daily_cap_not_reached"]:
-            reasons.append(
-                f"Daily new-positions cap ({self._settings.daily_new_positions_cap}) reached."
-            )
+            reasons.append(f"Daily new-positions cap ({daily_cap}) reached.")
 
         pass_all = all(per_item.values())
         return PreTradeVerdict(pass_all=pass_all, reasons=reasons, per_item=per_item)
@@ -200,7 +262,7 @@ class RiskManager:
                 peak = v
             if peak > 0:
                 dd = max(dd, 1 - v / peak)
-        halt = self._settings.drawdown_halt_pct
+        halt = self._drawdown_halt_pct
         status = "HALT" if dd >= halt else ("WARN" if dd >= halt * 0.5 else "OK")
         return (status, dd)
 
@@ -255,7 +317,7 @@ class RiskManager:
             units = (risk_amount / per_unit_risk_inr).quantize(Decimal("0.0001"))
         # notional cap
         cap_notional = (
-            Decimal(str(portfolio_value_inr)) * Decimal(str(self._settings.max_position_pct))
+            Decimal(str(portfolio_value_inr)) * Decimal(str(self._max_position_pct))
         ).quantize(Decimal("0.01"))
         suggested_notional = (
             (Decimal(str(price_per_unit_inr)) * units).quantize(Decimal("0.01"))
@@ -278,7 +340,7 @@ class RiskManager:
 
     def daily_new_positions_remaining(self, positions_added_today: int) -> int:
         """Remaining slots on the daily new-position cap."""
-        return max(0, self._settings.daily_new_positions_cap - int(positions_added_today))
+        return max(0, self._daily_new_positions_cap - int(positions_added_today))
 
     # ------------------------------------------------------------------
     # Utility
