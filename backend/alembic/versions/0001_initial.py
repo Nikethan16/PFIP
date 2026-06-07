@@ -24,8 +24,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # --- Extensions (TimescaleDB + pgcrypto for gen_random_uuid) ---
-    op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
+    # --- Extensions ---
+    # TimescaleDB is OPTIONAL: present on the local/self-hosted stack, absent on
+    # managed Postgres (Neon / Supabase). When it's absent we skip the extension
+    # and the create_hypertable() calls below — the tables stay plain Postgres,
+    # which is fine at this single-user data scale. pgcrypto (gen_random_uuid) is
+    # available everywhere.
+    bind = op.get_bind()
+    has_timescale = (
+        bind.execute(
+            sa.text("SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb'")
+        ).scalar()
+        is not None
+    )
+    if has_timescale:
+        op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
     op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
 
     # --- ohlcv ---
@@ -43,9 +56,10 @@ def upgrade() -> None:
         sa.Column("volume", sa.Numeric(30, 8), nullable=False),
         sa.PrimaryKeyConstraint("time", "symbol", "source", "timeframe", name="pk_ohlcv"),
     )
-    op.execute(
-        "SELECT create_hypertable('ohlcv', 'time', if_not_exists => TRUE, migrate_data => TRUE)"
-    )
+    if has_timescale:
+        op.execute(
+            "SELECT create_hypertable('ohlcv', 'time', if_not_exists => TRUE, migrate_data => TRUE)"
+        )
     op.create_index("ix_ohlcv_symbol_time", "ohlcv", ["symbol", "time"])
 
     # --- fundamentals ---
@@ -60,10 +74,11 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("as_of_date", "symbol", "field", "source", name="pk_fundamentals"),
     )
     # Hypertable on as_of_date (fundamentals are PIT by discovery date).
-    op.execute(
-        "SELECT create_hypertable('fundamentals', 'as_of_date', "
-        "if_not_exists => TRUE, migrate_data => TRUE)"
-    )
+    if has_timescale:
+        op.execute(
+            "SELECT create_hypertable('fundamentals', 'as_of_date', "
+            "if_not_exists => TRUE, migrate_data => TRUE)"
+        )
     op.create_index("ix_fundamentals_symbol_field", "fundamentals", ["symbol", "field"])
 
     # --- features ---
