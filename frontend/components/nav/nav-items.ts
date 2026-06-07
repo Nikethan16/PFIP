@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   LineChart,
   MessageSquare,
+  ScanSearch,
   Stars,
   Wrench,
 } from "lucide-react";
@@ -58,6 +59,7 @@ export const NAV_ITEMS: NavItem[] = [
   // Markets
   { label: "Watchlist", href: "/watchlist", icon: Eye, group: "markets", shortcut: "G then W" },
   { label: "Signals", href: "/signals", icon: Stars, group: "markets", shortcut: "G then S" },
+  { label: "Research", href: "/diligence", icon: ScanSearch, group: "markets", shortcut: "G then R" },
 
   // Portfolio
   { label: "Holdings", href: "/portfolio", icon: Briefcase, mobile: true, group: "trading", shortcut: "G then P" },

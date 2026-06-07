@@ -1,9 +1,11 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import {
   LineChart as LineIcon,
   Plus,
+  ScanSearch,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -344,6 +346,18 @@ function WatchlistRow({
 
       {/* Actions */}
       <div className="col-span-4 flex items-center justify-end gap-0.5 sm:col-span-1">
+        <Button
+          asChild
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          aria-label={`Research ${item.symbol}`}
+          title="Due-diligence dossier"
+        >
+          <Link href={`/diligence?symbol=${encodeURIComponent(item.symbol)}` as never}>
+            <ScanSearch className="h-3.5 w-3.5" />
+          </Link>
+        </Button>
         <Button
           variant="ghost"
           size="icon"

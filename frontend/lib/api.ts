@@ -1832,6 +1832,255 @@ export function useShadowVsActual(): UseQueryResult<ShadowVsActual> {
 }
 
 // -----------------------------------------------------------------------------
+// Due Diligence — per-asset research dossier aggregated server-side.
+// Backend: pfip/diligence/service.py via GET /api/v1/diligence/{symbol}. The
+// endpoint stitches together price, fundamentals, filings, insider trades,
+// market FII/DII flows, on-chain stats, the model read (regime + signal) and
+// recent news into one envelope. Every section DEGRADES gracefully to {}/[]/null
+// when its source has no data for the symbol; an unknown symbol 404s (surfaced
+// as an ApiError the page renders as an empty state). The `key_metrics`,
+// `values` and `onchain` blobs are intentionally dynamic per source, so they're
+// modelled as tolerant records — the page renders only the keys that exist.
+// ADVISORY-ONLY: research aggregation, never a recommendation.
+// -----------------------------------------------------------------------------
+
+/** A single regulatory filing / corporate announcement (`filings[]`). */
+export interface DiligenceFiling {
+  title: string;
+  url: string | null;
+  date: string | null;
+  source: string | null;
+  type: string | null;
+}
+
+/** An insider / PIT disclosure row (`insider[]`). Shape varies by source, so
+ * the typed fields are best-effort and unknown keys are preserved. */
+export interface DiligenceInsider {
+  name?: string | null;
+  transaction?: string | null;
+  shares?: number | null;
+  value?: number | null;
+  date?: string | null;
+  source?: string | null;
+  [k: string]: unknown;
+}
+
+/** One side of the market-wide FII/DII flow (`institutional_flows.{fii,dii}`). */
+export interface DiligenceFlowLeg {
+  buyValue: number | null;
+  sellValue: number | null;
+  netValue: number | null;
+}
+
+/** Market-wide institutional flows — empty `{}` for non-India assets. */
+export interface DiligenceFlows {
+  as_of_date?: string | null;
+  unit?: string | null;
+  fii?: DiligenceFlowLeg | null;
+  dii?: DiligenceFlowLeg | null;
+}
+
+/** A recent news item (`news[]`). */
+export interface DiligenceNews {
+  title: string;
+  sentiment: number | null;
+  time: string | null;
+  url: string | null;
+  source: string | null;
+}
+
+/** The model read — regime + latest experimental signal (`model_read`). */
+export interface DiligenceModelRead {
+  regime: {
+    label: string;
+    confidence: number | null;
+    since: string | null;
+  } | null;
+  signal: {
+    direction: string;
+    confidence: number | null;
+    horizon_hours: number | null;
+    model: string | null;
+    generated_at: string | null;
+    note: string | null;
+  } | null;
+  disclaimer: string | null;
+}
+
+/** Fundamentals block — `key_metrics` is a curated subset, `values` the raw
+ * per-source dump. Both are dynamic records (keys depend on the source). */
+export interface DiligenceFundamentals {
+  as_of_date: string | null;
+  source: string | null;
+  key_metrics: Record<string, number | string | null>;
+  values: Record<string, number | string | null>;
+}
+
+/** The full diligence envelope from `GET /diligence/{symbol}`. */
+export interface DiligenceDossier {
+  symbol: string;
+  found: boolean;
+  as_of: string | null;
+  market: string | null;
+  asset_class: string | null;
+  last_price: number | null;
+  change: number | null;
+  change_pct: number | null;
+  price_as_of: string | null;
+  fundamentals: DiligenceFundamentals | null;
+  filings: DiligenceFiling[];
+  insider: DiligenceInsider[];
+  institutional_flows: DiligenceFlows;
+  onchain: Record<string, number | string | null>;
+  model_read: DiligenceModelRead | null;
+  news: DiligenceNews[];
+  summary: {
+    asset_class: string | null;
+    data_coverage: string | null;
+    annotations: string[];
+    disclaimer: string | null;
+  } | null;
+}
+
+// A scalar cell as it appears in the dynamic metric blobs. Tolerates the
+// occasional null the aggregator emits when a source omits a field.
+const ScalarCell = z.union([z.number(), z.string(), z.null()]);
+
+const DiligenceFlowLegSchema = z
+  .object({
+    buyValue: z.number().nullable().default(null),
+    sellValue: z.number().nullable().default(null),
+    netValue: z.number().nullable().default(null),
+  })
+  .passthrough();
+
+const DiligenceDossierSchema = z
+  .object({
+    symbol: z.string(),
+    found: z.boolean(),
+    as_of: z.string().nullable().default(null),
+    market: z.string().nullable().default(null),
+    asset_class: z.string().nullable().default(null),
+    last_price: z.number().nullable().default(null),
+    change: z.number().nullable().default(null),
+    change_pct: z.number().nullable().default(null),
+    price_as_of: z.string().nullable().default(null),
+    fundamentals: z
+      .object({
+        as_of_date: z.string().nullable().default(null),
+        source: z.string().nullable().default(null),
+        key_metrics: z.record(z.string(), ScalarCell).default({}),
+        values: z.record(z.string(), ScalarCell).default({}),
+      })
+      .passthrough()
+      .nullable()
+      .default(null),
+    filings: z
+      .array(
+        z
+          .object({
+            title: z.string(),
+            url: z.string().nullable().default(null),
+            date: z.string().nullable().default(null),
+            source: z.string().nullable().default(null),
+            type: z.string().nullable().default(null),
+          })
+          .passthrough(),
+      )
+      .default([]),
+    insider: z.array(z.record(z.string(), z.unknown())).default([]),
+    institutional_flows: z
+      .object({
+        as_of_date: z.string().nullable().default(null),
+        unit: z.string().nullable().default(null),
+        fii: DiligenceFlowLegSchema.nullable().default(null),
+        dii: DiligenceFlowLegSchema.nullable().default(null),
+      })
+      .passthrough()
+      .default({}),
+    onchain: z.record(z.string(), ScalarCell).default({}),
+    model_read: z
+      .object({
+        regime: z
+          .object({
+            label: z.string(),
+            confidence: z.number().nullable().default(null),
+            since: z.string().nullable().default(null),
+          })
+          .passthrough()
+          .nullable()
+          .default(null),
+        signal: z
+          .object({
+            direction: z.string(),
+            confidence: z.number().nullable().default(null),
+            horizon_hours: z.number().nullable().default(null),
+            model: z.string().nullable().default(null),
+            generated_at: z.string().nullable().default(null),
+            note: z.string().nullable().default(null),
+          })
+          .passthrough()
+          .nullable()
+          .default(null),
+        disclaimer: z.string().nullable().default(null),
+      })
+      .passthrough()
+      .nullable()
+      .default(null),
+    news: z
+      .array(
+        z
+          .object({
+            title: z.string(),
+            sentiment: z.number().nullable().default(null),
+            time: z.string().nullable().default(null),
+            url: z.string().nullable().default(null),
+            source: z.string().nullable().default(null),
+          })
+          .passthrough(),
+      )
+      .default([]),
+    summary: z
+      .object({
+        asset_class: z.string().nullable().default(null),
+        data_coverage: z.string().nullable().default(null),
+        annotations: z.array(z.string()).default([]),
+        disclaimer: z.string().nullable().default(null),
+      })
+      .passthrough()
+      .nullable()
+      .default(null),
+  })
+  .passthrough();
+
+/**
+ * GET /diligence/{symbol} — the per-asset research dossier.
+ *
+ * `enabled` is gated on a non-empty symbol so the picker can mount before a
+ * selection exists. An unknown symbol returns 404 → `apiFetch` throws an
+ * `ApiError` (status 404) which the page renders as a "no data" empty state
+ * rather than a hard error. Retries are disabled so a 404 doesn't thrash.
+ */
+export function useDiligence(
+  symbol: string | null | undefined,
+): UseQueryResult<DiligenceDossier, ApiError> {
+  const token = useAuthToken();
+  const sym = symbol?.trim() ?? "";
+  return useQuery<DiligenceDossier, ApiError>({
+    queryKey: ["diligence", sym],
+    enabled: sym.length > 0,
+    retry: false,
+    queryFn: () =>
+      apiFetch<DiligenceDossier>(
+        `/diligence/${encodeURIComponent(sym)}`,
+        DiligenceDossierSchema,
+        { token },
+      ),
+    staleTime: 5 * 60_000,
+  });
+}
+
+// -----------------------------------------------------------------------------
 
 /** Health check ping for network status indicator. */
 export async function pingBackend(): Promise<boolean> {

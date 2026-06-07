@@ -22,6 +22,34 @@ import { cn } from "@/lib/utils";
 import type { ChatTurn } from "@/lib/sse";
 
 /**
+ * Window event the global ChatWidget listens for so ANY surface can pop the
+ * agent open (optionally with a message prefilled). Reuses the same loosely-
+ * coupled window-event pattern as `useAgentChat`'s ACTIVE_CHANGED_EVENT — no
+ * prop drilling or shared store needed. The detail carries an optional
+ * `prefill`; when present the panel auto-sends it once on open.
+ */
+export const OPEN_AGENT_CHAT_EVENT = "pfip:chat:open";
+
+export interface OpenAgentChatDetail {
+  /** If set, the panel sends this message automatically when it opens. */
+  prefill?: string;
+}
+
+/**
+ * Imperatively open the floating agent chat from anywhere (e.g. an
+ * "Ask the agent for a full report" button). Optionally prefill + send a
+ * message. No-op during SSR.
+ */
+export function openAgentChat(prefill?: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent<OpenAgentChatDetail>(OPEN_AGENT_CHAT_EVENT, {
+      detail: prefill ? { prefill } : {},
+    }),
+  );
+}
+
+/**
  * Floating "Ask the agent" widget mounted app-wide (except /login, gated by
  * AppShell). It deliberately reuses the *same* `useAgentChat` hook + endpoint as
  * the full `/chat` page, which means it talks to the same agent over the same
@@ -38,12 +66,28 @@ import type { ChatTurn } from "@/lib/sse";
  */
 export function ChatWidget() {
   const [open, setOpen] = React.useState(false);
+  // A pending prefill captured from an `openAgentChat(...)` call; handed to the
+  // panel which sends it once on mount, then clears it.
+  const [prefill, setPrefill] = React.useState<string | undefined>(undefined);
   const fabRef = React.useRef<HTMLButtonElement>(null);
 
   const close = React.useCallback(() => {
     setOpen(false);
+    setPrefill(undefined);
     // Return focus to the trigger for keyboard users.
     fabRef.current?.focus();
+  }, []);
+
+  // Listen for imperative open requests from anywhere in the app.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onOpen = (e: Event) => {
+      const detail = (e as CustomEvent<OpenAgentChatDetail>).detail;
+      setPrefill(detail?.prefill);
+      setOpen(true);
+    };
+    window.addEventListener(OPEN_AGENT_CHAT_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_AGENT_CHAT_EVENT, onOpen);
   }, []);
 
   return (
@@ -67,12 +111,18 @@ export function ChatWidget() {
         </button>
       ) : null}
 
-      {open ? <ChatPanel onClose={close} /> : null}
+      {open ? <ChatPanel onClose={close} prefill={prefill} /> : null}
     </>
   );
 }
 
-function ChatPanel({ onClose }: { onClose: () => void }) {
+function ChatPanel({
+  onClose,
+  prefill,
+}: {
+  onClose: () => void;
+  prefill?: string;
+}) {
   const token = useAuthToken();
   const endpoint = `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1"}/agent/chat`;
   const { messages, streaming, send, cancel, error } = useAgentChat({
@@ -89,6 +139,17 @@ function ChatPanel({ onClose }: { onClose: () => void }) {
   React.useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // If opened with a prefill (e.g. from the Diligence "Ask the agent" button),
+  // send it exactly once. Guarded by a ref so re-renders / token changes don't
+  // resend. We send straight through rather than seeding the draft so the user
+  // gets an immediate answer.
+  const prefillSentRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!prefill || prefillSentRef.current) return;
+    prefillSentRef.current = true;
+    send(prefill);
+  }, [prefill, send]);
 
   // Esc closes, click-outside closes, and Tab is trapped within the panel.
   React.useEffect(() => {
