@@ -35,6 +35,7 @@ import {
   WatchlistItemSchema,
   type CalibrationReport,
   type Holding,
+  type HoldingCategory,
   type JournalEntry,
   type MorningBrief,
   type NewsItem,
@@ -392,6 +393,155 @@ export function useHoldings(): UseQueryResult<Holding[]> {
   });
 }
 
+/**
+ * Manual add-holding input. Mirrors the backend `Holding` contract
+ * (contracts.py) — the subset a human enters by hand. `category` is the
+ * HoldingCategory enum; `acquired_at` is an ISO-8601 timestamp. `symbol`/`isin`
+ * are optional so cash / PPF / FD positions (no ticker) can still be entered.
+ * The backend validates: qty > 0, cost_basis_inr ≥ 0, fx_rate required when
+ * cost_basis_ccy ≠ INR, and is_self_custody only for crypto categories.
+ */
+export interface AddHoldingInput {
+  category: HoldingCategory;
+  symbol?: string | null;
+  isin?: string | null;
+  broker?: string | null;
+  acquired_at: string;
+  qty: number;
+  cost_basis_inr: number;
+  cost_basis_ccy?: string;
+  fx_rate?: number | null;
+  is_self_custody?: boolean;
+  notes?: string | null;
+}
+
+export function useAddHolding(): UseMutationResult<
+  Holding,
+  unknown,
+  AddHoldingInput
+> {
+  const token = useAuthToken();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars) => {
+      // Build the strict `Holding` body the backend expects (extra=forbid).
+      // Omit nullable/optional keys when blank so we never send empty strings
+      // for symbol/isin/broker/notes. `cost_basis_ccy` defaults to INR.
+      const ccy = (vars.cost_basis_ccy ?? "INR").toUpperCase();
+      const body: Record<string, unknown> = {
+        category: vars.category,
+        acquired_at: vars.acquired_at,
+        qty: vars.qty,
+        cost_basis_inr: vars.cost_basis_inr,
+        cost_basis_ccy: ccy,
+        is_self_custody: vars.is_self_custody ?? false,
+      };
+      if (vars.symbol?.trim()) body.symbol = vars.symbol.trim();
+      if (vars.isin?.trim()) body.isin = vars.isin.trim();
+      if (vars.broker?.trim()) body.broker = vars.broker.trim();
+      if (vars.notes?.trim()) body.notes = vars.notes.trim();
+      if (vars.fx_rate != null) body.fx_rate = vars.fx_rate;
+      return apiFetch<Holding>(`/portfolio/holdings`, HoldingSchema, {
+        method: "POST",
+        body,
+        token,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["holdings"] });
+      qc.invalidateQueries({ queryKey: ["portfolio"] });
+    },
+  });
+}
+
+/**
+ * Portfolio CSV import → holdings. Backend: `POST /portfolio/import` (multipart
+ * `file`, optional `broker`, `dry_run` default true). With `dry_run=true` the
+ * response is parse-only (no writes); with `dry_run=false` the rows are
+ * persisted to the ledger AND rolled up into holdings in one call. The response
+ * is a superset of the parser summary — see pfip/api/portfolio.py::import_csv.
+ */
+export interface PortfolioImportRow {
+  symbol: string | null;
+  time: string | null;
+  kind: string | null;
+  qty: number | null;
+  amount_inr: number | null;
+  cost_basis_ccy: string | null;
+}
+
+export interface PortfolioImportResult {
+  broker: string | null;
+  schema_version: string | null;
+  imported: number;
+  rejected: number;
+  rows: PortfolioImportRow[];
+  errors: string[];
+  persisted: number;
+  dry_run: boolean;
+  holdings_rebuilt: number;
+  holdings: Holding[];
+  disclaimer: string | null;
+}
+
+// Tolerant of the parser's row shape varying slightly across adapters: every
+// row field is coerced/nullable so a preview never throws on an odd column.
+const PortfolioImportRowSchema = z
+  .object({
+    symbol: z.string().nullable().default(null),
+    time: z.string().nullable().default(null),
+    kind: z.string().nullable().default(null),
+    qty: z.coerce.number().nullable().default(null),
+    amount_inr: z.coerce.number().nullable().default(null),
+    cost_basis_ccy: z.string().nullable().default(null),
+  })
+  .passthrough();
+
+const PortfolioImportResultSchema = z
+  .object({
+    broker: z.string().nullable().default(null),
+    schema_version: z.string().nullable().default(null),
+    imported: z.coerce.number().int().default(0),
+    rejected: z.coerce.number().int().default(0),
+    rows: z.array(PortfolioImportRowSchema).default([]),
+    errors: z.array(z.string()).default([]),
+    persisted: z.coerce.number().int().default(0),
+    dry_run: z.boolean().default(true),
+    holdings_rebuilt: z.coerce.number().int().default(0),
+    holdings: z.array(HoldingSchema).default([]),
+    disclaimer: z.string().nullable().default(null),
+  })
+  .passthrough();
+
+export function usePortfolioImport(): UseMutationResult<
+  PortfolioImportResult,
+  unknown,
+  { file: File; broker?: string | null; dry_run: boolean }
+> {
+  const token = useAuthToken();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, broker, dry_run }) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      if (broker?.trim()) fd.append("broker", broker.trim());
+      fd.append("dry_run", String(dry_run));
+      return apiFetch<PortfolioImportResult>(
+        `/portfolio/import`,
+        PortfolioImportResultSchema,
+        { method: "POST", body: fd, token },
+      );
+    },
+    onSuccess: (res) => {
+      // Only invalidate when the import actually persisted (dry_run=false).
+      if (!res.dry_run) {
+        qc.invalidateQueries({ queryKey: ["holdings"] });
+        qc.invalidateQueries({ queryKey: ["portfolio"] });
+      }
+    },
+  });
+}
+
 /** Response from `POST /portfolio/holdings/{id}/close`. */
 export interface ClosePositionResult {
   holding: Holding;
@@ -546,6 +696,76 @@ export function useMorningBrief(date?: string): UseQueryResult<MorningBrief> {
       });
     },
     staleTime: 10 * 60_000,
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Agent digests — weekly review + arXiv digest. Both are JSON envelopes (NOT
+// plaintext like morning-brief): `{week, markdown, used_llm, ...counts}`.
+// Backend: pfip/api/agent.py.
+// -----------------------------------------------------------------------------
+
+/** `GET /agent/weekly-review` — built (not persisted) on request. */
+export interface WeeklyReview {
+  week: string;
+  markdown: string;
+  used_llm: boolean;
+  closed_count: number;
+  signal_count: number;
+}
+
+const WeeklyReviewSchema = z.object({
+  week: z.string(),
+  markdown: z.string(),
+  used_llm: z.boolean().default(false),
+  closed_count: z.coerce.number().int().default(0),
+  signal_count: z.coerce.number().int().default(0),
+});
+
+export function useWeeklyReview(week?: string): UseQueryResult<WeeklyReview> {
+  const token = useAuthToken();
+  return useQuery<WeeklyReview>({
+    queryKey: ["agent", "weekly-review", week ?? "current"],
+    queryFn: () => {
+      const qs = week ? `?week=${encodeURIComponent(week)}` : "";
+      return apiFetch<WeeklyReview>(
+        `/agent/weekly-review${qs}`,
+        WeeklyReviewSchema,
+        { token },
+      );
+    },
+    staleTime: 30 * 60_000,
+  });
+}
+
+/** `GET /agent/arxiv-digest` — weekly research-paper digest. */
+export interface ArxivDigest {
+  week: string;
+  markdown: string;
+  used_llm: boolean;
+  papers_count: number;
+}
+
+const ArxivDigestSchema = z.object({
+  week: z.string(),
+  markdown: z.string(),
+  used_llm: z.boolean().default(false),
+  papers_count: z.coerce.number().int().default(0),
+});
+
+export function useArxivDigest(week?: string): UseQueryResult<ArxivDigest> {
+  const token = useAuthToken();
+  return useQuery<ArxivDigest>({
+    queryKey: ["agent", "arxiv-digest", week ?? "current"],
+    queryFn: () => {
+      const qs = week ? `?week=${encodeURIComponent(week)}` : "";
+      return apiFetch<ArxivDigest>(
+        `/agent/arxiv-digest${qs}`,
+        ArxivDigestSchema,
+        { token },
+      );
+    },
+    staleTime: 30 * 60_000,
   });
 }
 
@@ -2077,6 +2297,129 @@ export function useDiligence(
         { token },
       ),
     staleTime: 5 * 60_000,
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Self-custody wallets — manage tracked on-chain addresses (advisory tracking,
+// read-only: PFIP never holds keys). Backend: pfip/api/self_custody.py.
+//   GET    /self-custody/wallets            → [{id, chain, address, label, added_at}]
+//   POST   /self-custody/wallets            → 201 (400 invalid_address, 409 dup)
+//   DELETE /self-custody/wallets/{id}
+//   GET    /self-custody/wallets/balances   → wallet + {balance, balance_raw, unit, as_of, synced}
+// -----------------------------------------------------------------------------
+
+export type WalletChain = "btc" | "eth" | "sol";
+
+/** A tracked self-custody wallet (`GET /self-custody/wallets`). */
+export interface Wallet {
+  id: string;
+  chain: string;
+  address: string;
+  label: string | null;
+  added_at: string;
+}
+
+/** A wallet plus its latest synced balance (`GET /self-custody/wallets/balances`). */
+export interface WalletBalance extends Wallet {
+  balance_raw: number | null; // value as stored (sat / ETH / lamports)
+  balance: number | null; // whole-coin amount (BTC / ETH / SOL)
+  unit: string;
+  as_of: string | null; // ISO date of the latest snapshot
+  synced: boolean;
+}
+
+const WalletSchema = z.object({
+  id: z.string().uuid(),
+  chain: z.string(),
+  address: z.string(),
+  label: z.string().nullable().default(null),
+  added_at: z.string(),
+});
+
+const WalletBalanceSchema = WalletSchema.extend({
+  balance_raw: z.coerce.number().nullable().default(null),
+  balance: z.coerce.number().nullable().default(null),
+  unit: z.string().default(""),
+  as_of: z.string().nullable().default(null),
+  synced: z.boolean().default(false),
+});
+
+export function useSelfCustodyWallets(): UseQueryResult<Wallet[]> {
+  const token = useAuthToken();
+  return useQuery<Wallet[]>({
+    queryKey: ["self-custody", "wallets"],
+    queryFn: () =>
+      apiFetch<Wallet[]>(`/self-custody/wallets`, z.array(WalletSchema), {
+        token,
+      }),
+    staleTime: 60_000,
+  });
+}
+
+export function useWalletBalances(): UseQueryResult<WalletBalance[]> {
+  const token = useAuthToken();
+  return useQuery<WalletBalance[]>({
+    queryKey: ["self-custody", "balances"],
+    queryFn: () =>
+      apiFetch<WalletBalance[]>(
+        `/self-custody/wallets/balances`,
+        z.array(WalletBalanceSchema),
+        { token },
+      ),
+    staleTime: 60_000,
+  });
+}
+
+export function useAddWallet(): UseMutationResult<
+  Wallet,
+  ApiError,
+  { chain: WalletChain; address: string; label?: string | null }
+> {
+  const token = useAuthToken();
+  const qc = useQueryClient();
+  return useMutation<
+    Wallet,
+    ApiError,
+    { chain: WalletChain; address: string; label?: string | null }
+  >({
+    mutationFn: ({ chain, address, label }) => {
+      const body: Record<string, unknown> = {
+        chain,
+        address: address.trim(),
+      };
+      if (label?.trim()) body.label = label.trim();
+      return apiFetch<Wallet>(`/self-custody/wallets`, WalletSchema, {
+        method: "POST",
+        body,
+        token,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["self-custody"] });
+    },
+  });
+}
+
+export function useDeleteWallet(): UseMutationResult<
+  null,
+  unknown,
+  { id: string }
+> {
+  const token = useAuthToken();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }) =>
+      // Backend returns `{deleted: <id>}` (200), not 204 — accept any JSON
+      // object and normalise to null since the caller doesn't read the body.
+      apiFetch<null>(
+        `/self-custody/wallets/${id}`,
+        z.object({}).passthrough().transform(() => null),
+        { method: "DELETE", token },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["self-custody"] });
+    },
   });
 }
 

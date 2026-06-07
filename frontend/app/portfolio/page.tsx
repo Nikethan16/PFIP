@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Download, MessageSquareText, Banknote, TrendingUp, ShieldAlert } from "lucide-react";
+import { Download, MessageSquareText, Banknote, TrendingUp, ShieldAlert, Plus } from "lucide-react";
 
 import { HoldingsTable, type HoldingMetrics } from "@/components/portfolio/holdings-table";
 import { DeepDivePanel } from "@/components/portfolio/deep-dive-panel";
@@ -10,6 +10,8 @@ import { CorrelationMatrix } from "@/components/portfolio/correlation-matrix";
 import { VarPanel } from "@/components/portfolio/var-panel";
 import { MacroShockCard } from "@/components/portfolio/macro-shock-card";
 import { MarkingBadge } from "@/components/portfolio/marking-badge";
+import { AddHoldingDialog } from "@/components/portfolio/add-holding-dialog";
+import { PortfolioImportCard } from "@/components/portfolio/portfolio-import-card";
 import { PostMortemDialog } from "@/components/journal/post-mortem-dialog";
 import { Kpi } from "@/components/shared/kpi";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -34,6 +36,9 @@ export default function PortfolioPage() {
   const { data: risk } = useVarPanel();
   const { data: marking } = useMarking();
   const closePosition = useClosePosition();
+
+  // Add-holding dialog visibility.
+  const [addOpen, setAddOpen] = React.useState(false);
 
   // Selected holding id → drives the deep-dive panel + row stripe.
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
@@ -191,6 +196,14 @@ export default function PortfolioPage() {
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={() => setAddOpen(true)}
+            className="inline-flex items-center gap-2 border border-border px-4 py-2 font-label text-xs uppercase tracking-wider text-foreground transition-colors hover:bg-accent"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add holding
+          </button>
+          <button
+            type="button"
             onClick={handleExportCsv}
             className="inline-flex items-center gap-2 border border-border px-4 py-2 font-label text-xs uppercase tracking-wider text-foreground transition-colors hover:bg-accent"
           >
@@ -274,8 +287,8 @@ export default function PortfolioPage() {
         <section className="border border-border/60 bg-card p-6">
           <EmptyState
             title="Portfolio empty"
-            description="Import broker CSVs (Zerodha / INDmoney / WazirX / CoinDCX) on the Tax page to start tracking mark-to-market, P&L and risk."
-            action={{ label: "Go to tax imports", href: "/tax" }}
+            description="Add a holding by hand (equity, PPF, FD, cash, crypto…) or import a broker CSV below to start tracking mark-to-market, P&L and risk."
+            action={{ label: "Add a holding", onClick: () => setAddOpen(true) }}
           />
         </section>
       ) : (
@@ -326,6 +339,12 @@ export default function PortfolioPage() {
           <CorrelationMatrix />
         </div>
       </section>
+
+      {/* Broker-CSV → holdings import (preview, then confirm-rebuild). */}
+      <PortfolioImportCard />
+
+      {/* Manual add-holding dialog (header + empty-state CTA). */}
+      <AddHoldingDialog open={addOpen} onOpenChange={setAddOpen} />
 
       {/*
         Close-position post-mortem. Closing a holding creates a linked

@@ -28,6 +28,7 @@ import { FreshnessBadge } from "@/components/shared/freshness-badge";
 import { ChangesTodayCard } from "@/components/dashboard/changes-today-card";
 import { PriceChartCard } from "@/components/dashboard/price-chart-card";
 import { RegimeStatePanel } from "@/components/dashboard/regime-state-panel";
+import { DigestCards } from "@/components/dashboard/digest-cards";
 import {
   useAssetNews,
   useAssetRegime,
@@ -89,7 +90,10 @@ export default function DashboardPage() {
         <RiskSnapshotCard />
       </div>
 
-      {/* 5 — News feed grid */}
+      {/* 5 — Agent digests: weekly review + arXiv research digest */}
+      <DigestCards />
+
+      {/* 6 — News feed grid */}
       <NewsRow />
     </div>
   );

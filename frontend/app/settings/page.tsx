@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { SourceHealthPanel } from "@/components/settings/source-health-panel";
+import { SelfCustodyPanel } from "@/components/settings/self-custody-panel";
 import { toast } from "@/components/ui/toast";
 import {
   useUpdateUserSettings,
@@ -207,6 +208,14 @@ export default function SettingsPage() {
             onChange={(v) => patch("telegram_alerts_enabled", v)}
           />
         </div>
+      </Section>
+
+      <Section
+        eyebrow="Self-custody wallets"
+        title="Tracked on-chain addresses"
+        description="Add BTC / ETH / SOL addresses to track their balances alongside your portfolio. Advisory tracking only — PFIP never holds keys or moves funds."
+      >
+        <SelfCustodyPanel />
       </Section>
 
       <Section

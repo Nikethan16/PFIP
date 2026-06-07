@@ -460,7 +460,7 @@ function AddDialog({
               <option value="SOL-USD" />
               <option value="SPY" />
               <option value="QQQ" />
-              <option value="NIFTY50" />
+              <option value="NIFTYBEES.NS" />
               <option value="RELIANCE.NS" />
               <option value="USDINR" />
               <option value="EURUSD" />
