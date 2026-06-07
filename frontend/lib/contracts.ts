@@ -22,6 +22,7 @@ export const MARKETS = [
   "VTI",
   "NIFTY50",
   "NIFTY500",
+  "NIFTYBEES.NS",
   "SENSEX",
   "USDINR",
   "EURUSD",

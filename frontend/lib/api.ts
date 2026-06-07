@@ -1578,6 +1578,260 @@ export function useSourceHealth(): UseQueryResult<SourceHealthPayload> {
 }
 
 // -----------------------------------------------------------------------------
+// Backtest — walk-forward + CPCV runs (read-only; produced by a Prefect flow).
+// Backend: pfip/api/backtest.py. The list endpoint hoists the walk-forward
+// headline numbers to the top level; the detail endpoint additionally returns
+// the full `metrics` + `params` JSONB blobs untouched.
+// -----------------------------------------------------------------------------
+
+/** One row from `GET /backtest/runs` — flattened headline metrics. */
+export interface BacktestRunSummary {
+  id: string;
+  market: string;
+  strategy: string;
+  model_name: string | null;
+  model_version: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  lookahead_ok: boolean;
+  created_at: string | null;
+  // Headline walk-forward metrics — null when the run produced no trades.
+  sharpe: number | null;
+  sortino: number | null;
+  max_drawdown: number | null;
+  calmar: number | null;
+  hit_rate: number | null;
+  cagr: number | null;
+  total_return: number | null;
+  n_trades: number | null;
+  n_folds: number | null;
+  cpcv_mean_sharpe: number | null;
+  mc_sharpe_5th: number | null;
+}
+
+const BacktestRunSummarySchema = z.object({
+  id: z.string(),
+  market: z.string(),
+  strategy: z.string(),
+  model_name: z.string().nullable(),
+  model_version: z.string().nullable(),
+  start_date: z.string().nullable(),
+  end_date: z.string().nullable(),
+  lookahead_ok: z.boolean(),
+  created_at: z.string().nullable(),
+  sharpe: z.number().nullable(),
+  sortino: z.number().nullable(),
+  max_drawdown: z.number().nullable(),
+  calmar: z.number().nullable(),
+  hit_rate: z.number().nullable(),
+  cagr: z.number().nullable(),
+  total_return: z.number().nullable(),
+  n_trades: z.number().nullable(),
+  n_folds: z.number().nullable(),
+  cpcv_mean_sharpe: z.number().nullable(),
+  mc_sharpe_5th: z.number().nullable(),
+});
+
+const BacktestRunsPayloadSchema = z.object({
+  runs: z.array(BacktestRunSummarySchema),
+  count: z.number().int(),
+});
+
+/** One walk-forward fold under `metrics.walkforward.fold_metrics`. */
+export interface BacktestFoldMetric {
+  fold: number;
+  sharpe: number | null;
+  max_drawdown: number | null;
+  hit_rate: number | null;
+  avg_return: number | null;
+  n_trades: number | null;
+  start_idx?: number | null;
+  end_idx?: number | null;
+}
+
+const BacktestFoldMetricSchema = z
+  .object({
+    fold: z.number(),
+    sharpe: z.number().nullable().default(null),
+    max_drawdown: z.number().nullable().default(null),
+    hit_rate: z.number().nullable().default(null),
+    avg_return: z.number().nullable().default(null),
+    n_trades: z.number().nullable().default(null),
+    start_idx: z.number().nullable().optional(),
+    end_idx: z.number().nullable().optional(),
+  })
+  .passthrough();
+
+/** A single strategy/benchmark column under `metrics.benchmarks`. */
+export interface BacktestBenchmarkLeg {
+  sharpe: number | null;
+  sortino: number | null;
+  calmar: number | null;
+  max_drawdown: number | null;
+}
+
+const BacktestBenchmarkLegSchema = z
+  .object({
+    sharpe: z.number().nullable().default(null),
+    sortino: z.number().nullable().default(null),
+    calmar: z.number().nullable().default(null),
+    max_drawdown: z.number().nullable().default(null),
+  })
+  .passthrough();
+
+/** Full detail from `GET /backtest/runs/{id}` — summary + metrics/params blobs. */
+export interface BacktestRunDetail extends BacktestRunSummary {
+  metrics: {
+    walkforward?: {
+      fold_metrics?: BacktestFoldMetric[];
+      cpcv?: Record<string, unknown> | null;
+      [k: string]: unknown;
+    } | null;
+    // `benchmarks` keys are dynamic (buy_hold, strategy, + each strategy name).
+    benchmarks?: Record<string, BacktestBenchmarkLeg> | null;
+    monte_carlo?: Record<string, number> | null;
+    shuffle_test?: {
+      ok?: boolean;
+      n_shuffles?: number;
+      original_sharpe?: number;
+      shuffled_max_sharpe?: number;
+      shuffled_mean_sharpe?: number;
+      [k: string]: unknown;
+    } | null;
+    [k: string]: unknown;
+  };
+  params: Record<string, unknown>;
+}
+
+const BacktestRunDetailSchema = BacktestRunSummarySchema.extend({
+  metrics: z
+    .object({
+      walkforward: z
+        .object({
+          fold_metrics: z.array(BacktestFoldMetricSchema).default([]),
+          cpcv: z.record(z.string(), z.unknown()).nullable().optional(),
+        })
+        .passthrough()
+        .nullable()
+        .optional(),
+      benchmarks: z
+        .record(z.string(), BacktestBenchmarkLegSchema)
+        .nullable()
+        .optional(),
+      monte_carlo: z.record(z.string(), z.number()).nullable().optional(),
+      shuffle_test: z
+        .object({
+          ok: z.boolean().optional(),
+          n_shuffles: z.number().optional(),
+          original_sharpe: z.number().optional(),
+          shuffled_max_sharpe: z.number().optional(),
+          shuffled_mean_sharpe: z.number().optional(),
+        })
+        .passthrough()
+        .nullable()
+        .optional(),
+    })
+    .passthrough(),
+  params: z.record(z.string(), z.unknown()).default({}),
+});
+
+/** GET /backtest/runs — recent walk-forward runs, newest first. */
+export function useBacktestRuns(opts: {
+  market?: string;
+  strategy?: string;
+} = {}): UseQueryResult<BacktestRunSummary[]> {
+  const token = useAuthToken();
+  return useQuery<BacktestRunSummary[]>({
+    queryKey: ["backtest", "runs", opts],
+    queryFn: async () => {
+      const qs = new URLSearchParams();
+      if (opts.market) qs.set("market", opts.market);
+      if (opts.strategy) qs.set("strategy", opts.strategy);
+      const q = qs.toString();
+      const payload = await apiFetch<{ runs: BacktestRunSummary[]; count: number }>(
+        `/backtest/runs${q ? `?${q}` : ""}`,
+        BacktestRunsPayloadSchema,
+        { token },
+      );
+      return payload.runs;
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** GET /backtest/runs/{id} — one run's full metrics + params. */
+export function useBacktestRun(
+  id: string | null,
+): UseQueryResult<BacktestRunDetail> {
+  const token = useAuthToken();
+  return useQuery<BacktestRunDetail>({
+    queryKey: ["backtest", "run", id],
+    enabled: id != null,
+    queryFn: () =>
+      apiFetch<BacktestRunDetail>(
+        `/backtest/runs/${id}`,
+        BacktestRunDetailSchema,
+        { token },
+      ),
+    staleTime: 5 * 60_000,
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Shadow (paper) portfolio — model-driven mirror, measured WITHOUT real money.
+// Backend: pfip/api/shadow.py. `/shadow/holdings` returns the canonical
+// `Holding` shape (same as /portfolio/holdings); `/shadow/vs-actual` diffs the
+// shadow vs real holdings by symbol set + estimated value.
+// -----------------------------------------------------------------------------
+
+export function useShadowHoldings(): UseQueryResult<Holding[]> {
+  const token = useAuthToken();
+  return useQuery<Holding[]>({
+    queryKey: ["shadow", "holdings"],
+    queryFn: () =>
+      apiFetch<Holding[]>(`/shadow/holdings`, z.array(HoldingSchema), {
+        token,
+      }),
+    staleTime: 60_000,
+  });
+}
+
+/** Response from `GET /shadow/vs-actual`. */
+export interface ShadowVsActual {
+  actual_value_inr: number;
+  shadow_value_inr: number;
+  diff_inr: number;
+  only_in_shadow: string[];
+  only_in_actual: string[];
+  in_both: string[];
+  n_actual_positions: number;
+  n_shadow_positions: number;
+}
+
+const ShadowVsActualSchema = z.object({
+  actual_value_inr: z.coerce.number(),
+  shadow_value_inr: z.coerce.number(),
+  diff_inr: z.coerce.number(),
+  only_in_shadow: z.array(z.string()).default([]),
+  only_in_actual: z.array(z.string()).default([]),
+  in_both: z.array(z.string()).default([]),
+  n_actual_positions: z.number().int(),
+  n_shadow_positions: z.number().int(),
+});
+
+export function useShadowVsActual(): UseQueryResult<ShadowVsActual> {
+  const token = useAuthToken();
+  return useQuery<ShadowVsActual>({
+    queryKey: ["shadow", "vs-actual"],
+    queryFn: () =>
+      apiFetch<ShadowVsActual>(`/shadow/vs-actual`, ShadowVsActualSchema, {
+        token,
+      }),
+    staleTime: 60_000,
+  });
+}
+
+// -----------------------------------------------------------------------------
 
 /** Health check ping for network status indicator. */
 export async function pingBackend(): Promise<boolean> {

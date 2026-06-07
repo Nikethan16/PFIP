@@ -44,7 +44,7 @@ const TRACKED_MARKETS = [
   { symbol: "BTC-USD", label: "Bitcoin", icon: Bitcoin },
   { symbol: "ETH-USD", label: "Ethereum", icon: Bitcoin },
   { symbol: "SPY", label: "S&P 500", icon: PieChart },
-  { symbol: "NIFTY50", label: "Nifty 50", icon: PieChart },
+  { symbol: "NIFTYBEES.NS", label: "Nifty 50 ETF", icon: PieChart },
 ];
 
 export default function DashboardPage() {

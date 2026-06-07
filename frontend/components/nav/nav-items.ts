@@ -5,7 +5,9 @@ import {
   Briefcase,
   Calculator,
   Cog,
+  Copy,
   Eye,
+  FlaskConical,
   Heart,
   Home,
   LayoutDashboard,
@@ -59,6 +61,7 @@ export const NAV_ITEMS: NavItem[] = [
 
   // Portfolio
   { label: "Holdings", href: "/portfolio", icon: Briefcase, mobile: true, group: "trading", shortcut: "G then P" },
+  { label: "Shadow", href: "/shadow", icon: Copy, group: "trading" },
 
   // Tax
   { label: "Tax", href: "/tax", icon: Calculator, mobile: true, group: "tax", shortcut: "G then T" },
@@ -68,6 +71,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Journal", href: "/journal", icon: BookOpen, mobile: true, group: "tools", shortcut: "G then J" },
   { label: "Chat", href: "/chat", icon: MessageSquare, mobile: true, group: "tools", shortcut: "G then C" },
   { label: "Calibration", href: "/calibration", icon: LineChart, group: "tools" },
+  { label: "Backtest", href: "/backtest", icon: FlaskConical, group: "tools" },
 
   // Operations
   { label: "Source health", href: "/ops/sources", icon: Heart, group: "ops" },

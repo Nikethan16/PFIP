@@ -36,6 +36,7 @@ import {
   ChevronDown,
   CircleDollarSign,
   Clock,
+  FlaskConical,
   LandPlot,
   LineChart,
   type LucideIcon,
@@ -140,6 +141,12 @@ export function SignalCard({ signal, journalId, defaultOpen }: SignalCardProps) 
             </div>
           </div>
 
+          {/* Honest framing: ML signals are still calibrating — a high
+              confidence % is model certainty, NOT a proven realised edge. */}
+          <div className="mt-3">
+            <ExperimentalBadge />
+          </div>
+
           <div className="mt-5 space-y-4">
             <div className="flex items-center justify-between">
               <span className="eyebrow">Direction</span>
@@ -233,6 +240,40 @@ export function SignalCard({ signal, journalId, defaultOpen }: SignalCardProps) 
         </div>
       </div>
     </article>
+  );
+}
+
+// --- Experimental badge -----------------------------------------------------
+
+/**
+ * Amber "Experimental" chip surfacing that the ML signal engine is still
+ * CALIBRATING. The `Signal` contract carries no per-signal calibration / data-
+ * depth field, so this is shown for every signal as an honest, blanket caveat:
+ * the confidence % reflects model certainty, NOT realised accuracy. Sahara-
+ * styled (label font, muted amber) with a hover/focus tooltip + native title.
+ */
+const EXPERIMENTAL_TOOLTIP =
+  "Model signals are experimental — not investment advice. Confidence reflects model certainty, not realized accuracy.";
+
+function ExperimentalBadge() {
+  return (
+    <span
+      className="group/exp relative inline-flex cursor-help items-center gap-1 border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-label text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700 dark:text-amber-300"
+      tabIndex={0}
+      role="note"
+      aria-label={EXPERIMENTAL_TOOLTIP}
+      title={EXPERIMENTAL_TOOLTIP}
+    >
+      <FlaskConical className="h-3 w-3" aria-hidden />
+      Experimental
+      {/* Hover/focus tooltip — appears below the chip, Sahara card styling. */}
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-0 top-[calc(100%+6px)] z-30 hidden w-60 border border-border/70 bg-popover p-2.5 text-[11px] font-normal normal-case leading-relaxed tracking-normal text-muted-foreground shadow-md group-hover/exp:block group-focus/exp:block"
+      >
+        {EXPERIMENTAL_TOOLTIP}
+      </span>
+    </span>
   );
 }
 
