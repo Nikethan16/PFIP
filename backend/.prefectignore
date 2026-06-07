@@ -28,6 +28,15 @@ dist/
 mlruns/
 mlartifacts/
 
+# KB book PDFs — already embedded into Qdrant, never read at flow runtime (~59 MB).
+# (Flows that WRITE under data/ — morning_brief, anomaly_log, etc. — mkdir at
+# runtime, so excluding these inputs is safe.)
+data/kb_sources/
+
+# Tests + fixtures (flows never import these)
+tests/
+pytest-cache-files-*/
+
 # Secrets / sessions / logs (never copy into worker temp dirs)
 .env
 *.session
