@@ -128,3 +128,18 @@ The 3 failing CI jobs on main are infra, fixed here:
   - Backfill (`python -m scripts.backfill_history --days 1200`): in progress.
 - This makes the integration-test safety gate (Phase 1) load-bearing: Neon now holds
   real seeded data, so an accidental `pytest` with DATABASE_URL=Neon would have wiped it.
+
+## Phase 3 — Backfill result (completed 23:36 UTC, SUCCESS, ~29 min)
+
+Run 27582259789 green. backfill summary (from job logs):
+- OHLCV: BTC/USD 1921, ETH/USD 1200, SOL/USD 1405, india_jugaad(NSE) 3303 rows;
+  us_tiingo 0 (no TIINGO_API_KEY).
+- FX (fx_rates): fx_frankfurter **timed out >180s → 0 rows seeded**.
+- features: {symbols:0, rows_written:0}; regime: {symbols:0}.
+- signals: skipped (FEATURE_ML_SIGNALS=false) — correct.
+
+**FINDING (pipeline gap):** features/regime computed 0 rows even though ~7.8k OHLCV
+bars landed, because both stages iterate the **watchlist table, which is empty** — the
+backfill seeds OHLCV for a hardcoded universe but never populates `watchlist`, so the
+compute stages have nothing to iterate. FX also failed (frankfurter slow). Documented
+in CLOUD_RUN_REPORT.md; recommended fixes there.
