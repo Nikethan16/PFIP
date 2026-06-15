@@ -4,6 +4,16 @@
 **Location:** `C:\Users\gaura\OneDrive\Desktop\PFIP_app\`
 **State:** Full monorepo with 321 code files; real working implementations (not just placeholders) for every module the plan calls for in v0.5.
 
+> **Update 2026-06-15 — hardening pass.** Genuinely green baseline on real hardware
+> (**backend 649 passed / 6 skipped, frontend 83 passed**). Fixed a data-loss hazard
+> (integration tests would `TRUNCATE` whatever `DATABASE_URL` pointed at — i.e. the
+> production Neon DB); repaired CI (backend jobs use `pip install -r requirements.txt`,
+> not the broken `uv sync`; `compose-smoke` env-file; pyproject deps synced); made news
+> ingest timestamps tz-aware; added `GET /assets/search`. Brought the cloud pipeline live
+> (`alembic upgrade head` succeeded on Neon; Backfill + Daily ingest run — see
+> `CLOUD_RUN_REPORT.md`). `FEATURE_ML_SIGNALS` left off. Full list in `docs/CHANGELOG.md`
+> and `OVERNIGHT_LOG.md`.
+>
 > **Update 2026-06-04 — security & correctness audit.** An audit pass shipped a batch of
 > security/correctness fixes plus two new portfolio features. Highlights below; the full,
 > grouped list is in `docs/CHANGELOG.md`.

@@ -253,3 +253,34 @@ Grep the repo for `TODO(user):` to find every inline input point. Current concen
 ## When everything above is resolved
 
 Delete this file and replace with an updated `docs/ONBOARDING.md` reflecting resolved state.
+
+---
+
+## Update 2026-06-15 — autonomous hardening pass (status of items above + new gaps)
+
+**Resolved since this list was written**
+- §0.1 Next.js bump — `frontend/package.json` is `next@14.2.35` and the lockfile
+  resolves it; `pnpm install` / `tsc` / eslint pass. Done.
+- Cloud pipeline — `alembic upgrade head` succeeded against Neon and the Backfill
+  workflow ran (see `CLOUD_RUN_REPORT.md`). The always-on GitHub-Actions + Neon
+  ingest path is live. `FEATURE_ML_SIGNALS` deliberately left **off**.
+
+**Still requires you (unchanged):** §0.2 real secrets in `.env`, §0.3 `SENTRY_DSN`,
+§0.4 Ollama pin, and all API keys (every data source no-ops without its key, so the
+cloud backfill seeds only the keyless sources — yfinance/jugaad OHLCV, FX, RSS news).
+
+**Known code gaps found in the 2026-06-15 audit (tracked, not blocking):**
+- `backend/pfip/portfolio/precommitment.py` — the paper→live **Sharpe-floor gate is a
+  no-op** ("computed by the Stage 4 calibration module in real runs"). The other
+  precommitment gates (risk breaches, losing-months) ARE enforced; this one isn't.
+  A safety control that silently never fires — implement when the calibration module
+  can populate a rolling-Sharpe series.
+- `backend/pfip/brokers/` — **CSV-import adapters only**; live-trading adapters are a
+  documented TODO. (Advisory-only platform, so this is by design for now.)
+- `backend/pfip/api/shadow.py` `/shadow/vs-actual` — returns symbol-set diff +
+  estimated value only; thinner than the CONTRACTS.md "compared metrics"
+  (no Sharpe/return comparison yet).
+- Direct unit tests missing for the financially load-bearing modules
+  `portfolio/service.py`, `portfolio/risk_manager.py`, `portfolio/allocation.py`
+  (covered only indirectly today).
+- Chat **conversation-history sidebar** is an unwired placeholder (no persisted list).
