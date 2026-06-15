@@ -10,7 +10,7 @@ Requires NEYNAR_API_KEY header ``api_key``. No-ops if missing.
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Iterable
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,9 +55,13 @@ async def fetch_farcaster(
                 continue
             ts = cast.get("timestamp")
             try:
-                t = datetime.fromisoformat(ts.replace("Z", "+00:00")) if ts else datetime.utcnow()
+                t = (
+                    datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    if ts
+                    else datetime.now(tz=timezone.utc)
+                )
             except Exception:
-                t = datetime.utcnow()
+                t = datetime.now(tz=timezone.utc)
             author = (cast.get("author") or {}).get("username")
             url = (
                 f"https://warpcast.com/{author}/{hash_[:10]}" if author else f"farcaster://{hash_}"

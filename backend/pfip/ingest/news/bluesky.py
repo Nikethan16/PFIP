@@ -12,7 +12,7 @@ websockets; the Prefect flow runs the adapter on a periodic cadence so we use
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Iterable
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,10 +84,10 @@ async def fetch_bluesky(keywords: Iterable[str] = DEFAULT_KEYWORDS) -> list[dict
                 t = (
                     datetime.fromisoformat(created.replace("Z", "+00:00"))
                     if created
-                    else datetime.utcnow()
+                    else datetime.now(tz=timezone.utc)
                 )
             except Exception:
-                t = datetime.utcnow()
+                t = datetime.now(tz=timezone.utc)
             if not uri or not text:
                 continue
             web_url = (

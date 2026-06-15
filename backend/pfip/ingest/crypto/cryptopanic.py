@@ -9,7 +9,7 @@ https://cryptopanic.com/developers/api/
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,9 +57,13 @@ async def fetch_cryptopanic_posts(
             continue
         t_str = p.get("published_at") or p.get("created_at")
         try:
-            t = datetime.fromisoformat(t_str.replace("Z", "+00:00")) if t_str else datetime.utcnow()
+            t = (
+                datetime.fromisoformat(t_str.replace("Z", "+00:00"))
+                if t_str
+                else datetime.now(tz=timezone.utc)
+            )
         except Exception:
-            t = datetime.utcnow()
+            t = datetime.now(tz=timezone.utc)
         symbols = p.get("currencies") or []
         symbol = symbols[0].get("code") if symbols else None
         items.append(

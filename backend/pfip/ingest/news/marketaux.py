@@ -6,7 +6,7 @@ https://api.marketaux.com/v1/news/all?api_token=...&countries=us,in&limit=50
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,9 +47,13 @@ async def fetch_marketaux(countries: str = "us,in") -> list[dict[str, Any]]:
             continue
         t_str = art.get("published_at")
         try:
-            t = datetime.fromisoformat(t_str.replace("Z", "+00:00")) if t_str else datetime.utcnow()
+            t = (
+                datetime.fromisoformat(t_str.replace("Z", "+00:00"))
+                if t_str
+                else datetime.now(tz=timezone.utc)
+            )
         except Exception:
-            t = datetime.utcnow()
+            t = datetime.now(tz=timezone.utc)
         entities = art.get("entities") or []
         symbol = entities[0].get("symbol") if entities else None
         out.append(
