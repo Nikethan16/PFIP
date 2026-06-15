@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     app_name: str = "pfip-backend"
     app_env: Literal["dev", "prod", "test"] = "dev"
     app_version: str = "0.1.0"
+    # Headless data jobs (ingest/feature/regime pipeline, alembic) set this true.
+    # They expose no login surface, so they don't require the web-auth secrets —
+    # but real DB credentials are still enforced outside dev (see _validate_secrets).
+    pipeline_mode: bool = Field(default=False, alias="PFIP_PIPELINE_MODE")
 
     # --- Auth ---
     nextauth_secret: str = Field(default="dev-change-me", alias="NEXTAUTH_SECRET")
@@ -131,10 +135,15 @@ class Settings(BaseSettings):
         at startup.
         """
         insecure: list[str] = []
-        if self.nextauth_secret in ("", "dev-change-me"):
-            insecure.append("NEXTAUTH_SECRET is unset or still the dev default")
-        if self.pfip_user_password_hash == "":
-            insecure.append("PFIP_USER_PASSWORD_HASH is empty")
+        # Web-auth secrets only matter when the API/login surface is exposed.
+        # Headless pipeline jobs (PFIP_PIPELINE_MODE=true) never authenticate a
+        # user, so requiring these would block ingest/alembic for no security gain.
+        if not self.pipeline_mode:
+            if self.nextauth_secret in ("", "dev-change-me"):
+                insecure.append("NEXTAUTH_SECRET is unset or still the dev default")
+            if self.pfip_user_password_hash == "":
+                insecure.append("PFIP_USER_PASSWORD_HASH is empty")
+        # DB credentials must always be real outside dev — pipeline jobs included.
         if "pfip:pfip_dev" in self.database_url:
             insecure.append("DATABASE_URL still contains the default pfip:pfip_dev credentials")
 
