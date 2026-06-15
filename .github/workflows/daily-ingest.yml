@@ -73,8 +73,11 @@ jobs:
       BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
       TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
       TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-      # Run outside dev so config.py enforces real secrets (no insecure defaults).
+      # Run outside dev so config.py enforces real DB credentials (no insecure
+      # defaults). PFIP_PIPELINE_MODE skips the web-auth secret check — this is a
+      # headless ingest job with no login surface (DB strictness still applies).
       APP_ENV: prod
+      PFIP_PIPELINE_MODE: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
