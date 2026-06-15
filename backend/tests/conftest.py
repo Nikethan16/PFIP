@@ -41,6 +41,11 @@ class _FakeMappings:
 
 
 class _FakeResult:
+    def all(self):
+        # Column-select queries (e.g. /assets/search) call ``.all()`` directly
+        # on the result rather than via ``.scalars()``.
+        return []
+
     def scalars(self):
         return _FakeScalars()
 

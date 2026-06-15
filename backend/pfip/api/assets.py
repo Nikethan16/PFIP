@@ -13,8 +13,82 @@ from pfip.models.features import FeatureRow
 from pfip.models.news import NewsRow
 from pfip.models.ohlcv import OHLCVRow
 from pfip.models.regime import RegimeRow
+from pfip.models.watchlist import WatchlistRow
 
 router = APIRouter(prefix="/assets", tags=["assets"])
+
+
+def _rank(symbol: str, needle: str) -> int:
+    """Lower is better: exact (0) < prefix (1) < substring (2)."""
+    s = symbol.upper()
+    n = needle.upper()
+    if s == n:
+        return 0
+    if s.startswith(n):
+        return 1
+    return 2
+
+
+@router.get("/search")
+async def search_assets(
+    db: DbSession,
+    _user: CurrentUser,
+    q: str = Query(..., min_length=1, description="Case-insensitive ticker/symbol fragment."),
+    limit: int = Query(20, ge=1, le=100),
+) -> dict:
+    """Search known tickers by symbol fragment.
+
+    Looks across the watchlist (curated symbol+market pairs) and any symbol that
+    already has OHLCV history, so the user can find anything the platform can
+    actually price. Case-insensitive substring match, ranked so exact and prefix
+    matches surface first. Watchlist hits are flagged ``"source": "watchlist"``;
+    price-only hits ``"source": "ohlcv"``. Returns
+    ``{"query": q, "results": [{symbol, market, source}]}``.
+
+    Defined before the ``/{symbol:path}`` routes so ``GET /assets/search`` is
+    never swallowed by the symbol matcher.
+    """
+    needle = q.strip()
+    if not needle:
+        return {"query": q, "results": []}
+    pattern = f"%{needle}%"
+
+    # Watchlist is authoritative for the (symbol, market) pair and the user's
+    # curated names, so it wins on dedupe.
+    wl_rows = (
+        await db.execute(
+            select(WatchlistRow.symbol, WatchlistRow.market)
+            .where(WatchlistRow.symbol.ilike(pattern))
+            .order_by(WatchlistRow.symbol)
+            .limit(limit * 4)
+        )
+    ).all()
+    # Symbols we already have priced — distinct (symbol, market) pairs.
+    ohlcv_rows = (
+        await db.execute(
+            select(OHLCVRow.symbol, OHLCVRow.market)
+            .where(OHLCVRow.symbol.ilike(pattern))
+            .distinct()
+            .limit(limit * 4)
+        )
+    ).all()
+
+    # Dedupe by symbol, watchlist first.
+    by_symbol: dict[str, dict] = {}
+    for r in wl_rows:
+        by_symbol.setdefault(
+            r.symbol, {"symbol": r.symbol, "market": r.market, "source": "watchlist"}
+        )
+    for r in ohlcv_rows:
+        by_symbol.setdefault(
+            r.symbol, {"symbol": r.symbol, "market": r.market, "source": "ohlcv"}
+        )
+
+    results = sorted(
+        by_symbol.values(),
+        key=lambda d: (_rank(d["symbol"], needle), d["symbol"].upper()),
+    )[:limit]
+    return {"query": needle, "results": results}
 
 # Canonical typed feature columns (mirrors FeatureRow); extras live in JSONB.
 _FEATURE_COLS: tuple[str, ...] = (

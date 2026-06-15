@@ -664,6 +664,52 @@ export function useMarking(): UseQueryResult<Marking> {
   });
 }
 
+/**
+ * Ticker search. Backend: `GET /assets/search?q=...`.
+ * Searches the watchlist + already-priced symbols so the user can find anything
+ * the platform can price. Ranked: exact, then prefix, then substring.
+ */
+export interface AssetSearchHit {
+  symbol: string;
+  market: string;
+  source: string;
+}
+
+export interface AssetSearchResult {
+  query: string;
+  results: AssetSearchHit[];
+}
+
+const AssetSearchSchema = z.object({
+  query: z.string(),
+  results: z.array(
+    z.object({
+      symbol: z.string(),
+      market: z.string(),
+      source: z.string(),
+    }),
+  ),
+});
+
+export function useAssetSearch(
+  query: string,
+  limit = 20,
+): UseQueryResult<AssetSearchResult> {
+  const token = useAuthToken();
+  const q = query.trim();
+  return useQuery<AssetSearchResult>({
+    queryKey: ["assets", "search", q, limit],
+    enabled: q.length > 0,
+    queryFn: () =>
+      apiFetch<AssetSearchResult>(
+        `/assets/search?q=${encodeURIComponent(q)}&limit=${limit}`,
+        AssetSearchSchema,
+        { token },
+      ),
+    staleTime: 60_000,
+  });
+}
+
 export function useMorningBrief(date?: string): UseQueryResult<MorningBrief> {
   const token = useAuthToken();
   return useQuery<MorningBrief>({

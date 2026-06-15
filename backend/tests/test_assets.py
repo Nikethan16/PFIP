@@ -44,3 +44,40 @@ def test_regime_unknown_when_empty(client: TestClient, auth_headers: dict[str, s
     body = resp.json()
     assert body["regime"] == "unknown"
     assert body["confidence"] == 0.0
+
+
+def test_search_requires_auth(client: TestClient) -> None:
+    resp = client.get("/api/v1/assets/search?q=BTC")
+    assert resp.status_code == 401
+
+
+def test_search_requires_query(client: TestClient, auth_headers: dict[str, str]) -> None:
+    # ``q`` is required and must be non-empty.
+    resp = client.get("/api/v1/assets/search", headers=auth_headers)
+    assert resp.status_code == 422
+
+
+def test_search_empty_results(client: TestClient, auth_headers: dict[str, str]) -> None:
+    # Fake session returns no rows ⇒ well-formed empty result, not 404/500.
+    resp = client.get("/api/v1/assets/search?q=BTC", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["query"] == "BTC"
+    assert body["results"] == []
+
+
+def test_search_not_shadowed_by_symbol_route(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    # ``/search`` must resolve to the search handler, not ``/{symbol:path}``.
+    resp = client.get("/api/v1/assets/search?q=ETH", headers=auth_headers)
+    assert resp.status_code == 200
+    assert "results" in resp.json()
+
+
+def test_rank_orders_exact_prefix_substring() -> None:
+    from pfip.api.assets import _rank
+
+    assert _rank("BTC", "BTC") == 0
+    assert _rank("BTCUSD", "BTC") == 1
+    assert _rank("XBTC", "BTC") == 2
