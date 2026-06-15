@@ -30,7 +30,6 @@ from pfip.brokers.csv_adapters import (
     zerodha,
 )
 
-
 # Broker ID → adapter module
 ADAPTERS: dict[str, ModuleType] = {
     "zerodha": zerodha,

@@ -18,7 +18,6 @@ from pfip.core.contracts import Driver, Regime, Signal, SignalDirection
 from pfip.models.shadow import ShadowHoldingRow, ShadowPortfolioTxRow
 from pfip.shadow.engine import RiskRules, ShadowPortfolio
 
-
 # ---------------------------------------------------------------------------
 # API smoke tests
 # ---------------------------------------------------------------------------

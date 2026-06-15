@@ -14,7 +14,6 @@ import pytest
 from pfip.agent.privacy import classify_sensitivity, explain
 from pfip.agent.router import Sensitivity
 
-
 # ---------------------------------------------------------------------------
 # True positives (should be SENSITIVE)
 # ---------------------------------------------------------------------------

@@ -82,16 +82,14 @@ async def _persist_run(
     factory = get_sessionmaker()
     async with factory() as session:
         await session.execute(
-            text(
-                """
+            text("""
                 INSERT INTO backtest_runs (
                     market, strategy, start_date, end_date, metrics, params, lookahead_ok
                 ) VALUES (
                     :market, :strategy, :start_date, :end_date,
                     CAST(:metrics AS JSONB), CAST(:params AS JSONB), :lookahead_ok
                 )
-                """
-            ),
+                """),
             {
                 "market": market,
                 "strategy": strategy,

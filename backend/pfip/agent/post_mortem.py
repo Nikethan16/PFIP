@@ -41,13 +41,11 @@ class PostMortemDraft:
 
 async def _holding(db: AsyncSession, hid: UUID) -> dict[str, Any] | None:
     try:
-        stmt = sql_text(
-            """
+        stmt = sql_text("""
             SELECT id, category, symbol, isin, broker, acquired_at, qty,
                    cost_basis_inr, fx_rate, closed_at, exit_price_inr, notes
             FROM holdings WHERE id = :hid LIMIT 1
-            """
-        )
+            """)
         row = (await db.execute(stmt, {"hid": str(hid)})).mappings().first()
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"holding fetch failed: {exc}")
@@ -59,8 +57,7 @@ async def _entry_signal(
     db: AsyncSession, symbol: str, entry_time: datetime
 ) -> dict[str, Any] | None:
     try:
-        stmt = sql_text(
-            """
+        stmt = sql_text("""
             SELECT id, asset, direction, confidence, regime,
                    model_name, model_version, generated_at, drivers, counter_arguments
             FROM signals
@@ -69,8 +66,7 @@ async def _entry_signal(
               AND generated_at > :cutoff
             ORDER BY generated_at DESC
             LIMIT 1
-            """
-        )
+            """)
         cutoff = entry_time - timedelta(hours=48)
         row = (
             (await db.execute(stmt, {"asset": symbol, "t": entry_time, "cutoff": cutoff}))
@@ -87,15 +83,13 @@ async def _calibration_at(
     db: AsyncSession, model_name: str, model_version: str, as_of: datetime
 ) -> dict[str, Any] | None:
     try:
-        stmt = sql_text(
-            """
+        stmt = sql_text("""
             SELECT id, model_name, model_version, as_of, brier_score, ece, reliability
             FROM calibration
             WHERE model_name = :mn AND model_version = :mv AND as_of <= :t
             ORDER BY as_of DESC
             LIMIT 1
-            """
-        )
+            """)
         row = (
             (await db.execute(stmt, {"mn": model_name, "mv": model_version, "t": as_of}))
             .mappings()
@@ -113,16 +107,14 @@ async def _news_around(
     start = around - timedelta(hours=window_hours)
     end = around + timedelta(hours=window_hours)
     try:
-        stmt = sql_text(
-            """
+        stmt = sql_text("""
             SELECT id, time, title, url, source, sentiment
             FROM news
             WHERE (symbol = :sym OR :sym = ANY(SELECT jsonb_array_elements_text(COALESCE(entity_tickers, '[]'::jsonb))))
               AND time BETWEEN :start AND :end
             ORDER BY (COALESCE(ABS(sentiment), 0)) DESC, time DESC
             LIMIT 3
-            """
-        )
+            """)
         rows = [
             dict(r)
             for r in (
@@ -137,15 +129,13 @@ async def _news_around(
 
 async def _journal_row(db: AsyncSession, symbol: str, since: datetime) -> dict[str, Any] | None:
     try:
-        stmt = sql_text(
-            """
+        stmt = sql_text("""
             SELECT id, created_at, symbol, direction, thesis, pre_trade_checklist, notes
             FROM journal
             WHERE symbol = :sym AND created_at >= :since
             ORDER BY created_at DESC
             LIMIT 1
-            """
-        )
+            """)
         row = (
             (await db.execute(stmt, {"sym": symbol, "since": since - timedelta(days=1)}))
             .mappings()

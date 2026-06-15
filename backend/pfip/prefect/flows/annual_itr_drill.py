@@ -24,7 +24,6 @@ from prefect import flow, get_run_logger
 
 from pfip.alerts.dispatcher import AlertKind, AlertSeverity, send_alert
 
-
 _FILED_DIR = Path("data/itr_filed")
 _OUT_DIR = Path("data/itr_calibration")
 _BAND = Decimal("0.02")  # 2%

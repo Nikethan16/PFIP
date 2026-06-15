@@ -35,7 +35,6 @@ from prefect import flow, get_run_logger, task
 from pfip.signals.lgbm_baseline import LGBMBaselineModel, make_label
 from pfip.signals.registry import get_pinned, pin_model, upload_model
 
-
 _REGIMES = ("bull_trend", "sideways", "high_volatility", "bear_trend", "accumulation")
 _HORIZONS = (1, 5, 21)
 

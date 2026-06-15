@@ -44,7 +44,6 @@ from decimal import Decimal
 from enum import Enum
 from typing import Sequence
 
-
 DISCLAIMER = (
     "Estimates only. Loss harvesting interacts with surcharge cliffs, "
     "DTAA credits, and your personal slab. Confirm with a CA before "

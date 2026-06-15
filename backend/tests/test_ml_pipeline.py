@@ -39,7 +39,6 @@ from pfip.features.technicals import compute_features
 from pfip.regime.hmm import HMMRegimeDetector, build_three_state
 from pfip.shadow.metrics import _metrics_from
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

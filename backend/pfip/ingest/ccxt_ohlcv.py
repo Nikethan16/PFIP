@@ -54,13 +54,11 @@ async def _upsert_rows(
     """Insert ccxt rows idempotently. Returns count attempted (conflicts silently skipped)."""
     if not rows:
         return 0
-    stmt = text(
-        """
+    stmt = text("""
         INSERT INTO ohlcv (time, symbol, market, source, timeframe, open, high, low, close, volume)
         VALUES (:time, :symbol, :market, :source, :timeframe, :open, :high, :low, :close, :volume)
         ON CONFLICT (time, symbol, source, timeframe) DO NOTHING
-        """
-    )
+        """)
     for ts_ms, o, h, l, c, v in rows:
         await session.execute(
             stmt,

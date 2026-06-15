@@ -31,7 +31,6 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 
-
 _DEFAULT_CONTAMINATION = 0.005
 _DEFAULT_RANDOM_STATE = 42
 _MIN_ROWS_PER_SYMBOL = 60  # IsolationForest needs enough data to find structure

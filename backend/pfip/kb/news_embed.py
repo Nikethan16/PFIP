@@ -53,16 +53,14 @@ async def _fetch_batch(limit: int) -> list[dict[str, Any]]:
     factory = get_sessionmaker()
     async with factory() as session:
         try:
-            stmt = sql_text(
-                """
+            stmt = sql_text("""
                 SELECT id, time, title, url, source, symbol, sentiment, summary,
                        COALESCE(entity_tickers, '[]'::jsonb) AS entity_tickers
                 FROM news
                 WHERE embedded = false
                 ORDER BY time DESC
                 LIMIT :limit
-                """
-            )
+                """)
             result = await session.execute(stmt, {"limit": limit})
         except Exception as exc:  # noqa: BLE001 — migrations may not be applied in test
             logger.warning(f"news fetch failed: {exc}")

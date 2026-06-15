@@ -32,7 +32,6 @@ from pfip.core.config import get_settings
 from pfip.core.user_prefs import UserPrefs, load_user_prefs
 from pfip.portfolio.risk_manager import RiskManager
 
-
 # ---------------------------------------------------------------------------
 # Fake async session mirroring the conftest pattern, but returning a chosen row
 # ---------------------------------------------------------------------------

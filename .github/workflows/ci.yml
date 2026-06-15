@@ -29,32 +29,34 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          enable-cache: true
-
+      # requirements.txt is the single source of truth (runtime + dev tools) and
+      # is what the cloud-ingest workflows install too. The pyproject's
+      # [project.dependencies] is only a runtime subset, so `uv sync` would miss
+      # the ML/test deps — install the full pinned set with pip instead.
       - name: Install dependencies
         run: |
-          uv sync --all-extras --dev
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       # Ruff + mypy are ADVISORY for this solo project: the codebase predates a
       # strict lint/type config, so they surface style/type debt without blocking.
       # Black (formatting) + Pytest (tests) remain hard gates.
       - name: Ruff (lint, advisory)
-        run: uv run ruff check .
+        run: ruff check .
         continue-on-error: true
 
       - name: Black (format check)
-        run: uv run black --check .
+        run: black --check .
 
       - name: Mypy (type check, advisory)
-        run: uv run mypy pfip
+        run: mypy pfip
         continue-on-error: true
 
       - name: Pytest
-        run: uv run pytest -q
+        run: pytest -q
 
   frontend-lint-test:
     name: Frontend — lint & test
@@ -116,7 +118,10 @@ jobs:
         run: cp .env.example .env
 
       - name: Validate compose file
-        run: docker compose -f infra/docker-compose.yml config > /dev/null
+        # With `-f infra/...`, Compose resolves its project directory to `infra/`
+        # and would look for `infra/.env`; point it at the root `.env` we seeded
+        # so the `${POSTGRES_PASSWORD:?...}` interpolation finds a value.
+        run: docker compose --env-file .env -f infra/docker-compose.yml config > /dev/null
 
   backend-integration:
     name: Backend — real-DB integration tests
@@ -153,19 +158,19 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          enable-cache: true
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies (+ testcontainers)
         run: |
-          uv sync --all-extras --dev
-          uv pip install "testcontainers[postgres]==4.7.2"
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install "testcontainers[postgres]==4.7.2"
 
       - name: Run integration tests (-m integration, advisory)
-        run: uv run pytest -m integration -q -p no:warnings
+        # DATABASE_URL points at the localhost service container (a throwaway), so
+        # the destructive-DB safety gate in tests/integration/_harness.py allows it.
+        run: pytest -m integration -q -p no:warnings
         continue-on-error: true
 
   security-scan:

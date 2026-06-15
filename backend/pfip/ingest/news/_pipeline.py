@@ -78,8 +78,7 @@ async def dedupe_recent(session: AsyncSession, *, hours: int = 24) -> int:
     Keeps the oldest by ``time`` and drops newer duplicates so the canonical
     publish time is preserved.
     """
-    stmt = text(
-        """
+    stmt = text("""
         WITH ranked AS (
             SELECT id, url, time,
                    ROW_NUMBER() OVER (
@@ -91,8 +90,7 @@ async def dedupe_recent(session: AsyncSession, *, hours: int = 24) -> int:
         )
         DELETE FROM news USING ranked
         WHERE news.id = ranked.id AND ranked.rn > 1
-        """
-    )
+        """)
     try:
         r = await session.execute(stmt, {"h": hours})
         await session.commit()
@@ -117,17 +115,13 @@ async def link_entities(session: AsyncSession) -> int:
         return 0
 
     try:
-        unscored = await session.execute(
-            text(
-                """
+        unscored = await session.execute(text("""
                 SELECT id, title, summary
                 FROM news
                 WHERE entity_tickers = '[]'::jsonb OR entity_tickers IS NULL
                 ORDER BY time DESC
                 LIMIT 500
-                """
-            )
-        )
+                """))
         items = unscored.fetchall()
     except Exception as e:  # noqa: BLE001
         log.warning(f"link_entities: scan failed: {type(e).__name__}: {e}")
@@ -190,15 +184,13 @@ async def prune_irrelevant(session: AsyncSession, *, min_impact: float = 60.0) -
     only store news that actually informs signals/regime/risk. Runs AFTER
     link_entities + classify so those signals are populated.
     """
-    stmt = text(
-        """
+    stmt = text("""
         DELETE FROM news
         WHERE symbol IS NULL
           AND (entity_tickers IS NULL OR entity_tickers = '[]'::jsonb)
           AND (impact_score IS NULL OR impact_score < :min_impact)
           AND lower(coalesce(title, '') || ' ' || coalesce(summary, '')) !~ :macro
-        """
-    )
+        """)
     try:
         r = await session.execute(stmt, {"min_impact": min_impact, "macro": _MACRO_REGEX})
         await session.commit()

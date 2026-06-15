@@ -41,7 +41,6 @@ from pfip.agent.llm_client import (
 from pfip.agent.prompts import load as load_prompt
 from pfip.agent.router import Sensitivity, TaskType
 
-
 # ---------------------------------------------------------------------------
 # Data dataclasses
 # ---------------------------------------------------------------------------
@@ -68,15 +67,13 @@ class _PricePoint:
 
 async def _latest_two(db: AsyncSession, symbol: str, timeframe: str = "1d") -> _PricePoint | None:
     try:
-        stmt = sql_text(
-            """
+        stmt = sql_text("""
             SELECT time, close
             FROM ohlcv
             WHERE symbol = :symbol AND timeframe = :tf
             ORDER BY time DESC
             LIMIT 2
-            """
-        )
+            """)
         rows = list((await db.execute(stmt, {"symbol": symbol, "tf": timeframe})).mappings())
     except Exception as exc:  # noqa: BLE001
         logger.debug(f"latest_two({symbol}) failed: {exc}")
@@ -125,8 +122,7 @@ async def _economic_calendar(db: AsyncSession, day: datetime) -> list[dict[str, 
     start = day.replace(hour=0, minute=0, second=0, microsecond=0)
     end = start + timedelta(days=1)
     try:
-        stmt = sql_text(
-            """
+        stmt = sql_text("""
             SELECT id, time, title, url, source, symbol, impact_score
             FROM news
             WHERE category = 'econ_calendar'
@@ -134,8 +130,7 @@ async def _economic_calendar(db: AsyncSession, day: datetime) -> list[dict[str, 
               AND (impact_score IS NULL OR impact_score >= 0.7)
             ORDER BY time ASC
             LIMIT 20
-            """
-        )
+            """)
         rows = list((await db.execute(stmt, {"start": start, "end": end})).mappings())
     except Exception as exc:  # noqa: BLE001
         logger.debug(f"econ_calendar fetch failed: {exc}")
@@ -158,8 +153,7 @@ async def _top_news_per_watchlist(
     out: dict[str, list[dict[str, Any]]] = {}
     for sym in watchlist:
         try:
-            stmt = sql_text(
-                """
+            stmt = sql_text("""
                 SELECT id, time, title, url, source, sentiment, impact_score
                 FROM news
                 WHERE symbol = :sym AND time >= :cutoff
@@ -167,8 +161,7 @@ async def _top_news_per_watchlist(
                          COALESCE(ABS(sentiment), 0) * 0.4) DESC,
                          time DESC
                 LIMIT :limit
-                """
-            )
+                """)
             rows = list(
                 (
                     await db.execute(stmt, {"sym": sym, "cutoff": cutoff, "limit": limit_per})
@@ -184,13 +177,11 @@ async def _top_news_per_watchlist(
 
 async def _regime_per_market(db: AsyncSession) -> list[dict[str, Any]]:
     try:
-        stmt = sql_text(
-            """
+        stmt = sql_text("""
             SELECT DISTINCT ON (symbol) id, symbol, regime, since, confidence
             FROM regime
             ORDER BY symbol, since DESC
-            """
-        )
+            """)
         return [dict(r) for r in (await db.execute(stmt)).mappings()]
     except Exception as exc:  # noqa: BLE001
         logger.debug(f"regime fetch failed: {exc}")
@@ -211,14 +202,12 @@ async def _watchlist_deltas(db: AsyncSession) -> list[dict[str, Any]]:
             continue
         # unusual volume: latest volume vs 20-day avg
         try:
-            vstmt = sql_text(
-                """
+            vstmt = sql_text("""
                 SELECT volume FROM ohlcv
                 WHERE symbol = :sym AND timeframe = '1d'
                 ORDER BY time DESC
                 LIMIT 20
-                """
-            )
+                """)
             vols = [float(r["volume"]) for r in (await db.execute(vstmt, {"sym": sym})).mappings()]
         except Exception:  # noqa: BLE001
             vols = []
@@ -242,14 +231,12 @@ async def _watchlist_deltas(db: AsyncSession) -> list[dict[str, Any]]:
 
 async def _open_position_risk(db: AsyncSession) -> dict[str, Any]:
     try:
-        stmt = sql_text(
-            """
+        stmt = sql_text("""
             SELECT COUNT(*) AS n_open,
                    COALESCE(SUM(cost_basis_inr), 0) AS gross_inr
             FROM holdings
             WHERE closed_at IS NULL
-            """
-        )
+            """)
         row = (await db.execute(stmt)).mappings().first()
     except Exception as exc:  # noqa: BLE001
         logger.debug(f"open_position_risk failed: {exc}")
@@ -260,15 +247,13 @@ async def _open_position_risk(db: AsyncSession) -> dict[str, Any]:
 async def _calibration_breach(db: AsyncSession) -> list[dict[str, Any]]:
     cutoff = datetime.now(tz=timezone.utc) - timedelta(days=35)
     try:
-        stmt = sql_text(
-            """
+        stmt = sql_text("""
             SELECT DISTINCT ON (model_name, model_version)
                    id, model_name, model_version, as_of, ece, brier_score
             FROM calibration
             WHERE as_of >= :cutoff
             ORDER BY model_name, model_version, as_of DESC
-            """
-        )
+            """)
         rows = [dict(r) for r in (await db.execute(stmt, {"cutoff": cutoff})).mappings()]
     except Exception as exc:  # noqa: BLE001
         logger.debug(f"calibration fetch failed: {exc}")

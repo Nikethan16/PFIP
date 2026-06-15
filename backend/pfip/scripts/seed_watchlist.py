@@ -25,7 +25,6 @@ from sqlalchemy.exc import IntegrityError
 from pfip.db.session import get_sessionmaker
 from pfip.models.watchlist import WatchlistRow
 
-
 CRYPTO = [
     ("BTC-USD", "Bitcoin"),
     ("ETH-USD", "Ethereum"),

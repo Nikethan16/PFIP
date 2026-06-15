@@ -46,7 +46,6 @@ from pfip.agent.llm_client import LLMUnavailable, get_llm_router
 from pfip.core.config import get_settings
 from pfip.kb.search import KBHit, search
 
-
 _HERE = Path(__file__).resolve().parent
 DEFAULT_EVAL_PATH = _HERE / "eval_qa.json"
 

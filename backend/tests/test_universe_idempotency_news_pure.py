@@ -16,7 +16,6 @@ from pfip.ingest._common.idempotency import make_batch_key
 from pfip.ingest.news._pipeline import _normalize_url, is_crypto_text
 from pfip.signals.universe import UniverseRow, as_of_universe
 
-
 # ---------------------------------------------------------------------------
 # Survivorship-aware universe
 # ---------------------------------------------------------------------------

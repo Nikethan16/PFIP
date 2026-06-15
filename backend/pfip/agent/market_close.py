@@ -24,7 +24,6 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
-
 IST = ZoneInfo("Asia/Kolkata")
 
 

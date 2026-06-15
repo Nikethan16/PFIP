@@ -20,7 +20,6 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 
-
 _COST_BPS = {
     "crypto": 10.0,
     "us": 5.0,

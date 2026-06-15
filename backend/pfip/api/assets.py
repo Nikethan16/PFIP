@@ -80,15 +80,14 @@ async def search_assets(
             r.symbol, {"symbol": r.symbol, "market": r.market, "source": "watchlist"}
         )
     for r in ohlcv_rows:
-        by_symbol.setdefault(
-            r.symbol, {"symbol": r.symbol, "market": r.market, "source": "ohlcv"}
-        )
+        by_symbol.setdefault(r.symbol, {"symbol": r.symbol, "market": r.market, "source": "ohlcv"})
 
     results = sorted(
         by_symbol.values(),
         key=lambda d: (_rank(d["symbol"], needle), d["symbol"].upper()),
     )[:limit]
     return {"query": needle, "results": results}
+
 
 # Canonical typed feature columns (mirrors FeatureRow); extras live in JSONB.
 _FEATURE_COLS: tuple[str, ...] = (

@@ -143,16 +143,14 @@ async def record_selection(
     isn't present yet (graceful degradation on older deployments)."""
     try:
         await db.execute(
-            sql_text(
-                """
+            sql_text("""
                 INSERT INTO model_events
                     (kind, asset, regime, model_name, model_version,
                      position_size_multiplier, reason, notes, created_at)
                 VALUES
                     ('auto_select', :asset, :regime, :model_name, :model_version,
                      :psize, :reason, :notes, :created_at)
-                """
-            ),
+                """),
             {
                 "asset": asset.upper(),
                 "regime": regime,
@@ -181,11 +179,7 @@ async def select_for_watchlist(db: AsyncSession) -> list[dict[str, Any]]:
     and the model-router dashboard.
     """
     try:
-        rows = (
-            (
-                await db.execute(
-                    sql_text(
-                        """
+        rows = (await db.execute(sql_text("""
                     SELECT w.symbol AS asset,
                            COALESCE(r.regime, 'bull_trend') AS regime,
                            r.since AS regime_since,
@@ -199,13 +193,7 @@ async def select_for_watchlist(db: AsyncSession) -> list[dict[str, Any]]:
                         LIMIT 1
                     ) r ON true
                     ORDER BY w.added_at DESC
-                    """
-                    )
-                )
-            )
-            .mappings()
-            .all()
-        )
+                    """))).mappings().all()
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"select_for_watchlist failed: {exc}")
         return []

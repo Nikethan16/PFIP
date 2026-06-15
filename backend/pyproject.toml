@@ -31,7 +31,11 @@ dependencies = [
     "asyncpg==0.29.0",
     # --- Data / math / ML ---
     "pandas==2.2.2",
-    "pandas-ta==0.3.14b0",
+    # pandas-ta 0.3.14b0 is a pre-release that doesn't install cleanly on
+    # Python 3.12; we use `ta` (pure-Python, maintained) instead — see
+    # requirements.txt and features/technicals.py. Keeping pyproject in sync so
+    # `uv sync` / `pip install -e .` resolve the same set as requirements.txt.
+    "ta==0.11.0",
     "numpy==1.26.4",
     "pandera==0.19.3",
     "scikit-learn==1.5.0",
@@ -39,7 +43,9 @@ dependencies = [
     "ccxt==4.3.55",
     "yfinance==0.2.40",
     # --- Orchestration ---
-    "prefect==2.19.5",
+    # prefect 2.19.5 pins an old uvicorn that conflicts with the API stack; the
+    # 2.20.x line resolves cleanly (matches requirements.txt).
+    "prefect>=2.20,<3",
     # --- Vector DB / LLM ---
     "qdrant-client==1.9.2",
     "httpx==0.27.0",

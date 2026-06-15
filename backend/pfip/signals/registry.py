@@ -36,7 +36,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-
 REGISTRY_ROOT_DEFAULT = Path("data/model_registry")
 _MANIFEST_NAME = "manifest.json"
 

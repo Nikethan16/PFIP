@@ -19,7 +19,6 @@ from pfip.api.deps import get_db
 from pfip.api.main import app
 from pfip.models.backtest import BacktestRunRow
 
-
 # ---------------------------------------------------------------------------
 # Auth + empty-list smoke tests (use the autouse empty fake session).
 # ---------------------------------------------------------------------------

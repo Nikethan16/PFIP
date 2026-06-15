@@ -89,3 +89,30 @@ Two real problems surfaced during backend image build:
   policy (TCP connect times out; DNS resolves to 13.251.17.193). Phase 3 will be
   driven entirely through GitHub Actions (the runner reaches Neon): the
   Backfill/Daily-ingest workflows run `alembic upgrade head` themselves.
+
+## Phase 2 — Static quality (~23:30 UTC)
+
+- **black** (hard gate): reformatted 58 files; `black --check` now clean.
+- **ruff** (advisory per project policy, `continue-on-error` in CI): ~960 pre-existing
+  style findings (UP/N/SIM/RUF), left as documented debt. My new code adds none
+  beyond the file's established FastAPI `Query()` (`B008`) convention.
+- **mypy** (advisory): env-specific plugin-import quirk here (`pydantic.mypy` not
+  found due to this container's mixed --ignore-installed layout); irrelevant on the
+  clean CI runner. Left as advisory.
+- frontend: `tsc` clean, eslint clean (pre-existing warnings only).
+
+### CI bugs found + fixed (CI is RED on main — but NOT due to black/pytest)
+The 3 failing CI jobs on main are infra, fixed here:
+1. `setup-uv@v3` died on missing `**/uv.lock`; `uv sync` only installs the
+   pyproject runtime *subset* (no lightgbm/litellm/mlflow/test tools) → tests
+   would ImportError. **Fix:** backend `lint-test` + `integration` jobs now
+   `pip install -r requirements.txt` (the single source of truth, same as the
+   ingest workflows), and call ruff/black/mypy/pytest directly (no `uv run`).
+2. `backend/pyproject.toml [project.dependencies]` was STALE vs requirements.txt
+   (`pandas-ta==0.3.14b0` — fails on 3.12; `prefect==2.19.5` — uvicorn conflict).
+   **Fix:** synced to `ta==0.11.0` and `prefect>=2.20,<3`.
+3. `compose-smoke` failed: `${POSTGRES_PASSWORD:?}` — Compose resolves `.env`
+   from the compose-file dir (`infra/`), not the root copy. **Fix:**
+   `docker compose --env-file .env -f infra/...`.
+   NOTE: these CI fixes can't be validated from a feature branch (CI only runs on
+   push to main/dev + PRs); reasoned from the failing logs + working ingest workflows.

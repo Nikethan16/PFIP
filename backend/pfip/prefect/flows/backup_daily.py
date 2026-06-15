@@ -24,7 +24,6 @@ from prefect import flow, get_run_logger
 
 from pfip.alerts.dispatcher import AlertKind, AlertSeverity, send_alert
 
-
 # backend/pfip/prefect/flows/backup_daily.py -> repo root is four parents up.
 _ROOT = Path(__file__).resolve().parents[4]
 _BACKUP_SCRIPT = _ROOT / "scripts" / "backup.py"

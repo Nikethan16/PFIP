@@ -248,19 +248,13 @@ async def health_sources(db: DbSession) -> dict[str, Any]:
     """
     now = datetime.now(tz=timezone.utc)
     try:
-        rows = (
-            await db.execute(
-                text(
-                    """
+        rows = (await db.execute(text("""
                     SELECT
                         source, last_run_at, last_success_at, last_rows,
                         last_error, consecutive_failures, updated_at
                     FROM source_health
                     ORDER BY last_run_at DESC
-                    """
-                )
-            )
-        ).mappings()
+                    """))).mappings()
     except Exception as exc:  # noqa: BLE001
         # source_health may not exist yet on fresh installs (pre-migration 0006)
         return {

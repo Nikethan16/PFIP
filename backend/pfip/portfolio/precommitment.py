@@ -34,7 +34,6 @@ from loguru import logger
 from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
 PRECOMMITMENT_PATH = Path("/app/pre_commitment.md")
 LADDER_TIERS: tuple[tuple[str, float], ...] = (
     ("5%", 0.05),
@@ -386,12 +385,10 @@ async def can_advance_tier(db: AsyncSession, tier: LadderTier) -> tuple[bool, li
     try:
         row = (
             await db.execute(
-                sql_text(
-                    """
+                sql_text("""
                     SELECT COUNT(*) AS n FROM risk_breaches
                     WHERE detected_at >= :since
-                    """
-                ),
+                    """),
                 {"since": four_weeks_ago},
             )
         ).scalar_one_or_none()
@@ -406,11 +403,7 @@ async def can_advance_tier(db: AsyncSession, tier: LadderTier) -> tuple[bool, li
 
     # Consecutive losing months
     try:
-        rows = (
-            (
-                await db.execute(
-                    sql_text(
-                        """
+        rows = (await db.execute(sql_text("""
                     SELECT date_trunc('month', closed_at) AS month,
                            SUM(exit_price_inr - cost_basis_inr) AS pnl
                     FROM holdings
@@ -418,13 +411,7 @@ async def can_advance_tier(db: AsyncSession, tier: LadderTier) -> tuple[bool, li
                     GROUP BY month
                     ORDER BY month DESC
                     LIMIT 2
-                    """
-                    )
-                )
-            )
-            .mappings()
-            .all()
-        )
+                    """))).mappings().all()
         if len(rows) >= 2 and all((r["pnl"] or 0) < 0 for r in rows):
             reasons.append("Last 2 months had negative P&L")
     except Exception as exc:  # noqa: BLE001

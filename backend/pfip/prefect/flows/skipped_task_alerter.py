@@ -27,7 +27,6 @@ from prefect.client.orchestration import get_client
 
 from pfip.alerts.dispatcher import AlertKind, AlertSeverity, send_alert
 
-
 # Expected max staleness per deployment. Pad to 2× the cron cadence so a
 # single late run doesn't page; that's what calibration is for.
 _BUDGET_HOURS: dict[str, float] = {

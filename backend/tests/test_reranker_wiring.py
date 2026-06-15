@@ -27,7 +27,6 @@ from pfip.agent.reranker import Reranker, get_reranker
 from pfip.agent.router import Sensitivity
 from pfip.kb.search import KBHit
 
-
 # ---------------------------------------------------------------------------
 # Helpers — fake hits + a spy reranker / spy client
 # ---------------------------------------------------------------------------

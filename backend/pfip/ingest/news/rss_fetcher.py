@@ -145,7 +145,7 @@ async def fetch_feed(name: str, category: str, url: str) -> list[dict[str, Any]]
 
 
 async def fetch_feeds(
-    feeds: Iterable[tuple[str, str, str]] = tuple(DEFAULT_FEEDS)
+    feeds: Iterable[tuple[str, str, str]] = tuple(DEFAULT_FEEDS),
 ) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for name, category, url in feeds:
