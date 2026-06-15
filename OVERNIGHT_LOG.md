@@ -116,3 +116,15 @@ The 3 failing CI jobs on main are infra, fixed here:
    `docker compose --env-file .env -f infra/...`.
    NOTE: these CI fixes can't be validated from a feature branch (CI only runs on
    push to main/dev + PRs); reasoned from the failing logs + working ingest workflows.
+
+## Phase 3 — Cloud pipeline (started ~23:06 UTC)
+
+- Triggered **Backfill history** (workflow_dispatch, days=1200, skip_compute=false)
+  on `main` → run id **27582259789**.
+- Step results so far (on a clean Ubuntu/Python-3.12 runner):
+  - Install dependencies (`pip install -r requirements.txt`): **success** — confirms
+    the build failures seen locally are Debian-container-specific, not real.
+  - **`alembic upgrade head` against Neon: SUCCESS** — schema created on the Neon DB.
+  - Backfill (`python -m scripts.backfill_history --days 1200`): in progress.
+- This makes the integration-test safety gate (Phase 1) load-bearing: Neon now holds
+  real seeded data, so an accidental `pytest` with DATABASE_URL=Neon would have wiped it.
