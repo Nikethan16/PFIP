@@ -5,6 +5,62 @@ change landed. Grouped by Security / Correctness / Features / Docs / Known-state
 
 ---
 
+## 2026-06-15 — Green baseline, CI repair, cloud pipeline live, ticker search
+
+An autonomous hardening pass: a genuinely green test baseline on real hardware, a
+batch of CI/dependency fixes, the always-on cloud pipeline brought live against
+Neon, and one new feature. Backend suite is **649 passing, 6 skipped** (5 real-DB
+integration modules skip without a throwaway Postgres; 1 LightGBM env skip);
+frontend **83 passing**.
+
+### Security / safety
+
+- **Integration tests can no longer wipe a real database.** `tests/integration/`
+  `TRUNCATE`s `ohlcv, portfolio_tx, holdings, fx_rates` before each test and used
+  whatever `DATABASE_URL` pointed at. With a production Neon URL in the env a plain
+  `pytest` would have wiped live data. `tests/integration/_harness.py` now refuses
+  to run the destructive suite unless the DB host is local/throwaway or
+  `PFIP_ALLOW_DESTRUCTIVE_DB_TESTS=1` is set. CI (localhost service container) is
+  unaffected.
+
+### Correctness
+
+- **tz-aware news timestamps.** `marketaux`, `bluesky`, `farcaster`, and
+  `cryptopanic` ingest wrote tz-NAIVE `datetime.utcnow()` into the tz-aware
+  `news.time` column; mixed naive/aware timestamps can corrupt dedupe/retention
+  windows and ordering. Now `datetime.now(tz=timezone.utc)`.
+
+### Features
+
+- **`GET /assets/search?q=…`** — ticker search across the watchlist and any
+  already-priced symbol, ranked exact > prefix > substring. Frontend
+  `useAssetSearch` hook added.
+
+### CI / build / deps
+
+- Backend CI jobs now `pip install -r requirements.txt` instead of the broken
+  `uv sync` (no `uv.lock`; the pyproject `[project.dependencies]` is only a runtime
+  subset, so `uv sync` dropped the ML/test deps). The three failing CI jobs on
+  `main` were infra, not the black/pytest gates.
+- `backend/pyproject.toml` `[project.dependencies]` synced to `requirements.txt`
+  (`pandas-ta==0.3.14b0` → `ta==0.11.0`; `prefect==2.19.5` → `prefect>=2.20,<3`).
+- `compose-smoke` passes `--env-file .env` so `${POSTGRES_PASSWORD:?}` interpolates.
+- `black` applied across 58 files (formatting only); the gate is now clean.
+
+### Cloud (Stage: always-on ingest)
+
+- `alembic upgrade head` ran successfully against Neon via the **Backfill history**
+  workflow; schema created. Backfill (days=1200) + Daily ingest exercised. See
+  `CLOUD_RUN_REPORT.md`. `FEATURE_ML_SIGNALS` left **off**.
+
+### Docs
+
+- Corrected stale "Stubbed (501)" claims in `backend/README.md` and stale
+  "placeholder / not implemented" claims in `frontend/README.md` (correlation
+  heatmap, `/settings`).
+
+---
+
 ## 2026-06-04 — Security & correctness audit + two new portfolio features
 
 A security/correctness audit pass plus two shipped features. Backend test suite is now

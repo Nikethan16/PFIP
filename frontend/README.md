@@ -52,6 +52,10 @@ cards at the same breakpoint.
 ## TODOs the user will want to tune
 
 - Agent persona + morning-brief tone (backend prompts).
-- Risk-limit defaults (`Settings` page; currently localStorage-only until the
-  backend `/settings` endpoint is implemented).
-- Correlation heatmap — placeholder on Portfolio page, needs backend endpoint.
+- Risk-limit defaults (`Settings` page) — the backend `/settings` endpoint is
+  implemented; tune the defaults to taste.
+
+Implemented since this list was first written (no longer TODO): the correlation
+heatmap (Portfolio page, wired to `GET /portfolio/correlations`) and the
+`/settings` round-trip. Still genuinely unwired: the chat conversation-history
+sidebar (no persisted conversation list yet).

@@ -77,6 +77,12 @@ tests/          pytest suite
 ## Stubbed vs. working
 
 - **Working end-to-end**: health checks, auth (JWT), watchlist CRUD,
-  journal CRUD, BTC daily OHLCV ingest flow, feature computation.
-- **Stubbed (501)**: portfolio CSV import, tax endpoints, shadow portfolio,
-  calibration, signals (Stage 4 dependency), agent chat SSE.
+  journal CRUD, OHLCV/feature/regime/news/FX ingest, feature computation,
+  portfolio holdings + CSV import + mark-to-market, tax (harvest, Schedule FA,
+  Form 67), shadow portfolio, calibration, signals, agent chat SSE, and the
+  `/assets/search` ticker lookup. (The earlier "Stubbed (501)" list was stale —
+  all of these are implemented.)
+- **Known gaps** (not 501 — see `../PLACEHOLDERS.md`): broker *live-trading*
+  adapters (`pfip/brokers/` is CSV-import only), the paper→live Sharpe-floor
+  gate in `pfip/portfolio/precommitment.py` (no-op pending the Stage 4
+  calibration module), and `FEATURE_ML_SIGNALS` (kept off until calibrated).
