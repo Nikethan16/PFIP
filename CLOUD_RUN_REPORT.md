@@ -39,7 +39,36 @@ creating the full schema (migrations `0001`–`0009`).
 
 ## 3. Daily ingest (workflow_dispatch, blank stages = all)
 
-- Run: `27583694633` — _see "Daily ingest result" section appended below._
+- Run: `27583694633` — **✅ success**, ~5 min (pipeline `elapsed_s` 201.8).
+- `stages_run`: ingest, features, regime, signals, retention.
+
+| Stage / source        | Rows / result          | Notes |
+| --------------------- | ---------------------- | ----- |
+| OHLCV — crypto (ccxt) | 63                     | recent bars |
+| OHLCV — India (jugaad)| 80                     | recent NSE EOD |
+| OHLCV — US (Tiingo)   | 0                      | no key |
+| **FX (`fx_rates`)**   | **3**                  | USD/EUR/GBP→INR — **worked here** (1-day window is fast; the backfill timeout was the 1200-day depth) |
+| news (all sources)    | 0                      | every source 0 — see findings |
+| fundamentals (screener)| 36                    | screener.in, keyless |
+| fundamentals (finnhub)| 0                      | no key |
+| features              | 0 (symbols=0)          | empty watchlist |
+| regime                | 0 (symbols=0)          | empty watchlist |
+| signals               | skipped                | `FEATURE_ML_SIGNALS=false` (intended) |
+| retention             | 0 pruned               | nothing old yet |
+
+## 4. Per-stage totals on Neon after both runs (from pipeline summaries)
+
+| Table        | Approx rows | Source of count |
+| ------------ | ----------- | --------------- |
+| `ohlcv`      | ~7,972      | backfill ~7,829 + daily 143 |
+| `fx_rates`   | 3           | daily ingest |
+| `features`   | 0           | empty watchlist starves compute |
+| `regime`     | 0           | empty watchlist starves compute |
+| `news`       | 0           | no sources returned rows (see findings) |
+| (`fundamentals` | 36       | screener.in — not in the requested set, noted for completeness) |
+
+> Counts are from the workflows' own structured summaries (Neon isn't reachable from
+> the sandbox for a direct `SELECT count(*)`). Both runs were green end-to-end.
 
 ---
 
@@ -58,7 +87,21 @@ creating the full schema (migrations `0001`–`0009`).
    the per-source timeout; the marking layer already abstains safely without it.
 3. **US equities not seeded** (no `TIINGO_API_KEY`). Expected — every data source
    no-ops without its key. Add the key to repo secrets to seed US OHLCV.
-4. **Signals correctly skipped** — `FEATURE_ML_SIGNALS` stays off until calibration.
+4. **News seeded 0 rows from every source**, even keyless RSS/Google-News/GDELT. The
+   news fetchers key off the (empty) watchlist/universe, so there are no symbols to
+   pull news for. Same root cause as #1 — seed the watchlist.
+5. **Prefect 2.20.25 + anyio 4.x incompatibility (real bug).** The news *embedder*
+   flow crashed with `TypeError: Can't instantiate abstract class GatherTaskGroup
+   without an implementation for abstract method 'create_task'` (Prefect's
+   `GatherTaskGroup` vs the abstract method anyio 4 now requires). It was caught
+   gracefully (`embedder unavailable`, `embedded: 0`) and didn't fail the run, but
+   with real news data the embedding step would silently produce 0 embeddings.
+   **Fix:** pin a compatible anyio for Prefect 2.20 (e.g. `anyio<4`) or move the
+   embedder off Prefect's `gather`. Tracked in `PLACEHOLDERS.md` / `OVERNIGHT_LOG.md`.
+6. **FX timeout was depth-related, not broken.** The daily (1-day) FX pull succeeded
+   (3 rows); only the 1200-day backfill FX pull timed out. Consider chunking the
+   backfill FX window or raising its per-source timeout.
+7. **Signals correctly skipped** — `FEATURE_ML_SIGNALS` stays off until calibration.
 
 ## How to verify counts directly (from a network that can reach Neon)
 

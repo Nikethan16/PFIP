@@ -1,5 +1,47 @@
 # PFIP Overnight Run Log
 
+## ===== FINAL SUMMARY — Run 2 (2026-06-15, autonomous, Opus) =====
+
+Branch: `claude/gallant-knuth-92qz1j` (the env was checked out here and it exists on
+origin; the task body's `claude/amazing-noether-va818n` does not exist on origin — it
+was a prior PR branch. Logged; did not push to a non-existent branch.)
+
+**DONE & pushed**
+- **Phase 0** — backend + frontend deps installed. Two Debian-container build quirks
+  worked around (PEP517 builds + `--ignore-installed`); irrelevant on CI's clean 3.12.
+- **Phase 1** — genuinely green: backend **649 passed / 6 skipped**, frontend **83 passed**.
+  Fixed a **data-loss hazard**: integration tests `TRUNCATE` whatever `DATABASE_URL`
+  points at — would have wiped the production Neon DB. Now gated to local/throwaway DBs.
+- **Phase 2** — `black` gate clean (58 files). Fixed 3 real CI infra bugs (broken
+  `uv sync`/no `uv.lock`; stale pyproject deps; compose `.env` path). ruff/mypy advisory.
+- **Phase 3** — cloud pipeline LIVE on Neon. `alembic upgrade head` ✅. Backfill (days=1200)
+  ✅ ~7.8k OHLCV bars. Daily ingest ✅ (+143 OHLCV, 3 FX, 36 fundamentals). `FEATURE_ML_SIGNALS`
+  left OFF. Full numbers + findings in `CLOUD_RUN_REPORT.md`.
+- **Phase 4** — `GET /assets/search` added + tested + frontend hook. (Marking badge and
+  Schedule-FA endpoint already existed with tests — verified, not rebuilt.)
+- **Phase 5** — docs synced: CHANGELOG, BUILD_STATUS, PLACEHOLDERS, both READMEs.
+- Bonus correctness fix: tz-aware UTC timestamps in 4 news ingest sources.
+
+**STILL BLOCKED / not done (with exact next steps)**
+- **Direct Neon verification** — the sandbox can't reach Neon:5432 (network policy);
+  counts are from workflow summaries, not a live `SELECT count(*)`. Next: run the SQL in
+  `CLOUD_RUN_REPORT.md §"How to verify"` from a network that can reach Neon.
+- **Empty watchlist starves compute** — backfill seeds OHLCV but never seeds `watchlist`,
+  so features/regime/news all came back 0. Next: seed `watchlist` in the backfill, or fall
+  back to "distinct symbols in `ohlcv`" when the watchlist is empty. (Highest-value follow-up.)
+- **Prefect 2.20 + anyio 4 incompat** crashes the news embedder (`GatherTaskGroup`
+  `create_task` abstract-method error; caught gracefully). Next: pin `anyio<4` for Prefect.
+- **CI fixes unvalidated** — CI only runs on push to main/dev + PRs, so the ci.yml fixes on
+  this feature branch haven't executed. Next: open a PR to main (NOT done — task said don't)
+  or merge to confirm green.
+- **Known code gaps** (documented, not fixed): precommitment Sharpe-floor no-op; broker
+  live-trading adapters; thin `/shadow/vs-actual`; missing unit tests for
+  `portfolio/{service,risk_manager,allocation}.py`; unwired chat history sidebar.
+
+No PR opened (per instructions). All work committed + pushed to the branch above.
+
+---
+
 Start: 2026-04-23 ~22:40 IST
 Agent: Claude Opus 4.7 (Claude Code)
 Budget: 6 hours wall-clock, stop by 06:00 IST
