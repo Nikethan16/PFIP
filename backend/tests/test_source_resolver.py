@@ -73,6 +73,12 @@ class _WatchlistSession:
     async def execute(self, *_args, **_kwargs):
         return _WatchResult(self._rows)
 
+    async def commit(self):
+        # run_for_watchlist now commits right after reading the watchlist to
+        # release the read transaction (Neon idle-in-transaction guard). A real
+        # AsyncSession has commit(); the fake just needs to accept the call.
+        return None
+
 
 class _DummySymSession:
     """Per-symbol session context manager (features flow opens one per symbol)."""
