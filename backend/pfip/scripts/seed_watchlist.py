@@ -18,7 +18,7 @@ import asyncio
 import sys
 
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 
@@ -42,11 +42,15 @@ US_EQUITIES = [
 ]
 
 INDIA_EQUITIES = [
-    ("RELIANCE", "Reliance Industries"),
-    ("TCS", "Tata Consultancy Services"),
-    ("HDFCBANK", "HDFC Bank"),
-    ("INFY", "Infosys"),
-    ("ICICIBANK", "ICICI Bank"),
+    # OHLCV is stored with the NSE ``.NS`` suffix (jugaad writes ``f"{symbol}.NS"``),
+    # and the source/market heuristics key off that suffix. The watchlist must carry
+    # it too — a bare "INFY" misses resolve_ohlcv_source and is misread as a US
+    # ticker, so features/regime compute nothing for it.
+    ("RELIANCE.NS", "Reliance Industries"),
+    ("TCS.NS", "Tata Consultancy Services"),
+    ("HDFCBANK.NS", "HDFC Bank"),
+    ("INFY.NS", "Infosys"),
+    ("ICICIBANK.NS", "ICICI Bank"),
 ]
 
 INDIAN_MFS = [
@@ -70,6 +74,21 @@ async def _upsert_watchlist() -> int:
     factory = get_sessionmaker()
     added = 0
     async with factory() as session:
+        # One-time cleanup: an earlier seed used bare NSE names ("INFY") that don't
+        # match the ".NS"-suffixed OHLCV, so they computed no features/regime. Drop
+        # any india_equity row missing the .NS/.BO suffix; the canonical entries
+        # below re-add them in the correct form. Idempotent (0 rows after first run).
+        stale = await session.execute(
+            delete(WatchlistRow).where(
+                WatchlistRow.market == "india_equity",
+                ~WatchlistRow.symbol.like("%.NS"),
+                ~WatchlistRow.symbol.like("%.BO"),
+            )
+        )
+        await session.commit()
+        if stale.rowcount:
+            logger.info(f"  - removed {stale.rowcount} stale bare india_equity row(s)")
+
         for market, items in (
             ("crypto", CRYPTO),
             ("us_equity", US_EQUITIES),
