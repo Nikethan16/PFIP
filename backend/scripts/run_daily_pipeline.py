@@ -60,7 +60,7 @@ ALL_STAGES: tuple[str, ...] = ("ingest", "features", "regime", "signals", "reten
 
 # Crypto symbols to refresh daily (ccxt slash form; the adapter canonicalizes to
 # dash form on write). Matches the watchlist crypto universe.
-CRYPTO_SYMBOLS: tuple[str, ...] = ("BTC/USD", "ETH/USD", "SOL/USD")
+CRYPTO_SYMBOLS: tuple[str, ...] = ("BTC/USD", "ETH/USD", "SOL/USD", "BNB/USD", "XRP/USD")
 
 # US symbols we actively track (Tiingo EOD). Kept in sync with the watchlist's
 # US rows; ETFs included because Tiingo serves them.

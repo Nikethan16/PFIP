@@ -290,7 +290,7 @@ class LGBMBaselineModel:
     def persist_to_mlflow(
         self,
         run_name: str | None = None,
-        artifact_dir: str | Path = "/mlflow/artifacts",
+        artifact_dir: str | Path = "/tmp/mlflow/artifacts",
     ) -> str | None:
         """Log booster + metadata to MLflow; fall back to local joblib."""
         self._require_fitted()

@@ -56,6 +56,7 @@ statsmodels==0.14.2
 
 # --- ML tracking ---
 mlflow==2.14.0
+setuptools>=69.0  # mlflow needs pkg_resources; not bundled on Python 3.12+
 
 # --- RAG eval (monthly RAGAS run; large transitive deps, kept loose) ---
 ragas>=0.1.10
