@@ -40,6 +40,7 @@ _SYMBOL_REWRITES: dict[str, dict[str, str]] = {
     "ETH/USD": {"bybit": "ETH/USDT", "okx": "ETH/USDT"},
     "SOL/USD": {"bybit": "SOL/USDT", "okx": "SOL/USDT"},
     "BNB/USD": {"bybit": "BNB/USDT", "okx": "BNB/USDT", "coinbase": "BNB/USD"},
+    "XRP/USD": {"bybit": "XRP/USDT", "okx": "XRP/USDT"},
 }
 
 

@@ -211,7 +211,7 @@ class HMMRegimeDetector:
     def persist_to_mlflow(
         self,
         run_name: str,
-        artifact_dir: str | Path = "/mlflow/artifacts",
+        artifact_dir: str | Path = "/tmp/mlflow/artifacts",
     ) -> str | None:
         """Log the fitted model + its state-regime mapping to MLflow.
 

@@ -24,6 +24,7 @@ the multi-``to`` parameter.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date, timedelta
 from typing import Any, Iterable
 
@@ -238,15 +239,17 @@ async def ingest_fx_rates(
     end = date.today()
     start = end - timedelta(days=max(0, lookback_days))
 
-    for base in base_list:
+    async def _fetch_one(base: str) -> list[dict[str, Any]]:
         try:
             if mode == "backfill":
-                rows = await fetch_range(base, quote_list, start, end)
-            else:
-                rows = await fetch_latest(base, quote_list)
-        except Exception as e:  # noqa: BLE001 — one base failing must not kill the rest
+                return await fetch_range(base, quote_list, start, end)
+            return await fetch_latest(base, quote_list)
+        except Exception as e:  # noqa: BLE001
             log.warning(f"fx_rates: {base}->{quote_list} failed: {type(e).__name__}: {e}")
-            continue
+            return []
+
+    results = await asyncio.gather(*(_fetch_one(b) for b in base_list))
+    for rows in results:
         all_rows.extend(rows)
 
     if not all_rows:

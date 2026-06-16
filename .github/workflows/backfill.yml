@@ -63,6 +63,8 @@ jobs:
       # Headless ingest job: enforce real DB creds (prod) but skip web-auth secrets.
       APP_ENV: prod
       PFIP_PIPELINE_MODE: "true"
+      # Use file-based MLflow tracking in CI (the Docker mlflow service doesn't exist here).
+      MLFLOW_TRACKING_URI: "file:/tmp/mlruns"
     steps:
       - name: Checkout
         uses: actions/checkout@v4

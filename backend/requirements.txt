@@ -50,12 +50,14 @@ optuna==3.6.1
 
 # --- Time-series forecasting ---
 statsmodels==0.14.2
+arch==7.0.0  # GARCH volatility baseline (the bar TTM/vol models must beat)
 # vectorbt can fail to build on Windows (requires numba); backtest engine has
 # numpy primitives as fallback. Uncomment and retry if you want the full perf:
 # vectorbt==0.26.2
 
 # --- ML tracking ---
 mlflow==2.14.0
+setuptools>=69.0  # mlflow needs pkg_resources; not bundled on Python 3.12+
 
 # --- RAG eval (monthly RAGAS run; large transitive deps, kept loose) ---
 ragas>=0.1.10

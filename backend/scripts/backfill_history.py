@@ -80,6 +80,8 @@ _SYMBOL_REWRITES: dict[str, dict[str, str]] = {
     "BTC/USD": {"bybit": "BTC/USDT", "okx": "BTC/USDT"},
     "ETH/USD": {"bybit": "ETH/USDT", "okx": "ETH/USDT"},
     "SOL/USD": {"bybit": "SOL/USDT", "okx": "SOL/USDT"},
+    "BNB/USD": {"bybit": "BNB/USDT", "okx": "BNB/USDT", "coinbase": "BNB/USD"},
+    "XRP/USD": {"bybit": "XRP/USDT", "okx": "XRP/USDT"},
 }
 
 # Per-call candle cap to request from ccxt. Exchanges clamp this to their own max
@@ -245,7 +247,15 @@ async def backfill_data(*, days: int = DEFAULT_DAYS) -> StageSummary:
         n += await ingest_fx_rates(mode="latest")
         return n
 
-    await _guarded(summary, "fx_frankfurter", _fx, timeout=180.0)
+    await _guarded(summary, "fx_frankfurter", _fx, timeout=600.0)
+
+    # --- India MF NAVs (AMFI) ---
+    async def _india_mf() -> int:
+        from pfip.ingest.indian_mf.amfi_nav import ingest_amfi_nav
+
+        return await ingest_amfi_nav()
+
+    await _guarded(summary, "india_mf_amfi", _india_mf, timeout=300.0)
 
     summary.finish()
     return summary
