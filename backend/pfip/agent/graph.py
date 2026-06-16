@@ -306,35 +306,41 @@ async def node_retrieve_db(db: AsyncSession, state: AgentState) -> AgentState:
     try:
         if state.intent == "market_question":
             # Latest regime snapshots.
-            stmt = sql_text("""
+            stmt = sql_text(
+                """
                 SELECT id, symbol, regime, since, confidence
                 FROM regime
                 ORDER BY since DESC
                 LIMIT 10
-                """)
+                """
+            )
             for row in (await db.execute(stmt)).mappings():
                 out.append({"kind": "regime", **dict(row)})
                 citations.append(f"db://regime/{row['id']}")
 
         if state.intent == "portfolio_question":
-            stmt = sql_text("""
+            stmt = sql_text(
+                """
                 SELECT id, category, symbol, qty, cost_basis_inr, acquired_at, closed_at
                 FROM holdings
                 WHERE closed_at IS NULL
                 ORDER BY acquired_at DESC
                 LIMIT 20
-                """)
+                """
+            )
             for row in (await db.execute(stmt)).mappings():
                 out.append({"kind": "holding", **dict(row)})
                 citations.append(f"db://holdings/{row['id']}")
 
-            stmt2 = sql_text("""
+            stmt2 = sql_text(
+                """
                 SELECT id, asset, direction, confidence, regime, generated_at
                 FROM signals
                 WHERE generated_at > :cutoff
                 ORDER BY generated_at DESC
                 LIMIT 10
-                """)
+                """
+            )
             cutoff = datetime.now(tz=timezone.utc) - timedelta(days=7)
             for row in (await db.execute(stmt2, {"cutoff": cutoff})).mappings():
                 out.append({"kind": "signal", **dict(row)})

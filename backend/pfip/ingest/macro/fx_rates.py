@@ -138,13 +138,15 @@ async def upsert_fx_rates(session: AsyncSession, rows: Iterable[dict[str, Any]])
     PK is ``(rate_date, base, quote, source)`` (migration 0006). On conflict we
     refresh ``rate`` (and ``ingested_at``) so re-runs pick up any restatement.
     """
-    stmt = text("""
+    stmt = text(
+        """
         INSERT INTO fx_rates (rate_date, base, quote, rate, source)
         VALUES (:rate_date, :base, :quote, :rate, :source)
         ON CONFLICT (rate_date, base, quote, source) DO UPDATE SET
             rate = EXCLUDED.rate,
             ingested_at = now()
-        """)
+        """
+    )
     count = 0
     for row in rows:
         await session.execute(

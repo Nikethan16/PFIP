@@ -45,13 +45,15 @@ def _iso_week(dt: datetime) -> str:
 
 async def _closed_holdings(db: AsyncSession, since: datetime) -> list[dict[str, Any]]:
     try:
-        stmt = sql_text("""
+        stmt = sql_text(
+            """
             SELECT id, symbol, category, acquired_at, closed_at,
                    cost_basis_inr, exit_price_inr
             FROM holdings
             WHERE closed_at >= :since
             ORDER BY closed_at DESC
-            """)
+            """
+        )
         return [dict(r) for r in (await db.execute(stmt, {"since": since})).mappings()]
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"closed holdings fetch failed: {exc}")
@@ -60,12 +62,14 @@ async def _closed_holdings(db: AsyncSession, since: datetime) -> list[dict[str, 
 
 async def _signals_since(db: AsyncSession, since: datetime) -> list[dict[str, Any]]:
     try:
-        stmt = sql_text("""
+        stmt = sql_text(
+            """
             SELECT id, asset, direction, confidence, regime, generated_at
             FROM signals WHERE generated_at >= :since
             ORDER BY generated_at DESC
             LIMIT 200
-            """)
+            """
+        )
         return [dict(r) for r in (await db.execute(stmt, {"since": since})).mappings()]
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"signals fetch failed: {exc}")
@@ -74,12 +78,14 @@ async def _signals_since(db: AsyncSession, since: datetime) -> list[dict[str, An
 
 async def _journal_since(db: AsyncSession, since: datetime) -> list[dict[str, Any]]:
     try:
-        stmt = sql_text("""
+        stmt = sql_text(
+            """
             SELECT id, created_at, symbol, direction, thesis
             FROM journal WHERE created_at >= :since
             ORDER BY created_at DESC
             LIMIT 100
-            """)
+            """
+        )
         return [dict(r) for r in (await db.execute(stmt, {"since": since})).mappings()]
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"journal fetch failed: {exc}")
@@ -148,10 +154,12 @@ async def persist_weekly_review(
     db: AsyncSession, review: WeeklyReview, symbol: str = "__META__"
 ) -> None:
     """Store the weekly review as a journal row tagged ``kind:weekly_review``."""
-    stmt = sql_text("""
+    stmt = sql_text(
+        """
         INSERT INTO journal (symbol, direction, thesis, pre_trade_checklist, notes)
         VALUES (:symbol, 'HOLD', :thesis, '{}'::jsonb, :notes)
-        """)
+        """
+    )
     await db.execute(
         stmt,
         {

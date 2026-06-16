@@ -44,11 +44,15 @@ async def _watchlist_us_symbols() -> list[str]:
     factory = get_sessionmaker()
     try:
         async with factory() as s:
-            r = await s.execute(text("""
+            r = await s.execute(
+                text(
+                    """
                     SELECT symbol FROM watchlist
                     WHERE upper(market) IN ('US', 'US_EQUITY', 'US_ETF', 'SPY', 'QQQ', 'DIA', 'VTI')
                        OR symbol ~ '^[A-Z]{1,5}$'
-                    """))
+                    """
+                )
+            )
             syms = [row[0] for row in r.fetchall() if row and row[0]]
             return syms or list(FALLBACK_US_SYMBOLS)
     except Exception:

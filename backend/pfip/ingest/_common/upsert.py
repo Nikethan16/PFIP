@@ -25,11 +25,13 @@ async def upsert_ohlcv_rows(
     Each row must have keys: time, symbol, market, source, timeframe, open, high,
     low, close, volume. ``time`` must be a UTC datetime.
     """
-    stmt = text("""
+    stmt = text(
+        """
         INSERT INTO ohlcv (time, symbol, market, source, timeframe, open, high, low, close, volume)
         VALUES (:time, :symbol, :market, :source, :timeframe, :open, :high, :low, :close, :volume)
         ON CONFLICT (time, symbol, source, timeframe) DO NOTHING
-        """)
+        """
+    )
     count = 0
     for row in rows:
         t: datetime = row["time"]
@@ -65,11 +67,13 @@ async def upsert_news(
     summary. We also accept a ``category`` key and fold it into summary prefix
     if the news table has no category column yet (0002 migration adds it).
     """
-    stmt = text("""
+    stmt = text(
+        """
         INSERT INTO news (time, title, url, source, symbol, sentiment, summary, category)
         VALUES (:time, :title, :url, :source, :symbol, :sentiment, :summary, :category)
         ON CONFLICT (url) DO NOTHING
-        """)
+        """
+    )
     count = 0
     for item in items:
         t: datetime = item["time"]
@@ -101,11 +105,13 @@ async def upsert_fundamentals(
 
     Each row: as_of_date, report_date, symbol, field, value, source.
     """
-    stmt = text("""
+    stmt = text(
+        """
         INSERT INTO fundamentals (as_of_date, report_date, symbol, field, value, source)
         VALUES (:as_of_date, :report_date, :symbol, :field, :value, :source)
         ON CONFLICT (as_of_date, symbol, field, source) DO NOTHING
-        """)
+        """
+    )
     count = 0
     for row in rows:
         value = row.get("value")

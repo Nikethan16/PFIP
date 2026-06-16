@@ -95,6 +95,12 @@ jobs:
       - name: Apply DB migrations (idempotent; guarded for plain Postgres/Neon)
         run: alembic upgrade head
 
+      # Without symbols in the `watchlist` table, the features/regime stages have
+      # nothing to iterate (they compute 0 rows even when OHLCV is present). This
+      # idempotent seed populates a sensible default universe so compute runs.
+      - name: Seed default watchlist (idempotent)
+        run: python -m pfip.scripts.seed_watchlist
+
       - name: Run daily pipeline
         run: |
           if [ -n "${{ github.event.inputs.stages }}" ]; then

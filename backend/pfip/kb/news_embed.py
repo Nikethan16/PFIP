@@ -1,8 +1,8 @@
 """Embed news rows into the Qdrant ``news`` collection.
 
 Consumed by :mod:`pfip.agent.graph` so the chat agent can pull the most
-relevant recent-news snippets as context. The flow runs periodically as a
-Prefect job; it's also importable and re-entrant.
+relevant recent-news snippets as context. Plain async + re-entrant; called
+inline from the news pipeline (not a Prefect flow — see ``embed_news_backlog``).
 
 Pipeline per row:
 
@@ -22,7 +22,6 @@ import hashlib
 from typing import Any
 
 from loguru import logger
-from prefect import flow, get_run_logger, task
 from qdrant_client.http import models as qmodels
 from sqlalchemy import text as sql_text
 
@@ -48,19 +47,20 @@ async def _ensure_news_collection(dim: int) -> None:
     )
 
 
-@task(name="fetch-unembedded-news")
 async def _fetch_batch(limit: int) -> list[dict[str, Any]]:
     factory = get_sessionmaker()
     async with factory() as session:
         try:
-            stmt = sql_text("""
+            stmt = sql_text(
+                """
                 SELECT id, time, title, url, source, symbol, sentiment, summary,
                        COALESCE(entity_tickers, '[]'::jsonb) AS entity_tickers
                 FROM news
                 WHERE embedded = false
                 ORDER BY time DESC
                 LIMIT :limit
-                """)
+                """
+            )
             result = await session.execute(stmt, {"limit": limit})
         except Exception as exc:  # noqa: BLE001 — migrations may not be applied in test
             logger.warning(f"news fetch failed: {exc}")
@@ -68,7 +68,6 @@ async def _fetch_batch(limit: int) -> list[dict[str, Any]]:
         return [dict(row._mapping) for row in result]
 
 
-@task(name="mark-embedded")
 async def _mark_embedded(ids: list[str]) -> None:
     if not ids:
         return
@@ -79,10 +78,16 @@ async def _mark_embedded(ids: list[str]) -> None:
         await session.commit()
 
 
-@flow(name="embed-news-backlog", log_prints=True)
 async def embed_news_backlog(batch_size: int = BATCH_SIZE) -> int:
-    """Embed up to ``batch_size`` unembedded news rows. Returns count written."""
-    log = get_run_logger()
+    """Embed up to ``batch_size`` unembedded news rows. Returns count written.
+
+    Plain async (not a Prefect ``@flow``): the cloud pipeline calls this directly
+    from ``pfip.ingest.news._pipeline.embed_pending``, and invoking a Prefect flow
+    inline crashed under Prefect 2.20 + anyio>=4.4 (``GatherTaskGroup`` abstract
+    method). Prefect 2.20 hard-requires anyio>=4.4, so pinning anyio down isn't an
+    option; running this as plain async avoids the broken engine path entirely.
+    """
+    log = logger
     rows = await _fetch_batch(batch_size)
     if not rows:
         log.info("No unembedded news rows")

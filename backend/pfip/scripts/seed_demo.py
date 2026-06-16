@@ -71,13 +71,15 @@ async def _seed_ohlcv(session) -> int:
             low_p = min(open_p, close_p) * (1 - abs(rng.gauss(0, vol / 3)))
             volume = rng.uniform(0.5e6, 5e6)
             await session.execute(
-                sql_text("""
+                sql_text(
+                    """
                     INSERT INTO ohlcv (time, symbol, market, source, timeframe,
                                        open, high, low, close, volume)
                     VALUES (:t, :s, :m, :src, '1d',
                             :o, :h, :l, :c, :v)
                     ON CONFLICT (time, symbol, source, timeframe) DO NOTHING
-                    """),
+                    """
+                ),
                 {
                     "t": t,
                     "s": symbol,
@@ -102,11 +104,13 @@ async def _seed_watchlist(session) -> int:
     for symbol, market, _src, _p, _v in ASSETS:
         try:
             await session.execute(
-                sql_text("""
+                sql_text(
+                    """
                     INSERT INTO watchlist (symbol, market, note, added_at)
                     VALUES (:s, :m, 'demo seed', :now)
                     ON CONFLICT (symbol, market) DO NOTHING
-                    """),
+                    """
+                ),
                 {"s": symbol, "m": market, "now": datetime.now(tz=timezone.utc)},
             )
             n += 1
@@ -125,13 +129,15 @@ async def _seed_news(session) -> int:
             t = now - timedelta(hours=hours_back)
             try:
                 await session.execute(
-                    sql_text("""
+                    sql_text(
+                        """
                         INSERT INTO news (time, symbol, source, title, url,
                                           sentiment, impact_score, category)
                         VALUES (:t, :s, 'demo', :title, :url,
                                 :sent, :imp, 'demo')
                         ON CONFLICT DO NOTHING
-                        """),
+                        """
+                    ),
                     {
                         "t": t,
                         "s": symbol,
@@ -164,11 +170,13 @@ async def _seed_regime(session) -> int:
     for (symbol, _m, _src, _p, _v), regime in zip(ASSETS, regimes, strict=False):
         try:
             await session.execute(
-                sql_text("""
+                sql_text(
+                    """
                     INSERT INTO regime (symbol, regime, since, confidence, model_name, model_version)
                     VALUES (:s, :r, :since, :conf, 'demo_hmm', 'v0-demo')
                     ON CONFLICT DO NOTHING
-                    """),
+                    """
+                ),
                 {
                     "s": symbol,
                     "r": regime,
@@ -224,13 +232,15 @@ async def _seed_signals(session) -> int:
     for symbol, direction, conf, horizon, drivers, counters in rows:
         try:
             await session.execute(
-                sql_text("""
+                sql_text(
+                    """
                     INSERT INTO signals
                         (generated_at, asset, direction, confidence, horizon_hours,
                          drivers, counter_arguments, regime, model_name, model_version)
                     VALUES (:t, :a, :d, :c, :h,
                             :drivers::jsonb, :counters::jsonb, :r, 'demo_lgbm', 'v0-demo')
-                    """),
+                    """
+                ),
                 {
                     "t": now - timedelta(hours=2),
                     "a": symbol,
@@ -270,13 +280,15 @@ async def _seed_holdings(session) -> int:
     for category, symbol, broker, qty, cost in rows:
         try:
             await session.execute(
-                sql_text("""
+                sql_text(
+                    """
                     INSERT INTO holdings (category, symbol, broker, acquired_at,
                                           qty, cost_basis_inr, cost_basis_ccy, is_self_custody, notes)
                     VALUES (:c, :s, :b, :acq, :q, :cb, 'INR',
                             :scc, 'demo seed')
                     ON CONFLICT DO NOTHING
-                    """),
+                    """
+                ),
                 {
                     "c": category,
                     "s": symbol,

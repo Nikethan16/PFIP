@@ -38,11 +38,15 @@ async def _watchlist_in_symbols() -> list[str]:
     factory = get_sessionmaker()
     try:
         async with factory() as s:
-            r = await s.execute(text("""
+            r = await s.execute(
+                text(
+                    """
                     SELECT symbol FROM watchlist
                     WHERE upper(market) IN ('IN', 'NSE', 'BSE', 'NIFTY50', 'NIFTY500', 'SENSEX')
                        OR symbol ~ '\\.(NS|BO)$'
-                    """))
+                    """
+                )
+            )
             syms = [
                 row[0].replace(".NS", "").replace(".BO", "")
                 for row in r.fetchall()

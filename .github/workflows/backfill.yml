@@ -80,6 +80,11 @@ jobs:
       - name: Apply DB migrations (creates the schema on the fresh Neon DB)
         run: alembic upgrade head
 
+      # Seed the default universe so the post-backfill features/regime stages have
+      # symbols to iterate (idempotent — safe to re-run).
+      - name: Seed default watchlist (idempotent)
+        run: python -m pfip.scripts.seed_watchlist
+
       - name: Backfill ~3y history
         run: |
           ARGS="--days ${{ github.event.inputs.days }}"

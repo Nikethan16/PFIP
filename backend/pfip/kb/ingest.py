@@ -199,12 +199,14 @@ async def _record_ingestion(
 
     factory = get_sessionmaker()
     async with factory() as session:
-        stmt = sql_text("""
+        stmt = sql_text(
+            """
             INSERT INTO kb_ingestions (title, author, category, path_hash, chunks_count)
             VALUES (:title, :author, :category, :path_hash, :chunks_count)
             ON CONFLICT (path_hash) DO UPDATE SET chunks_count = EXCLUDED.chunks_count,
                                                   embedded_at = now()
-            """)
+            """
+        )
         await session.execute(
             stmt,
             {

@@ -40,7 +40,8 @@ async def record_run(
     # branch is NULL or compared to NULL), which yields "AmbiguousParameter".
     # Casting once at first use propagates the type to every subsequent
     # reference of the named parameter.
-    stmt = text("""
+    stmt = text(
+        """
         INSERT INTO source_health (
             source, last_run_at, last_success_at, last_rows, last_error,
             consecutive_failures, updated_at
@@ -65,7 +66,8 @@ async def record_run(
                 ELSE source_health.consecutive_failures + 1
             END,
             updated_at = EXCLUDED.updated_at
-        """)
+        """
+    )
     params = {"source": source, "now": now, "rows": int(rows), "err": error}
     try:
         if session is None:

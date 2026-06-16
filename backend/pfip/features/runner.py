@@ -132,7 +132,8 @@ async def _load_ohlcv_df(session, symbol: str, source: str, timeframe: str) -> p
     ).set_index("time")
 
 
-_UPSERT_SQL = text("""
+_UPSERT_SQL = text(
+    """
     INSERT INTO features (
         time, symbol, source, timeframe,
         rsi_14, macd, macd_signal, macd_hist, atr_14, return_7d, volatility_30d, extras
@@ -149,7 +150,8 @@ _UPSERT_SQL = text("""
         return_7d = EXCLUDED.return_7d,
         volatility_30d = EXCLUDED.volatility_30d,
         extras = EXCLUDED.extras
-    """)
+    """
+)
 
 
 def _none_if_nan(v) -> float | None:

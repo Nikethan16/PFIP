@@ -155,11 +155,15 @@ async def _india_watchlist_symbols() -> list[str]:
     factory = get_sessionmaker()
     try:
         async with factory() as s:
-            r = await s.execute(text("""
+            r = await s.execute(
+                text(
+                    """
                     SELECT symbol FROM watchlist
                     WHERE upper(market) IN ('IN', 'NSE', 'BSE', 'NIFTY50', 'NIFTY500', 'SENSEX')
                        OR symbol ~ '\\.(NS|BO)$'
-                    """))
+                    """
+                )
+            )
             syms = [
                 row[0].replace(".NS", "").replace(".BO", "")
                 for row in r.fetchall()
@@ -176,11 +180,15 @@ async def _us_watchlist_symbols() -> list[str]:
     factory = get_sessionmaker()
     try:
         async with factory() as s:
-            r = await s.execute(text("""
+            r = await s.execute(
+                text(
+                    """
                     SELECT symbol FROM watchlist
                     WHERE upper(market) IN ('US', 'US_EQUITY', 'US_ETF', 'SPY', 'QQQ', 'DIA', 'VTI')
                        OR (symbol ~ '^[A-Z]{1,5}$' AND symbol NOT LIKE '%.%')
-                    """))
+                    """
+                )
+            )
             syms = [row[0] for row in r.fetchall() if row and row[0]]
             return syms or list(US_SYMBOLS)
     except Exception as e:  # noqa: BLE001

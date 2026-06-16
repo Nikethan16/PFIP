@@ -56,14 +56,16 @@ def _iso_week(dt: datetime) -> str:
 
 async def _fetch_papers(db: AsyncSession, since: datetime) -> list[dict[str, Any]]:
     try:
-        stmt = sql_text("""
+        stmt = sql_text(
+            """
             SELECT id, time, title, url, source, summary
             FROM news
             WHERE category = 'academic'
               AND time >= :since
             ORDER BY time DESC
             LIMIT 100
-            """)
+            """
+        )
         return [dict(r) for r in (await db.execute(stmt, {"since": since})).mappings()]
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"arxiv papers fetch failed: {exc}")

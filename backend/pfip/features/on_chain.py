@@ -161,12 +161,14 @@ async def load_on_chain_history(
         from sqlalchemy import text
 
         since = as_of - timedelta(days=lookback_days)
-        stmt = text("""
+        stmt = text(
+            """
             SELECT time, field, value
             FROM onchain_metrics
             WHERE symbol = :symbol AND time >= :since AND time <= :as_of
             ORDER BY time ASC
-            """)
+            """
+        )
         res = await session.execute(stmt, {"symbol": symbol, "since": since, "as_of": as_of})
         rows = res.all()
     except Exception:

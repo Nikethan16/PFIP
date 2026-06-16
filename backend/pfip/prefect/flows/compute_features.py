@@ -54,7 +54,8 @@ async def _write_features(features: pd.DataFrame, symbol: str, source: str, time
     if features.empty:
         return 0
     factory = get_sessionmaker()
-    stmt = text("""
+    stmt = text(
+        """
         INSERT INTO features (
             time, symbol, source, timeframe,
             rsi_14, macd, macd_signal, macd_hist, atr_14, return_7d, volatility_30d, extras
@@ -71,7 +72,8 @@ async def _write_features(features: pd.DataFrame, symbol: str, source: str, time
             atr_14 = EXCLUDED.atr_14,
             return_7d = EXCLUDED.return_7d,
             volatility_30d = EXCLUDED.volatility_30d
-        """)
+        """
+    )
     async with factory() as session:
         for ts, row in features.iterrows():
             params = {
