@@ -247,29 +247,36 @@ async def compute_and_persist(
         except Exception as exc:  # pragma: no cover — defensive
             log.warning("extras computation failed for %s: %s", request.symbol, exc)
 
-    written = 0
+    batch: list[dict] = []
     for ts, row in technicals.iterrows():
         # Only attach extras to the latest bar to keep historical writes light.
         is_latest = ts == last_ts
         extras = extras_blob if (is_latest and request.write_extras) else {}
         # psycopg cannot adapt a pandas Timestamp — convert to a native datetime.
         ts_py = ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
-        params = {
-            "time": ts_py,
-            "symbol": request.symbol,
-            "source": request.source,
-            "timeframe": request.timeframe,
-            "rsi_14": _none_if_nan(row.get("rsi_14")),
-            "macd": _none_if_nan(row.get("macd")),
-            "macd_signal": _none_if_nan(row.get("macd_signal")),
-            "macd_hist": _none_if_nan(row.get("macd_hist")),
-            "atr_14": _none_if_nan(row.get("atr_14")),
-            "return_7d": _none_if_nan(row.get("return_7d")),
-            "volatility_30d": _none_if_nan(row.get("volatility_30d")),
-            "extras": json.dumps(_json_safe(extras)),
-        }
-        await session.execute(_UPSERT_SQL, params)
-        written += 1
+        batch.append(
+            {
+                "time": ts_py,
+                "symbol": request.symbol,
+                "source": request.source,
+                "timeframe": request.timeframe,
+                "rsi_14": _none_if_nan(row.get("rsi_14")),
+                "macd": _none_if_nan(row.get("macd")),
+                "macd_signal": _none_if_nan(row.get("macd_signal")),
+                "macd_hist": _none_if_nan(row.get("macd_hist")),
+                "atr_14": _none_if_nan(row.get("atr_14")),
+                "return_7d": _none_if_nan(row.get("return_7d")),
+                "volatility_30d": _none_if_nan(row.get("volatility_30d")),
+                "extras": json.dumps(_json_safe(extras)),
+            }
+        )
+    # One executemany round-trip instead of one INSERT per bar. The per-row loop
+    # held the transaction open across hundreds of bars × a Neon round-trip each,
+    # long enough that Neon's idle-in-transaction timeout killed the connection on
+    # large histories (BTC ~1900 bars). Batching makes the write a single fast op.
+    if batch:
+        await session.execute(_UPSERT_SQL, batch)
+    written = len(batch)
     await session.commit()
 
     return FeatureRunResult(
@@ -296,6 +303,11 @@ async def run_for_watchlist(
 
         res = await session.execute(select(WatchlistRow))
         rows = list(res.scalars().all())
+        # Release this read's transaction immediately. The per-symbol loop below
+        # runs for minutes on its own sessions; leaving this one idle-in-
+        # transaction that long trips Neon's idle_in_transaction_session_timeout
+        # and the connection gets terminated under us.
+        await session.commit()
     except Exception as exc:  # pragma: no cover
         log.warning("watchlist load failed: %s", exc)
         return []
