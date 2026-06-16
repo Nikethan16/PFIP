@@ -1,9 +1,15 @@
 version: "3.9"
 
-# PFIP Stage 0 Docker Compose
-# Bring up everything with: docker compose -f infra/docker-compose.yml --env-file .env up -d
-# Tear down with:            docker compose -f infra/docker-compose.yml down
-# All services run locally; no data leaves the machine except where user configures it.
+# PFIP local stack — one setup, one database.
+# Data lives in Neon (cloud Postgres). Docker runs everything else.
+#
+# Start:  docker compose -f infra/docker-compose.yml --env-file .env up -d
+# Stop:   docker compose -f infra/docker-compose.yml down
+#
+# DATABASE_URL in .env must point at your Neon project:
+#   postgresql+psycopg://USER:PASS@HOST/DB?sslmode=require
+# The same URL is used here (local dev) AND in GitHub Actions (daily ingest) —
+# one database, no sync problems.
 
 name: pfip
 
@@ -12,44 +18,19 @@ networks:
     driver: bridge
 
 volumes:
-  timescale_data:
   redis_data:
   qdrant_data:
-  prefect_data:
   mlflow_data:
   ollama_data:
   uptime_kuma_data:
 
 services:
-  # -------- Core data layer --------
-  timescaledb:
-    image: timescale/timescaledb:2.15.2-pg16
-    container_name: pfip-timescaledb
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-pfip}
-      # FIX 6-infra: required secret — fail loudly if unset instead of using a known-bad default.
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
-      POSTGRES_DB: ${POSTGRES_DB:-pfip}
-      TS_TUNE_MAX_CONNS: "50"
-    # FIX 12: bind to loopback only so Postgres is not exposed on the LAN.
-    ports:
-      - "127.0.0.1:${TIMESCALEDB_PORT:-5432}:5432"
-    volumes:
-      - timescale_data:/var/lib/postgresql/data
-    networks: [pfip-net]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pfip} -d ${POSTGRES_DB:-pfip}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
+  # -------- Cache / rate-limit layer --------
   redis:
     image: redis:7.2-alpine
     container_name: pfip-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
-    # FIX 12: bind to loopback only.
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
@@ -61,21 +42,17 @@ services:
       timeout: 5s
       retries: 5
 
+  # -------- Vector store (RAG) --------
   qdrant:
     image: qdrant/qdrant:v1.9.3
     container_name: pfip-qdrant
     restart: unless-stopped
-    # FIX 12: bind to loopback only.
     ports:
       - "127.0.0.1:${QDRANT_HTTP_PORT:-6333}:6333"
       - "127.0.0.1:${QDRANT_GRPC_PORT:-6334}:6334"
     volumes:
       - qdrant_data:/qdrant/storage
     networks: [pfip-net]
-    # FIX 17a: healthcheck. The qdrant image (debian-slim) ships no curl/wget/python,
-    # but Debian base images include bash, whose built-in /dev/tcp can do a raw HTTP
-    # GET against the readiness endpoint (/readyz, available in qdrant >=1.9).
-    # Passes only on an HTTP 200 status line.
     healthcheck:
       test:
         - "CMD"
@@ -87,31 +64,7 @@ services:
       retries: 3
       start_period: 20s
 
-  # -------- Orchestration --------
-  prefect:
-    image: prefecthq/prefect:2.19-python3.12
-    container_name: pfip-prefect
-    restart: unless-stopped
-    command: ["prefect", "server", "start", "--host", "0.0.0.0"]
-    environment:
-      PREFECT_API_URL: http://prefect:4200/api
-      PREFECT_SERVER_API_HOST: 0.0.0.0
-    # FIX 12: bind to loopback only.
-    ports:
-      - "127.0.0.1:${PREFECT_PORT:-4200}:4200"
-    volumes:
-      - prefect_data:/root/.prefect
-    networks: [pfip-net]
-    # FIX 17a: healthcheck. The prefect image bundles python3; probe the server's
-    # own health endpoint (GET :4200/api/health) with a stdlib one-liner.
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:4200/api/health', timeout=4).status==200 else 1)\""]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-
-  # -------- ML registry --------
+  # -------- ML experiment tracking --------
   mlflow:
     image: ghcr.io/mlflow/mlflow:v2.14.0
     container_name: pfip-mlflow
@@ -122,14 +75,11 @@ services:
       --port 5000
       --backend-store-uri sqlite:////mlflow/mlflow.db
       --artifacts-destination /mlflow/artifacts
-    # FIX 12: bind to loopback only.
     ports:
       - "127.0.0.1:${MLFLOW_PORT:-5000}:5000"
     volumes:
       - mlflow_data:/mlflow
     networks: [pfip-net]
-    # FIX 17a: healthcheck. The mlflow image is python-based; probe the server's
-    # health endpoint (GET :5000/health) with a stdlib one-liner.
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=4).status==200 else 1)\""]
       interval: 30s
@@ -139,26 +89,21 @@ services:
 
   # -------- Local LLM --------
   ollama:
-    # FIX 18: pin a concrete version instead of :latest for reproducible builds.
     image: ollama/ollama:0.30.4
     container_name: pfip-ollama
     restart: unless-stopped
-    # FIX 12: bind to loopback only.
     ports:
       - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
     volumes:
       - ollama_data:/root/.ollama
     networks: [pfip-net]
-    # FIX 17a: healthcheck. The ollama image bundles the `ollama` CLI, which talks
-    # to the local server; `ollama list` returns non-zero if the server isn't up.
-    # start_period is generous because model load / first start can be slow.
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 60s
-    # NOTE: on first run, shell into the container and pull the models:
+    # On first run, pull the models:
     #   docker exec -it pfip-ollama ollama pull mistral:7b-instruct
     #   docker exec -it pfip-ollama ollama pull nomic-embed-text
 
@@ -167,7 +112,6 @@ services:
     image: louislam/uptime-kuma:1
     container_name: pfip-uptime-kuma
     restart: unless-stopped
-    # FIX 12: bind to loopback only.
     ports:
       - "127.0.0.1:${UPTIME_KUMA_PORT:-3001}:3001"
     volumes:
@@ -175,7 +119,6 @@ services:
     networks: [pfip-net]
 
   # -------- PFIP app services --------
-  # Backend API (FastAPI). Built from ../backend. Dev command mounts source for hot reload.
   backend:
     build:
       context: ../backend
@@ -185,28 +128,22 @@ services:
     env_file:
       - ../.env
     environment:
-      # FIX 6-infra: the DB password embedded in DATABASE_URL is required — fail
-      # loudly if unset rather than silently using the known-bad pfip_dev default.
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pfip}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@timescaledb:5432/${POSTGRES_DB:-pfip}
+      # DATABASE_URL comes from .env — the Neon cloud Postgres URL.
+      # No local DB container needed; same URL as GitHub Actions uses.
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in .env — use your Neon connection string}
       REDIS_URL: redis://redis:6379/0
       QDRANT_URL: http://qdrant:6333
       MLFLOW_TRACKING_URI: http://mlflow:5000
       OLLAMA_HOST: http://ollama:11434
-      PREFECT_API_URL: http://prefect:4200/api
-    # FIX 12: bind to loopback only.
+      APP_ENV: dev
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
     volumes:
       - ../backend:/app
     depends_on:
-      timescaledb:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks: [pfip-net]
-    # FIX 17a: healthcheck. The backend image (python:3.12-slim) installs curl and
-    # bundles python; probe the FastAPI liveness route (all routers are mounted
-    # under /api/v1, so the health endpoint is /api/v1/health).
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/v1/health"]
       interval: 30s
@@ -214,42 +151,6 @@ services:
       retries: 3
       start_period: 40s
 
-  # Prefect worker — EXECUTES the scheduled deployments (the daily data pipeline:
-  # ingest -> features -> regime, on cron). Reuses the backend image so it has the
-  # flow code + deps; a `process` work pool runs each flow run as a subprocess here.
-  prefect-worker:
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
-    container_name: pfip-prefect-worker
-    restart: unless-stopped
-    env_file:
-      - ../.env
-    environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pfip}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@timescaledb:5432/${POSTGRES_DB:-pfip}
-      REDIS_URL: redis://redis:6379/0
-      QDRANT_URL: http://qdrant:6333
-      MLFLOW_TRACKING_URI: http://mlflow:5000
-      OLLAMA_HOST: http://ollama:11434
-      PREFECT_API_URL: http://prefect:4200/api
-    # --limit 6: run up to 6 flow runs concurrently so one slow/hung flow (e.g.
-    # the external news ingest hitting rate limits) can't head-of-line-block the
-    # daily features/regime jobs.
-    command: ["prefect", "worker", "start", "--pool", "default-agent-pool", "--type", "process", "--limit", "6"]
-    volumes:
-      - ../backend:/app
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks: [pfip-net]
-
-  # Frontend (Next.js). PRODUCTION build (target: prod) — pre-compiled, so
-  # navigation is instant (dev mode compiled each route on first click, which
-  # caused the 2-3-click slowness). No source bind-mount: the baked build runs.
-  # To iterate on the UI again, switch build.target back to omitted/dev and
-  # restore the volumes block below, then `up -d --build frontend`.
   frontend:
     build:
       context: ../frontend
@@ -258,25 +159,15 @@ services:
     container_name: pfip-frontend
     restart: unless-stopped
     environment:
-      # Browser-side: must use localhost (host port mapping)
       NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-8000}/api/v1
-      # Server-side (NextAuth credentials provider, server components): must use
-      # the Docker service name. localhost from inside the frontend container
-      # points to the frontend itself, not backend.
       BACKEND_URL: http://backend:8000/api/v1
-      # FIX 6-infra: required secret — fail loudly if unset instead of falling back
-      # to the publicly-known dev-change-me default.
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET must be set in .env}
       NEXTAUTH_URL: http://localhost:${FRONTEND_PORT:-3000}
-    # FIX 12: bind to loopback only.
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
-    # No bind-mount in prod: the optimized build is baked into the image.
     depends_on:
       - backend
     networks: [pfip-net]
-    # FIX 17a: healthcheck. The node:20-alpine image ships wget (busybox); probe
-    # the Next.js dev server on :3000. --spider just checks reachability.
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]
       interval: 30s
