@@ -137,14 +137,21 @@ ICICIBANK sideways (0.95).
 | # | Issue | Impact | Priority | Fix owner |
 |---|---|---|---|---|
 | 1 | US equities = 0 rows (no Tiingo key) | Biggest market empty; halves usable universe | **P0** | 👤 key → then auto |
-| 2 | FX ingest times out >180s | No USD→INR; blocks US/crypto rupee MTM | **P0** | code |
-| 3 | MLflow persistence fails in cloud | Regime/signal models not saved or versioned | **P1** | code |
-| 4 | India MFs + BNB/XRP not backfilled | 7 watchlist symbols stay no-data | P1 | code |
-| 5 | Extras only on latest bar | Supervised ML effectively sees 5 features, no history | P1 | code |
-| 6 | Precommitment Sharpe-floor gate is a no-op | Safety gate silently never fires | P2 | code |
-| 7 | Shadow `/vs-actual` thinner than CONTRACTS spec | No Sharpe/return comparison | P2 | code |
-| 8 | Chat history sidebar unwired | Minor UX | P3 | code |
-| 9 | Missing unit tests for portfolio service/risk/allocation | Load-bearing money code only covered indirectly | P2 | code |
+| 2 | ~~FX ingest times out >180s~~ | — | ✅ FIXED | concurrent fetch + 600s (Phase 0) |
+| 3 | ~~MLflow persistence fails in cloud~~ | — | ✅ FIXED | `setuptools` + `/tmp/mlruns` |
+| 4 | ~~India MFs + BNB/XRP not backfilled~~ | — | ✅ FIXED | symbol rewrites + AMFI block in backfill |
+| 5 | ~~Extras only on latest bar~~ | — | ✅ FIXED 2026-06-22 | `historical_extras` flag stamps per-bar extras (backfill path), one load per source |
+| 6 | ~~Precommitment Sharpe-floor gate is a no-op~~ | — | ✅ FIXED 2026-06-22 | real 3-month rolling Sharpe vs floor; blocks advance when unverifiable |
+| 7 | ~~Shadow `/vs-actual` thinner than CONTRACTS spec~~ | — | ✅ FIXED 2026-06-22 | adds marked value + return% + Sharpe comparison per book |
+| 8 | ~~Chat history sidebar unwired~~ | — | ✅ FIXED | client-side `useConversations` (localStorage) |
+| 9 | ~~Missing unit tests for portfolio service/risk/allocation~~ | — | ✅ FIXED 2026-06-22 | direct unit tests added (service/risk/allocation/change-point/Sharpe-gate) |
+
+> **2026-06-22 implementation pass.** Closed gaps 5–7 and 9; verified 2–4 and 8 were
+> already done (docs were stale). Also added a `ruptures` change-point detector
+> (`pfip/regime/change_point.py`, numpy fallback) run alongside the HMM, and fixed a
+> latent `trailing_sharpe`/`_weighted_sharpe` bug (float std of a constant series
+> exploded the Sharpe to ~1e16 instead of 0). 122 affected tests green. **Remaining
+> real gap: #1 (Tiingo key — needs you).**
 
 ---
 

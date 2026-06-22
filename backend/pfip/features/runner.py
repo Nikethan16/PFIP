@@ -85,6 +85,15 @@ class FeatureRunRequest:
     timeframe: str = "1d"
     market: str = "crypto"  # crypto | us | india | fx
     write_extras: bool = True
+    # When True, stamp the time-varying extras (macro / cross-asset / on-chain /
+    # derivatives) onto *every* historical bar, not just the latest one, so
+    # supervised models see a real feature history instead of 5 technicals. Each
+    # source is still loaded with a single query (over the full bar span); the
+    # per-bar snapshots are computed in memory via the PIT-aware ``derive_*``
+    # functions, so this does not reintroduce the per-bar round-trips that the
+    # batched upsert was built to avoid. Off by default (daily flow only needs
+    # the latest bar); the backfill path turns it on.
+    historical_extras: bool = False
 
 
 @dataclass
@@ -217,6 +226,8 @@ async def compute_and_persist(
     as_of_d = as_of_dt.date()
 
     extras_blob: dict[str, float | None] = {}
+    # ts -> extras blob; populated only when ``historical_extras`` is set.
+    per_bar_extras: dict = {}
     extras_computed = False
 
     if request.write_extras:
@@ -247,11 +258,72 @@ async def compute_and_persist(
         except Exception as exc:  # pragma: no cover — defensive
             log.warning("extras computation failed for %s: %s", request.symbol, exc)
 
+        # Historical extras: stamp the time-varying blocks onto every bar.
+        # Fundamentals are intentionally left on the latest bar only — they are
+        # quarterly/restated and we have no PIT history loader for them (see the
+        # known caveat about thin historical India fundamentals).
+        if request.historical_extras and len(technicals.index):
+            try:
+                first_ts = df.index[0]
+                first_dt = (
+                    first_ts.to_pydatetime() if hasattr(first_ts, "to_pydatetime") else as_of_dt
+                )
+                if first_dt.tzinfo is None:
+                    first_dt = first_dt.replace(tzinfo=timezone.utc)
+                span_days = max((as_of_dt - first_dt).days + 5, 90)
+
+                # One query per source, covering the whole bar span.
+                macro_panel_h = await load_macro_closes(session, as_of_dt, lookback_days=span_days)
+                ca_panel_h = await load_cross_asset_panel(
+                    session, request.symbol, as_of_dt, lookback_days=span_days
+                )
+                oc_hist_h = None
+                deriv_hist_h = None
+                if _is_crypto(request.symbol):
+                    oc_hist_h = await load_on_chain_history(
+                        session, request.symbol, as_of_dt, lookback_days=span_days
+                    )
+                    deriv_hist_h = await load_derivatives_history(
+                        session, request.symbol, as_of_dt, lookback_days=span_days
+                    )
+
+                for ts in technicals.index:
+                    bar_dt = ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
+                    if getattr(bar_dt, "tzinfo", None) is None:
+                        bar_dt = bar_dt.replace(tzinfo=timezone.utc)
+                    blob: dict[str, float | None] = {}
+                    # Each derive_* PIT-filters to rows at/<= bar_dt internally.
+                    blob.update(derive_macro(macro_panel_h, bar_dt).as_dict())
+                    blob.update(derive_cross_asset(ca_panel_h, request.symbol, bar_dt).as_dict())
+                    if oc_hist_h is not None:
+                        blob.update(derive_on_chain(oc_hist_h, request.symbol, bar_dt).as_dict())
+                    if deriv_hist_h is not None:
+                        blob.update(
+                            derive_derivatives(deriv_hist_h, request.symbol, bar_dt).as_dict()
+                        )
+                    per_bar_extras[ts] = blob
+                # The latest bar keeps its fundamentals + full snapshot on top.
+                if last_ts in per_bar_extras:
+                    merged = {**per_bar_extras[last_ts], **extras_blob}
+                    extras_blob = merged
+                extras_computed = True
+            except Exception as exc:  # pragma: no cover — defensive
+                log.warning("historical extras failed for %s: %s", request.symbol, exc)
+
     batch: list[dict] = []
     for ts, row in technicals.iterrows():
-        # Only attach extras to the latest bar to keep historical writes light.
         is_latest = ts == last_ts
-        extras = extras_blob if (is_latest and request.write_extras) else {}
+        if not request.write_extras:
+            extras: dict = {}
+        elif is_latest:
+            # Latest bar gets the full snapshot (incl. fundamentals).
+            extras = extras_blob
+        elif request.historical_extras:
+            # Historical bars get the per-bar time-varying snapshot.
+            extras = per_bar_extras.get(ts, {})
+        else:
+            # Default daily path: keep historical writes light (latest bar only).
+            extras = {}
         # psycopg cannot adapt a pandas Timestamp — convert to a native datetime.
         ts_py = ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
         batch.append(
@@ -292,11 +364,17 @@ async def compute_and_persist(
 async def run_for_watchlist(
     session,
     timeframe: str = "1d",
+    *,
+    historical_extras: bool = False,
 ) -> list[FeatureRunResult]:
     """For every row in ``watchlist``, run the full feature pipeline.
 
     ``source`` is picked from a small heuristic table (crypto -> coinbase,
     Indian equities -> jugaad, US tickers -> yfinance, FX -> frankfurter).
+
+    ``historical_extras`` stamps the time-varying extras onto every historical
+    bar (used by the one-time backfill); the daily flow leaves it off and only
+    refreshes the latest bar.
     """
     try:
         from pfip.models.watchlist import WatchlistRow
@@ -339,6 +417,7 @@ async def run_for_watchlist(
                     source=source,
                     timeframe=timeframe,
                     market=market_kind,
+                    historical_extras=historical_extras,
                 )
                 result = await compute_and_persist(sym_session, req)
         except Exception as exc:  # pragma: no cover

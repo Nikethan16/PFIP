@@ -199,3 +199,29 @@ async def test_vs_actual_diff_shape() -> None:
     diff = await portfolio.vs_actual()
     for key in ("actual_value_inr", "shadow_value_inr", "diff_inr", "only_in_shadow"):
         assert key in diff
+
+
+@pytest.mark.asyncio
+async def test_vs_actual_includes_performance_comparison() -> None:
+    """vs_actual now carries marked value + return/Sharpe comparison metrics."""
+    session = _InMemSession()
+    portfolio = ShadowPortfolio(session=session)
+    diff = await portfolio.vs_actual()
+    for key in (
+        "actual_marked_inr",
+        "shadow_marked_inr",
+        "actual_return_pct",
+        "shadow_return_pct",
+        "return_pct_diff",
+        "actual_sharpe",
+        "shadow_sharpe",
+        "sharpe_diff",
+    ):
+        assert key in diff
+    # Empty books ⇒ all-zero performance, no fabricated moves.
+    assert diff["shadow_return_pct"] == 0.0
+    assert diff["sharpe_diff"] == 0.0
+
+
+def test_weighted_sharpe_empty_is_zero() -> None:
+    assert ShadowPortfolio._weighted_sharpe([]) == 0.0

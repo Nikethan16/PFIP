@@ -273,7 +273,10 @@ async def run_backfill(
     results["backfill_data"] = data.as_dict()
 
     if compute:
-        feats = await stage_features(timeframe=timeframe)
+        # Backfill is the one place we stamp extras onto every historical bar so
+        # supervised models get a real feature history (the daily run only
+        # refreshes the latest bar).
+        feats = await stage_features(timeframe=timeframe, historical_extras=True)
         results["features"] = feats.as_dict()
         regime = await stage_regime(timeframe=timeframe)
         results["regime"] = regime.as_dict()

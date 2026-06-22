@@ -31,6 +31,12 @@ class RegimeRunResult:
     state_means: dict[int, float]
     n_obs: int
     status: str = "ok"
+    # Supplementary change-point view (run alongside the HMM, not instead of it):
+    # how many structural breaks were detected and how recent the last one is.
+    # A fresh break (small ``days_since_change``) warns that the HMM label may be
+    # about to move.
+    n_changepoints: int = 0
+    days_since_change: int | None = None
 
 
 async def _load_3y_close(session, symbol: str, source: str, timeframe: str) -> pd.DataFrame:
@@ -149,6 +155,19 @@ async def run_for_symbol(
 
     await _persist_regime(session, symbol, regime, confidence)
 
+    # Change-point view, computed alongside the HMM from the same close series.
+    # Never fatal — a detector hiccup must not sink the (already-persisted) label.
+    n_changepoints = 0
+    days_since_change: int | None = None
+    try:
+        from pfip.regime.change_point import detect_change_points
+
+        cp = detect_change_points(df["close"])
+        n_changepoints = cp.n_changepoints
+        days_since_change = cp.days_since_change
+    except Exception as exc:  # pragma: no cover - defensive
+        log.debug("change-point detection skipped for %s: %s", symbol, exc)
+
     return RegimeRunResult(
         symbol=symbol,
         regime=regime,
@@ -156,6 +175,8 @@ async def run_for_symbol(
         state_means={s: stats["mean"] for s, stats in detector._state_stats.items()},
         n_obs=len(returns),
         status="ok",
+        n_changepoints=n_changepoints,
+        days_since_change=days_since_change,
     )
 
 
