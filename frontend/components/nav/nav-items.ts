@@ -8,13 +8,19 @@ import {
   Copy,
   Eye,
   FlaskConical,
+  GitCompareArrows,
   Heart,
   Home,
   LayoutDashboard,
   LineChart,
   MessageSquare,
+  PiggyBank,
   ScanSearch,
+  ShieldAlert,
   Stars,
+  Target,
+  Trophy,
+  Wallet,
   Wrench,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -63,6 +69,10 @@ export const NAV_ITEMS: NavItem[] = [
 
   // Portfolio
   { label: "Holdings", href: "/portfolio", icon: Briefcase, mobile: true, group: "trading", shortcut: "G then P" },
+  { label: "Net worth", href: "/net-worth", icon: Wallet, group: "trading" },
+  { label: "Benchmark", href: "/benchmark", icon: Trophy, group: "trading" },
+  { label: "What-if", href: "/what-if", icon: GitCompareArrows, group: "trading" },
+  { label: "Stress test", href: "/stress-test", icon: ShieldAlert, group: "trading" },
   { label: "Shadow", href: "/shadow", icon: Copy, group: "trading" },
 
   // Tax
@@ -70,6 +80,8 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Loss harvesting", href: "/tax/harvest", icon: Calculator, group: "tax" },
 
   // Tools
+  { label: "Goals", href: "/goals", icon: Target, group: "tools" },
+  { label: "SIP", href: "/sip", icon: PiggyBank, group: "tools" },
   { label: "Journal", href: "/journal", icon: BookOpen, mobile: true, group: "tools", shortcut: "G then J" },
   { label: "Chat", href: "/chat", icon: MessageSquare, mobile: true, group: "tools", shortcut: "G then C" },
   { label: "Calibration", href: "/calibration", icon: LineChart, group: "tools" },

@@ -2498,3 +2498,243 @@ export async function downloadTaxExport(
   if (!resp.ok) throw new ApiError("Export failed", resp.status, null);
   return resp.blob();
 }
+
+// -----------------------------------------------------------------------------
+// Personal-finance planning features (2026-06-23 batch)
+//   A goals · C what-if · E benchmark · B net-worth · D stress · F SIP
+// All advisory; every endpoint carries the standard tax/portfolio disclaimer.
+// -----------------------------------------------------------------------------
+
+// --- A: goal-based planning + Monte Carlo projection -------------------------
+
+const GoalProjectionSchema = z.object({
+  years: z.number(),
+  n_months: z.number(),
+  current_corpus_inr: z.number(),
+  monthly_contribution_inr: z.number(),
+  expected_annual_return: z.number(),
+  annual_volatility: z.number(),
+  total_contributed_inr: z.number(),
+  percentiles_inr: z.object({
+    p10: z.number(),
+    p25: z.number(),
+    p50: z.number(),
+    p75: z.number(),
+    p90: z.number(),
+  }),
+  expected_inr: z.number(),
+  target_inr: z.number().optional(),
+  probability_of_target: z.number().nullable().optional(),
+  required_monthly_contribution_inr: z.number().optional(),
+  disclaimer: z.string().optional(),
+});
+export type GoalProjection = z.infer<typeof GoalProjectionSchema>;
+
+export interface GoalProjectRequest {
+  current_corpus_inr: number;
+  monthly_contribution_inr?: number;
+  years: number;
+  expected_annual_return?: number;
+  annual_volatility?: number;
+  target_inr?: number | null;
+  n_sims?: number;
+}
+
+export function useGoalProjection(): UseMutationResult<
+  GoalProjection,
+  unknown,
+  GoalProjectRequest
+> {
+  const token = useAuthToken();
+  return useMutation({
+    mutationFn: (vars: GoalProjectRequest) =>
+      apiFetch<GoalProjection>(`/portfolio/goals/project`, GoalProjectionSchema, {
+        method: "POST",
+        body: vars,
+        token,
+      }),
+  });
+}
+
+// --- F: SIP — XIRR + corpus projection ---------------------------------------
+
+const SipProjectionSchema = z.object({
+  projected_corpus_inr: z.number(),
+  total_invested_inr: z.number(),
+  gain_inr: z.number(),
+  months: z.number(),
+  disclaimer: z.string().optional(),
+});
+export type SipProjection = z.infer<typeof SipProjectionSchema>;
+
+export interface SipProjectRequest {
+  monthly_amount_inr: number;
+  years: number;
+  annual_return?: number;
+  current_corpus_inr?: number;
+}
+
+export function useSipProjection(): UseMutationResult<
+  SipProjection,
+  unknown,
+  SipProjectRequest
+> {
+  const token = useAuthToken();
+  return useMutation({
+    mutationFn: (vars: SipProjectRequest) =>
+      apiFetch<SipProjection>(`/portfolio/sip/project`, SipProjectionSchema, {
+        method: "POST",
+        body: vars,
+        token,
+      }),
+  });
+}
+
+const SipXirrSchema = z.object({
+  total_invested_inr: z.number(),
+  current_value_inr: z.number(),
+  absolute_gain_inr: z.number(),
+  xirr: z.number().nullable(),
+  n_instalments: z.number(),
+  disclaimer: z.string().optional(),
+});
+export type SipXirr = z.infer<typeof SipXirrSchema>;
+
+export interface SipXirrRequest {
+  instalments: { date: string; amount: number }[];
+  current_value_inr: number;
+}
+
+export function useSipXirr(): UseMutationResult<SipXirr, unknown, SipXirrRequest> {
+  const token = useAuthToken();
+  return useMutation({
+    mutationFn: (vars: SipXirrRequest) =>
+      apiFetch<SipXirr>(`/portfolio/sip/xirr`, SipXirrSchema, {
+        method: "POST",
+        body: vars,
+        token,
+      }),
+  });
+}
+
+// --- C: what-if pre-trade simulator ------------------------------------------
+
+const WhatIfSnapshotSchema = z.object({
+  total_value_inr: z.number(),
+  n_positions: z.number(),
+  exposure_by_category_inr: z.record(z.string(), z.number()),
+  hhi: z.number(),
+});
+const WhatIfResultSchema = z.object({
+  action: z.string(),
+  symbol: z.string(),
+  qty: z.number(),
+  price: z.number(),
+  before: WhatIfSnapshotSchema,
+  after: WhatIfSnapshotSchema,
+  deltas: z.object({
+    total_value_inr: z.number(),
+    hhi: z.number(),
+    n_positions: z.number(),
+  }),
+  tax_impact: z.record(z.string(), z.unknown()),
+  disclaimer: z.string().optional(),
+});
+export type WhatIfResult = z.infer<typeof WhatIfResultSchema>;
+
+export interface WhatIfRequest {
+  action: "BUY" | "SELL";
+  symbol: string;
+  qty: number;
+  price: number;
+  mark_prices?: Record<string, number>;
+}
+
+export function useWhatIf(): UseMutationResult<WhatIfResult, unknown, WhatIfRequest> {
+  const token = useAuthToken();
+  return useMutation({
+    mutationFn: (vars: WhatIfRequest) =>
+      apiFetch<WhatIfResult>(`/portfolio/what-if`, WhatIfResultSchema, {
+        method: "POST",
+        body: vars,
+        token,
+      }),
+  });
+}
+
+// --- E: live portfolio vs benchmark ------------------------------------------
+
+const BenchmarkWindowSchema = z.object({
+  portfolio_return: z.number().nullable(),
+  benchmark_return: z.number().nullable(),
+  excess_return: z.number().nullable(),
+});
+const BenchmarkSchema = z.object({
+  benchmark: z.string(),
+  benchmark_symbol_resolved: z.string(),
+  windows: z.record(z.string(), BenchmarkWindowSchema),
+  note: z.string().nullable(),
+  disclaimer: z.string().optional(),
+});
+export type BenchmarkComparison = z.infer<typeof BenchmarkSchema>;
+
+export function useBenchmark(symbol = "NIFTY 50"): UseQueryResult<BenchmarkComparison> {
+  const token = useAuthToken();
+  return useQuery<BenchmarkComparison>({
+    queryKey: ["portfolio", "benchmark", symbol],
+    queryFn: () =>
+      apiFetch<BenchmarkComparison>(
+        `/portfolio/benchmark?symbol=${encodeURIComponent(symbol)}`,
+        BenchmarkSchema,
+        { token },
+      ),
+    staleTime: 5 * 60_000,
+  });
+}
+
+// --- B: consolidated net-worth timeline --------------------------------------
+
+const NetWorthSchema = z.object({
+  timeline: z.array(z.object({ date: z.string(), net_worth_inr: z.number() })),
+  current_inr: z.number(),
+  breakdown_inr: z.record(z.string(), z.number()),
+  disclaimer: z.string().optional(),
+});
+export type NetWorth = z.infer<typeof NetWorthSchema>;
+
+export function useNetWorth(): UseQueryResult<NetWorth> {
+  const token = useAuthToken();
+  return useQuery<NetWorth>({
+    queryKey: ["portfolio", "net-worth"],
+    queryFn: () =>
+      apiFetch<NetWorth>(`/portfolio/net-worth`, NetWorthSchema, { token }),
+    staleTime: 5 * 60_000,
+  });
+}
+
+// --- D: portfolio stress testing ---------------------------------------------
+
+const StressScenarioSchema = z.object({
+  scenario: z.string(),
+  label: z.string(),
+  shocked_value_inr: z.number(),
+  change_inr: z.number(),
+  impact_pct: z.number(),
+  category_pnl_inr: z.record(z.string(), z.number()),
+});
+const StressTestSchema = z.object({
+  current_value_inr: z.number(),
+  scenarios: z.array(StressScenarioSchema),
+  disclaimer: z.string().optional(),
+});
+export type StressTest = z.infer<typeof StressTestSchema>;
+
+export function useStressTest(): UseQueryResult<StressTest> {
+  const token = useAuthToken();
+  return useQuery<StressTest>({
+    queryKey: ["portfolio", "stress-test"],
+    queryFn: () =>
+      apiFetch<StressTest>(`/portfolio/stress-test`, StressTestSchema, { token }),
+    staleTime: 5 * 60_000,
+  });
+}
