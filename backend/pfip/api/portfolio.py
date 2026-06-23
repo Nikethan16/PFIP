@@ -32,6 +32,8 @@ from pfip.portfolio.allocation import (
 )
 from pfip.portfolio.benchmark import run_benchmark
 from pfip.portfolio.goals import project_goal, required_monthly_contribution
+from pfip.portfolio.networth import run_networth
+from pfip.portfolio.stress import run_stress_test
 from pfip.portfolio.whatif import run_what_if
 from pfip.portfolio.marking import build_marking, fetch_return_series
 from pfip.portfolio.risk_manager import RiskManager
@@ -581,6 +583,30 @@ async def benchmark(
     where history is missing.
     """
     out = await run_benchmark(db, symbol=symbol)
+    out["disclaimer"] = DISCLAIMER
+    return out
+
+
+@router.get("/net-worth")
+async def net_worth(db: DbSession, _user: CurrentUser) -> dict:
+    """Consolidated net-worth timeline + current breakdown across all categories.
+
+    Liquid holdings are marked to their latest close per day; illiquid/manual
+    assets (PPF/EPF/NPS/FD/SGB/G-Sec/bonds/cash) are held at cost basis.
+    """
+    out = await run_networth(db)
+    out["disclaimer"] = DISCLAIMER
+    return out
+
+
+@router.get("/stress-test")
+async def stress_test(db: DbSession, _user: CurrentUser) -> dict:
+    """Apply named historical shock scenarios to the live book.
+
+    Each scenario applies per-category return shocks (2008 GFC, 2020 COVID,
+    rate-shock, INR depreciation) and reports the projected portfolio loss.
+    """
+    out = await run_stress_test(db)
     out["disclaimer"] = DISCLAIMER
     return out
 
