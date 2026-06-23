@@ -39,20 +39,33 @@ def test_zero_volatility_is_deterministic():
 
 def test_contributions_increase_terminal_value():
     base = simulate_terminal_values(
-        current_corpus_inr=0, monthly_contribution_inr=0, years=5,
-        expected_annual_return=0.08, annual_volatility=0.0, n_sims=200,
+        current_corpus_inr=0,
+        monthly_contribution_inr=0,
+        years=5,
+        expected_annual_return=0.08,
+        annual_volatility=0.0,
+        n_sims=200,
     )
     with_sip = simulate_terminal_values(
-        current_corpus_inr=0, monthly_contribution_inr=10_000, years=5,
-        expected_annual_return=0.08, annual_volatility=0.0, n_sims=200,
+        current_corpus_inr=0,
+        monthly_contribution_inr=10_000,
+        years=5,
+        expected_annual_return=0.08,
+        annual_volatility=0.0,
+        n_sims=200,
     )
     assert with_sip[0] > base[0]
 
 
 def test_seed_makes_it_reproducible():
     kw = dict(
-        current_corpus_inr=50_000, monthly_contribution_inr=5_000, years=3,
-        expected_annual_return=0.10, annual_volatility=0.15, n_sims=300, seed=7,
+        current_corpus_inr=50_000,
+        monthly_contribution_inr=5_000,
+        years=3,
+        expected_annual_return=0.10,
+        annual_volatility=0.15,
+        n_sims=300,
+        seed=7,
     )
     a = simulate_terminal_values(**kw)
     b = simulate_terminal_values(**kw)
@@ -61,8 +74,12 @@ def test_seed_makes_it_reproducible():
 
 def test_no_negative_net_worth():
     vals = simulate_terminal_values(
-        current_corpus_inr=10_000, monthly_contribution_inr=0, years=10,
-        expected_annual_return=-0.5, annual_volatility=0.9, n_sims=500,
+        current_corpus_inr=10_000,
+        monthly_contribution_inr=0,
+        years=10,
+        expected_annual_return=-0.5,
+        annual_volatility=0.9,
+        n_sims=500,
     )
     assert (vals >= 0).all()
 
@@ -71,8 +88,11 @@ def test_no_negative_net_worth():
 def test_invalid_years_raises(years):
     with pytest.raises(ValueError):
         simulate_terminal_values(
-            current_corpus_inr=1, monthly_contribution_inr=0, years=years,
-            expected_annual_return=0.1, annual_volatility=0.1,
+            current_corpus_inr=1,
+            monthly_contribution_inr=0,
+            years=years,
+            expected_annual_return=0.1,
+            annual_volatility=0.1,
         )
 
 
@@ -83,8 +103,12 @@ def test_invalid_years_raises(years):
 
 def test_project_goal_percentiles_are_ordered():
     p = project_goal(
-        current_corpus_inr=100_000, monthly_contribution_inr=10_000, years=10,
-        expected_annual_return=0.10, annual_volatility=0.15, n_sims=2000,
+        current_corpus_inr=100_000,
+        monthly_contribution_inr=10_000,
+        years=10,
+        expected_annual_return=0.10,
+        annual_volatility=0.15,
+        n_sims=2000,
     )
     assert isinstance(p, GoalProjection)
     assert p.p10 <= p.p25 <= p.p50 <= p.p75 <= p.p90
@@ -92,17 +116,25 @@ def test_project_goal_percentiles_are_ordered():
 
 def test_project_goal_reports_total_contributed():
     p = project_goal(
-        current_corpus_inr=0, monthly_contribution_inr=10_000, years=10,
-        expected_annual_return=0.0, annual_volatility=0.0, n_sims=100,
+        current_corpus_inr=0,
+        monthly_contribution_inr=10_000,
+        years=10,
+        expected_annual_return=0.0,
+        annual_volatility=0.0,
+        n_sims=100,
     )
     assert p.total_contributed_inr == pytest.approx(10_000 * 120)
 
 
 def test_probability_of_target_between_zero_and_one():
     p = project_goal(
-        current_corpus_inr=100_000, monthly_contribution_inr=10_000, years=10,
-        expected_annual_return=0.10, annual_volatility=0.20,
-        target_inr=2_500_000, n_sims=2000,
+        current_corpus_inr=100_000,
+        monthly_contribution_inr=10_000,
+        years=10,
+        expected_annual_return=0.10,
+        annual_volatility=0.20,
+        target_inr=2_500_000,
+        n_sims=2000,
     )
     assert p.probability_of_target is not None
     assert 0.0 <= p.probability_of_target <= 1.0
@@ -110,8 +142,12 @@ def test_probability_of_target_between_zero_and_one():
 
 def test_higher_target_is_less_likely():
     kw = dict(
-        current_corpus_inr=100_000, monthly_contribution_inr=10_000, years=10,
-        expected_annual_return=0.10, annual_volatility=0.20, n_sims=3000,
+        current_corpus_inr=100_000,
+        monthly_contribution_inr=10_000,
+        years=10,
+        expected_annual_return=0.10,
+        annual_volatility=0.20,
+        n_sims=3000,
     )
     low = project_goal(target_inr=1_500_000, **kw).probability_of_target
     high = project_goal(target_inr=5_000_000, **kw).probability_of_target
@@ -126,8 +162,12 @@ def test_higher_target_is_less_likely():
 def test_required_contribution_zero_when_already_there():
     # A huge corpus already clears a tiny target at the median with no SIP.
     req = required_monthly_contribution(
-        current_corpus_inr=10_000_000, target_inr=1_000_000, years=5,
-        expected_annual_return=0.08, annual_volatility=0.10, n_sims=500,
+        current_corpus_inr=10_000_000,
+        target_inr=1_000_000,
+        years=5,
+        expected_annual_return=0.08,
+        annual_volatility=0.10,
+        n_sims=500,
     )
     assert req == 0.0
 
@@ -135,15 +175,23 @@ def test_required_contribution_zero_when_already_there():
 def test_required_contribution_hits_target_at_median():
     target = 5_000_000
     req = required_monthly_contribution(
-        current_corpus_inr=100_000, target_inr=target, years=10,
-        expected_annual_return=0.10, annual_volatility=0.15, n_sims=2000,
+        current_corpus_inr=100_000,
+        target_inr=target,
+        years=10,
+        expected_annual_return=0.10,
+        annual_volatility=0.15,
+        n_sims=2000,
     )
     assert req > 0
     # Feeding the solved contribution back should land the median near target.
     p = project_goal(
-        current_corpus_inr=100_000, monthly_contribution_inr=req, years=10,
-        expected_annual_return=0.10, annual_volatility=0.15,
-        target_inr=target, n_sims=2000,
+        current_corpus_inr=100_000,
+        monthly_contribution_inr=req,
+        years=10,
+        expected_annual_return=0.10,
+        annual_volatility=0.15,
+        target_inr=target,
+        n_sims=2000,
     )
     assert p.p50 == pytest.approx(target, rel=0.05)
 
@@ -154,9 +202,13 @@ def test_required_contribution_hits_target_at_median():
 
 
 def test_goals_project_requires_auth(client: TestClient):
-    resp = client.post("/api/v1/portfolio/goals/project", json={
-        "current_corpus_inr": 100000, "years": 10,
-    })
+    resp = client.post(
+        "/api/v1/portfolio/goals/project",
+        json={
+            "current_corpus_inr": 100000,
+            "years": 10,
+        },
+    )
     assert resp.status_code == 401
 
 

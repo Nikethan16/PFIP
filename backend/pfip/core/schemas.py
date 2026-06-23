@@ -58,16 +58,17 @@ except Exception as exc:  # pragma: no cover
 # OHLCV schema
 # ---------------------------------------------------------------------------
 
+
 def _build_ohlcv_schema() -> Any:
     """Build and return the pandera OHLCV schema object."""
     if not _PA_OK:
         return None
     return pa.DataFrameSchema(
         columns={
-            "open":   pa.Column(float, pa.Check.ge(0), coerce=True, nullable=False),
-            "high":   pa.Column(float, pa.Check.ge(0), coerce=True, nullable=False),
-            "low":    pa.Column(float, pa.Check.ge(0), coerce=True, nullable=False),
-            "close":  pa.Column(float, pa.Check.gt(0), coerce=True, nullable=False),
+            "open": pa.Column(float, pa.Check.ge(0), coerce=True, nullable=False),
+            "high": pa.Column(float, pa.Check.ge(0), coerce=True, nullable=False),
+            "low": pa.Column(float, pa.Check.ge(0), coerce=True, nullable=False),
+            "close": pa.Column(float, pa.Check.gt(0), coerce=True, nullable=False),
             "volume": pa.Column(float, pa.Check.ge(0), coerce=True, nullable=True),
         },
         checks=[
@@ -124,13 +125,13 @@ def _manual_ohlcv_check(df: pd.DataFrame) -> None:
 # ---------------------------------------------------------------------------
 
 _FEATURE_RANGES: dict[str, tuple[float | None, float | None]] = {
-    "rsi_14":       (0.0, 100.0),
-    "macd":         (None, None),
-    "macd_signal":  (None, None),
-    "macd_hist":    (None, None),
-    "atr_14":       (0.0, None),
-    "return_7d":    (-5.0, 5.0),   # log-return: ±500% weekly is a hard cap
-    "volatility_30d": (0.0, 10.0), # daily vol: >1000% annualized is data garbage
+    "rsi_14": (0.0, 100.0),
+    "macd": (None, None),
+    "macd_signal": (None, None),
+    "macd_hist": (None, None),
+    "atr_14": (0.0, None),
+    "return_7d": (-5.0, 5.0),  # log-return: ±500% weekly is a hard cap
+    "volatility_30d": (0.0, 10.0),  # daily vol: >1000% annualized is data garbage
 }
 
 

@@ -47,12 +47,12 @@ _MIN_SEGMENT = 10  # don't split into segments shorter than this
 class ChangePointResult:
     """Outcome of change-point detection on a return series."""
 
-    breakpoints: list[int]          # interior break indices into the return series
+    breakpoints: list[int]  # interior break indices into the return series
     n_changepoints: int
-    last_change_index: int | None   # index of the most recent break, or None
+    last_change_index: int | None  # index of the most recent break, or None
     last_change_at: datetime | None  # timestamp of that break, when a time index exists
-    days_since_change: int | None   # calendar days from last break to last bar
-    method: str                     # "ruptures_pelt" or "binseg_l2_fallback"
+    days_since_change: int | None  # calendar days from last break to last bar
+    method: str  # "ruptures_pelt" or "binseg_l2_fallback"
 
 
 # ---------------------------------------------------------------------------

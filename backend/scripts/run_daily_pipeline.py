@@ -373,9 +373,7 @@ async def _ingest_fundamentals() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-async def stage_features(
-    *, timeframe: str = "1d", historical_extras: bool = False
-) -> StageSummary:
+async def stage_features(*, timeframe: str = "1d", historical_extras: bool = False) -> StageSummary:
     """Compute + persist the feature bundle for every watchlist asset.
 
     Reuses ``pfip.features.runner.run_for_watchlist`` which resolves each

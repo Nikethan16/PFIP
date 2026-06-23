@@ -33,9 +33,7 @@ class CashFlow:
 def _xnpv(rate: float, flows: Sequence[CashFlow]) -> float:
     """Net present value of dated flows at annual ``rate`` (XIRR convention)."""
     t0 = flows[0].when
-    return sum(
-        cf.amount / ((1.0 + rate) ** ((cf.when - t0).days / _DAYS_PER_YEAR)) for cf in flows
-    )
+    return sum(cf.amount / ((1.0 + rate) ** ((cf.when - t0).days / _DAYS_PER_YEAR)) for cf in flows)
 
 
 def _xnpv_derivative(rate: float, flows: Sequence[CashFlow]) -> float:

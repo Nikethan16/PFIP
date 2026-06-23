@@ -126,6 +126,13 @@ def test_sip_project_endpoint(client: TestClient, auth_headers: dict[str, str]):
 
 
 def test_sip_requires_auth(client: TestClient):
-    assert client.post("/api/v1/portfolio/sip/project", json={
-        "monthly_amount_inr": 1000, "years": 5,
-    }).status_code == 401
+    assert (
+        client.post(
+            "/api/v1/portfolio/sip/project",
+            json={
+                "monthly_amount_inr": 1000,
+                "years": 5,
+            },
+        ).status_code
+        == 401
+    )

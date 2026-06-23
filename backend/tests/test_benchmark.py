@@ -17,7 +17,7 @@ def _series(start_val: float, daily_growth: float, n: int = 400):
     d = date(2025, 1, 1)
     for i in range(n):
         out.append((d + timedelta(days=i), v))
-        v *= (1 + daily_growth)
+        v *= 1 + daily_growth
     return out
 
 
@@ -27,7 +27,7 @@ def _series(start_val: float, daily_growth: float, n: int = 400):
 
 
 def test_excess_positive_when_portfolio_outperforms():
-    port = _series(100, 0.001)   # faster growth
+    port = _series(100, 0.001)  # faster growth
     bench = _series(100, 0.0005)  # slower
     res = compare_series(port, bench, windows=("1Y",))
     assert res["1Y"]["portfolio_return"] > res["1Y"]["benchmark_return"]
@@ -85,9 +85,7 @@ def test_benchmark_requires_auth(client: TestClient):
     assert client.get("/api/v1/portfolio/benchmark").status_code == 401
 
 
-def test_benchmark_endpoint_graceful_without_data(
-    client: TestClient, auth_headers: dict[str, str]
-):
+def test_benchmark_endpoint_graceful_without_data(client: TestClient, auth_headers: dict[str, str]):
     # Fake DB ⇒ no OHLCV; endpoint should still 200 with a note, not crash.
     resp = client.get("/api/v1/portfolio/benchmark?symbol=NIFTY%2050", headers=auth_headers)
     assert resp.status_code == 200

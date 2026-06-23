@@ -53,14 +53,14 @@ BacktestStrategy = Callable[[pd.DataFrame], pd.Series]
 class ScorerResult:
     """Full scoring output, ready to persist or log."""
 
-    verdict: str                       # "KEEP" or "REJECT"
-    reasons: list[str]                 # why it passed/failed each gate
-    net_sharpe: float                  # walk-forward net-of-costs Sharpe
+    verdict: str  # "KEEP" or "REJECT"
+    reasons: list[str]  # why it passed/failed each gate
+    net_sharpe: float  # walk-forward net-of-costs Sharpe
     max_drawdown: float
-    mc_sharpe_p5: float                # Monte Carlo 5th-percentile Sharpe
-    beats_buyhold: bool                # vs. buy-hold net Sharpe
+    mc_sharpe_p5: float  # Monte Carlo 5th-percentile Sharpe
+    beats_buyhold: bool  # vs. buy-hold net Sharpe
     lookahead_ok: bool
-    fold_positive_frac: float          # fraction of WF folds with Sharpe > 0
+    fold_positive_frac: float  # fraction of WF folds with Sharpe > 0
     benchmark_sharpes: dict[str, float] = field(default_factory=dict)
     fold_sharpes: list[float] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
@@ -176,8 +176,7 @@ def score_strategy(
     beats_bh = False
     try:
         bench = benchmark_comparison(df, strategy, market_kind=market)
-        benchmark_sharpes = {k: float(v.sharpe) for k, v in bench.items()
-                             if hasattr(v, "sharpe")}
+        benchmark_sharpes = {k: float(v.sharpe) for k, v in bench.items() if hasattr(v, "sharpe")}
         bh_sharpe = benchmark_sharpes.get("buy_hold", float("nan"))
         beats_bh = np.isfinite(bh_sharpe) and (net_sharpe - bh_sharpe) >= min_beat_buyhold
     except Exception as exc:

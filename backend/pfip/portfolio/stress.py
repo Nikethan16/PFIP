@@ -34,24 +34,54 @@ _GSEC = HoldingCategory.GSEC.value
 SCENARIOS: dict[str, dict[str, Any]] = {
     "gfc_2008": {
         "label": "2008 Global Financial Crisis",
-        "shocks": {_EQUITY: -0.55, _ETF: -0.50, _MF: -0.50, _CRYPTO_X: -0.55,
-                   _CRYPTO_SC: -0.55, _SGB: 0.05, _DEBT: -0.05, _GSEC: 0.03},
+        "shocks": {
+            _EQUITY: -0.55,
+            _ETF: -0.50,
+            _MF: -0.50,
+            _CRYPTO_X: -0.55,
+            _CRYPTO_SC: -0.55,
+            _SGB: 0.05,
+            _DEBT: -0.05,
+            _GSEC: 0.03,
+        },
     },
     "covid_2020": {
         "label": "2020 COVID crash (Feb–Mar)",
-        "shocks": {_EQUITY: -0.38, _ETF: -0.34, _MF: -0.34, _CRYPTO_X: -0.50,
-                   _CRYPTO_SC: -0.50, _SGB: 0.08, _DEBT: -0.02, _GSEC: 0.02},
+        "shocks": {
+            _EQUITY: -0.38,
+            _ETF: -0.34,
+            _MF: -0.34,
+            _CRYPTO_X: -0.50,
+            _CRYPTO_SC: -0.50,
+            _SGB: 0.08,
+            _DEBT: -0.02,
+            _GSEC: 0.02,
+        },
     },
     "rate_shock_200bps": {
         "label": "Rate shock +200bps",
-        "shocks": {_EQUITY: -0.12, _ETF: -0.12, _MF: -0.12, _CRYPTO_X: -0.15,
-                   _CRYPTO_SC: -0.15, _DEBT: -0.08, _GSEC: -0.10, _SGB: -0.03},
+        "shocks": {
+            _EQUITY: -0.12,
+            _ETF: -0.12,
+            _MF: -0.12,
+            _CRYPTO_X: -0.15,
+            _CRYPTO_SC: -0.15,
+            _DEBT: -0.08,
+            _GSEC: -0.10,
+            _SGB: -0.03,
+        },
     },
     "inr_depreciation_10pct": {
         "label": "INR depreciates 10% vs USD",
         # Rupee-denominated INR equity slightly hit; USD/crypto gain in INR terms.
-        "shocks": {_EQUITY: -0.03, _ETF: -0.03, _MF: -0.03, _CRYPTO_X: 0.10,
-                   _CRYPTO_SC: 0.10, _SGB: 0.08},
+        "shocks": {
+            _EQUITY: -0.03,
+            _ETF: -0.03,
+            _MF: -0.03,
+            _CRYPTO_X: 0.10,
+            _CRYPTO_SC: 0.10,
+            _SGB: 0.08,
+        },
     },
 }
 

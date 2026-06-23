@@ -273,9 +273,7 @@ class ShadowPortfolio:
             "shadow_marked_inr": shadow_perf["marked_value_inr"],
             "actual_return_pct": actual_perf["return_pct"],
             "shadow_return_pct": shadow_perf["return_pct"],
-            "return_pct_diff": round(
-                shadow_perf["return_pct"] - actual_perf["return_pct"], 6
-            ),
+            "return_pct_diff": round(shadow_perf["return_pct"] - actual_perf["return_pct"], 6),
             "actual_sharpe": actual_perf["sharpe"],
             "shadow_sharpe": shadow_perf["sharpe"],
             "sharpe_diff": round(shadow_perf["sharpe"] - actual_perf["sharpe"], 4),

@@ -112,9 +112,7 @@ def test_historical_var_is_negative_tail_and_scales_to_inr():
     svc = PortfolioService(db=None)
     # 100 returns, the worst 10 being -10%; the 95% VaR sits in the left tail.
     returns = [(-0.10 if i < 10 else 0.01) for i in range(100)]
-    out = svc.historical_var(
-        returns, confidence=0.95, portfolio_value_inr=Decimal("1000000")
-    )
+    out = svc.historical_var(returns, confidence=0.95, portfolio_value_inr=Decimal("1000000"))
     assert out["var_pct"] <= 0
     assert out["cvar_pct"] <= out["var_pct"]  # CVaR is at least as severe
     assert Decimal(out["var_inr"]) > 0  # INR figure is a positive loss magnitude
@@ -215,15 +213,11 @@ async def test_concentration_score_lower_when_diversified():
 
 @pytest.mark.asyncio
 async def test_portfolio_summary_drawdown_from_nav_history():
-    svc = _FixedHoldingsService(
-        [_holding("A", HoldingCategory.EQUITY, "10", "1000")]
-    )
+    svc = _FixedHoldingsService([_holding("A", HoldingCategory.EQUITY, "10", "1000")])
     nav = [
         (date(2024, 1, 1), Decimal("100")),
         (date(2024, 1, 2), Decimal("200")),  # peak
         (date(2024, 1, 3), Decimal("150")),  # 25% below peak
     ]
-    summary = await svc.portfolio_summary(
-        mark_prices={"A": Decimal("100")}, nav_history=nav
-    )
+    summary = await svc.portfolio_summary(mark_prices={"A": Decimal("100")}, nav_history=nav)
     assert summary.drawdown == pytest.approx(0.25)

@@ -43,7 +43,11 @@ def test_buy_new_symbol_adds_position():
 
 def test_buy_existing_symbol_increases_value_not_count():
     res = simulate(
-        _book(), action="BUY", symbol="RELIANCE.NS", qty="10", price="1500",
+        _book(),
+        action="BUY",
+        symbol="RELIANCE.NS",
+        qty="10",
+        price="1500",
         mark_prices={"RELIANCE.NS": Decimal("1500")},
     )
     assert res.after["n_positions"] == res.before["n_positions"]  # same names
@@ -53,7 +57,11 @@ def test_buy_existing_symbol_increases_value_not_count():
 def test_buy_changes_concentration():
     # Buying a lot of one name should raise HHI (more concentrated).
     res = simulate(
-        _book(), action="BUY", symbol="BTC/USD", qty="5", price="2000000",
+        _book(),
+        action="BUY",
+        symbol="BTC/USD",
+        qty="5",
+        price="2000000",
         mark_prices={"BTC/USD": Decimal("2000000"), "RELIANCE.NS": Decimal("1000")},
     )
     assert res.deltas["hhi"] > 0
@@ -66,7 +74,11 @@ def test_buy_changes_concentration():
 
 def test_sell_partial_reduces_value():
     res = simulate(
-        _book(), action="SELL", symbol="RELIANCE.NS", qty="5", price="1500",
+        _book(),
+        action="SELL",
+        symbol="RELIANCE.NS",
+        qty="5",
+        price="1500",
         mark_prices={"RELIANCE.NS": Decimal("1500"), "BTC/USD": Decimal("2000000")},
     )
     assert res.after["total_value_inr"] < res.before["total_value_inr"]
@@ -75,7 +87,11 @@ def test_sell_partial_reduces_value():
 
 def test_sell_full_closes_position():
     res = simulate(
-        _book(), action="SELL", symbol="RELIANCE.NS", qty="10", price="1500",
+        _book(),
+        action="SELL",
+        symbol="RELIANCE.NS",
+        qty="10",
+        price="1500",
     )
     assert res.after["n_positions"] == res.before["n_positions"] - 1
 
@@ -83,7 +99,11 @@ def test_sell_full_closes_position():
 def test_sell_realises_gain_tax_on_equity():
     # Bought 10 @ 1000 (cost 10000), sell 10 @ 2000 ⇒ a real gain ⇒ some tax.
     res = simulate(
-        _book(), action="SELL", symbol="RELIANCE.NS", qty="10", price="2000",
+        _book(),
+        action="SELL",
+        symbol="RELIANCE.NS",
+        qty="10",
+        price="2000",
     )
     assert res.tax_impact["asset_class"] == "equity"
     assert res.tax_impact["realised_gain_inr"] == pytest.approx(10000, abs=1)
@@ -123,9 +143,15 @@ def test_bad_action_raises():
 
 
 def test_what_if_requires_auth(client: TestClient):
-    resp = client.post("/api/v1/portfolio/what-if", json={
-        "action": "BUY", "symbol": "X", "qty": 1, "price": 100,
-    })
+    resp = client.post(
+        "/api/v1/portfolio/what-if",
+        json={
+            "action": "BUY",
+            "symbol": "X",
+            "qty": 1,
+            "price": 100,
+        },
+    )
     assert resp.status_code == 401
 
 

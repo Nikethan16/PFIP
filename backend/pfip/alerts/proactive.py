@@ -108,8 +108,7 @@ def upcoming_events(
 
 def _events_block(events: Sequence[CalendarEvent]) -> str:
     return "\n".join(
-        f"- {e.when.isoformat()} · {e.symbol} · {e.kind}"
-        + (f" — {e.detail}" if e.detail else "")
+        f"- {e.when.isoformat()} · {e.symbol} · {e.kind}" + (f" — {e.detail}" if e.detail else "")
         for e in events
     )
 

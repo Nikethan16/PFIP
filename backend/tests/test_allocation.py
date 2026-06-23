@@ -66,9 +66,7 @@ def test_tactical_tilt_is_capped():
     # An extreme bear + max-negative sentiment must still respect max_tilt:
     # no single bucket can move more than the cap from strategic.
     base = StrategicTargets().to_dict()
-    out = tactical_adjust(
-        StrategicTargets(), {"equity": "bear_trend"}, -1.0, max_tilt=0.05
-    )
+    out = tactical_adjust(StrategicTargets(), {"equity": "bear_trend"}, -1.0, max_tilt=0.05)
     moved = sum(abs(out[k] - base[k]) for k in base)
     # After re-normalisation the moves stay small; sanity bound well under 2x cap.
     assert moved <= 0.2

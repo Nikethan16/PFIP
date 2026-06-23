@@ -87,7 +87,9 @@ def build_networth(
             cursors[s] = i
             if last_price[s] is not None:
                 priced_total += qty_by_symbol[s] * last_price[s]
-        timeline.append({"date": d.isoformat(), "net_worth_inr": round(priced_total + flat_value, 2)})
+        timeline.append(
+            {"date": d.isoformat(), "net_worth_inr": round(priced_total + flat_value, 2)}
+        )
 
     # Current priced breakdown (latest close per symbol).
     for h in holdings:

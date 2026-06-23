@@ -130,9 +130,9 @@ def _apply_trade(
                     acquired_at=h.acquired_at,
                 )
                 # Reduce cost basis proportionally to qty sold.
-                h.cost_basis_inr = (
-                    Decimal(str(h.cost_basis_inr)) * (held - sold) / held
-                ).quantize(Decimal("0.01"))
+                h.cost_basis_inr = (Decimal(str(h.cost_basis_inr)) * (held - sold) / held).quantize(
+                    Decimal("0.01")
+                )
                 h.qty = held - sold
                 if h.qty <= 0:
                     new = [x for x in new if x is not h]
@@ -179,8 +179,7 @@ def _tax_on_sell(info: _SellInfo, *, price: Decimal) -> dict[str, Any]:
             "asset_class": "vda",
             "realised_gain_inr": float(gain),
             "detail": {
-                k: float(v) if isinstance(v, (int, float, Decimal)) else v
-                for k, v in vda.items()
+                k: float(v) if isinstance(v, (int, float, Decimal)) else v for k, v in vda.items()
             },
         }
     stcg = compute_stcg(events)
