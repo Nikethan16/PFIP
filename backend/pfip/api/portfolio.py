@@ -7,7 +7,7 @@ advisory ``DISCLAIMER``.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID
@@ -33,6 +33,7 @@ from pfip.portfolio.allocation import (
 from pfip.portfolio.benchmark import run_benchmark
 from pfip.portfolio.goals import project_goal, required_monthly_contribution
 from pfip.portfolio.networth import run_networth
+from pfip.portfolio.sip import CashFlow, project_sip_corpus, sip_summary
 from pfip.portfolio.stress import run_stress_test
 from pfip.portfolio.whatif import run_what_if
 from pfip.portfolio.marking import build_marking, fetch_return_series
@@ -123,6 +124,29 @@ class WhatIfRequest(BaseModel):
     qty: Decimal
     price: Decimal
     mark_prices: dict[str, Decimal] | None = None
+
+
+class SipInstalment(BaseModel):
+    """One dated SIP cash flow. Negative amount = invested (money out)."""
+
+    date: date
+    amount: float
+
+
+class SipXirrRequest(BaseModel):
+    """Body for ``POST /portfolio/sip/xirr``."""
+
+    instalments: list[SipInstalment]
+    current_value_inr: float
+
+
+class SipProjectRequest(BaseModel):
+    """Body for ``POST /portfolio/sip/project``."""
+
+    monthly_amount_inr: float
+    years: float
+    annual_return: float = 0.12
+    current_corpus_inr: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -607,6 +631,35 @@ async def stress_test(db: DbSession, _user: CurrentUser) -> dict:
     rate-shock, INR depreciation) and reports the projected portfolio loss.
     """
     out = await run_stress_test(db)
+    out["disclaimer"] = DISCLAIMER
+    return out
+
+
+# ---------------------------------------------------------------------------
+# SIP — XIRR + corpus projection
+# ---------------------------------------------------------------------------
+
+
+@router.post("/sip/xirr")
+async def sip_xirr(body: SipXirrRequest, _user: CurrentUser) -> dict:
+    """Total invested + annualised XIRR for a SIP given its dated instalments."""
+    flows = [CashFlow(when=i.date, amount=i.amount) for i in body.instalments]
+    out = sip_summary(flows, current_value=body.current_value_inr)
+    out["disclaimer"] = DISCLAIMER
+    return out
+
+
+@router.post("/sip/project")
+async def sip_project(body: SipProjectRequest, _user: CurrentUser) -> dict:
+    """Project the corpus a monthly SIP grows to at an assumed annual return."""
+    if body.years < 0:
+        raise HTTPException(status_code=422, detail="years must be >= 0")
+    out = project_sip_corpus(
+        monthly_amount=body.monthly_amount_inr,
+        years=body.years,
+        annual_return=body.annual_return,
+        current_corpus=body.current_corpus_inr,
+    )
     out["disclaimer"] = DISCLAIMER
     return out
 
