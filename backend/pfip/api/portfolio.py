@@ -30,6 +30,7 @@ from pfip.portfolio.allocation import (
     suggestions_to_dict,
     tactical_adjust,
 )
+from pfip.portfolio.benchmark import run_benchmark
 from pfip.portfolio.goals import project_goal, required_monthly_contribution
 from pfip.portfolio.whatif import run_what_if
 from pfip.portfolio.marking import build_marking, fetch_return_series
@@ -565,6 +566,23 @@ async def what_if(body: WhatIfRequest, db: DbSession, _user: CurrentUser) -> dic
         mark_prices=body.mark_prices,
     )
     return result.as_dict()
+
+
+@router.get("/benchmark")
+async def benchmark(
+    db: DbSession,
+    _user: CurrentUser,
+    symbol: str = Query(default="NIFTY 50"),
+) -> dict:
+    """Compare the live portfolio's return vs a benchmark over 1M/YTD/1Y/Max.
+
+    ``symbol`` accepts friendly names (NIFTY 50, SENSEX, S&P 500, SPY). Returns
+    per-window portfolio return, benchmark return, and excess; values are null
+    where history is missing.
+    """
+    out = await run_benchmark(db, symbol=symbol)
+    out["disclaimer"] = DISCLAIMER
+    return out
 
 
 # ---------------------------------------------------------------------------
