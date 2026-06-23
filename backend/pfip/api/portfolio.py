@@ -30,6 +30,7 @@ from pfip.portfolio.allocation import (
     suggestions_to_dict,
     tactical_adjust,
 )
+from pfip.portfolio.goals import project_goal, required_monthly_contribution
 from pfip.portfolio.marking import build_marking, fetch_return_series
 from pfip.portfolio.risk_manager import RiskManager
 from pfip.portfolio.rollup import (
@@ -86,6 +87,24 @@ class RebalanceRequest(BaseModel):
     regime_per_market: dict[str, str] | None = None
     sentiment: float | None = None
     drift_threshold: float = 0.05
+
+
+class GoalProjectRequest(BaseModel):
+    """Body for ``POST /portfolio/goals/project``.
+
+    All monetary values are INR. ``expected_annual_return`` / ``annual_volatility``
+    are fractions (0.10 = 10%). When ``target_inr`` is given, the response also
+    reports the probability of reaching it and the monthly contribution needed to
+    hit it at the median.
+    """
+
+    current_corpus_inr: float
+    monthly_contribution_inr: float = 0.0
+    years: float
+    expected_annual_return: float = 0.10
+    annual_volatility: float = 0.15
+    target_inr: float | None = None
+    n_sims: int = 10_000
 
 
 # ---------------------------------------------------------------------------
@@ -467,6 +486,46 @@ async def rebalance(body: RebalanceRequest, _user: CurrentUser) -> dict:
         "tactical_targets": adjusted,
         **suggestions_to_dict(suggestions),
     }
+
+
+# ---------------------------------------------------------------------------
+# Goal-based planning
+# ---------------------------------------------------------------------------
+
+
+@router.post("/goals/project")
+async def goals_project(body: GoalProjectRequest, _user: CurrentUser) -> dict:
+    """Monte Carlo net-worth projection for a savings goal.
+
+    Stateless: takes the plan parameters and returns the terminal-value
+    distribution. With a ``target_inr`` it also reports the probability of
+    reaching the goal and the monthly contribution required to hit it at the
+    median. Advisory only — the figures are a distribution, not a promise.
+    """
+    if body.years <= 0:
+        raise HTTPException(status_code=422, detail="years must be > 0")
+    n_sims = max(1000, min(body.n_sims, 50_000))
+    projection = project_goal(
+        current_corpus_inr=body.current_corpus_inr,
+        monthly_contribution_inr=body.monthly_contribution_inr,
+        years=body.years,
+        expected_annual_return=body.expected_annual_return,
+        annual_volatility=body.annual_volatility,
+        target_inr=body.target_inr,
+        n_sims=n_sims,
+    )
+    out = projection.as_dict()
+    if body.target_inr is not None:
+        out["required_monthly_contribution_inr"] = required_monthly_contribution(
+            current_corpus_inr=body.current_corpus_inr,
+            target_inr=body.target_inr,
+            years=body.years,
+            expected_annual_return=body.expected_annual_return,
+            annual_volatility=body.annual_volatility,
+            n_sims=n_sims,
+        )
+    out["disclaimer"] = DISCLAIMER
+    return out
 
 
 # ---------------------------------------------------------------------------
