@@ -31,6 +31,7 @@ from pfip.portfolio.allocation import (
     tactical_adjust,
 )
 from pfip.portfolio.goals import project_goal, required_monthly_contribution
+from pfip.portfolio.whatif import run_what_if
 from pfip.portfolio.marking import build_marking, fetch_return_series
 from pfip.portfolio.risk_manager import RiskManager
 from pfip.portfolio.rollup import (
@@ -105,6 +106,20 @@ class GoalProjectRequest(BaseModel):
     annual_volatility: float = 0.15
     target_inr: float | None = None
     n_sims: int = 10_000
+
+
+class WhatIfRequest(BaseModel):
+    """Body for ``POST /portfolio/what-if``.
+
+    ``mark_prices`` maps symbol → current INR price per unit (used to value the
+    book before/after); missing symbols fall back to cost basis.
+    """
+
+    action: str  # BUY or SELL
+    symbol: str
+    qty: Decimal
+    price: Decimal
+    mark_prices: dict[str, Decimal] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -526,6 +541,30 @@ async def goals_project(body: GoalProjectRequest, _user: CurrentUser) -> dict:
         )
     out["disclaimer"] = DISCLAIMER
     return out
+
+
+@router.post("/what-if")
+async def what_if(body: WhatIfRequest, db: DbSession, _user: CurrentUser) -> dict:
+    """Simulate a proposed BUY/SELL against the live book.
+
+    Returns before/after exposure-by-category + concentration (HHI) and, for a
+    SELL, the Indian capital-gains tax it would realise. Nothing is executed.
+    """
+    action = body.action.upper()
+    if action not in ("BUY", "SELL"):
+        raise HTTPException(status_code=422, detail="action must be BUY or SELL")
+    if body.qty <= 0:
+        raise HTTPException(status_code=422, detail="qty must be > 0")
+    service = PortfolioService(db)
+    result = await run_what_if(
+        service,
+        action=action,
+        symbol=body.symbol,
+        qty=body.qty,
+        price=body.price,
+        mark_prices=body.mark_prices,
+    )
+    return result.as_dict()
 
 
 # ---------------------------------------------------------------------------
