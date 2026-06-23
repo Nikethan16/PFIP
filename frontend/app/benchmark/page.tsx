@@ -91,8 +91,9 @@ export default function BenchmarkPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/30">
-                {WINDOW_ORDER.filter((w) => data.windows[w]).map((w) => {
+                {WINDOW_ORDER.map((w) => {
                   const row = data.windows[w];
+                  if (!row) return null;
                   const excess = row.excess_return;
                   return (
                     <tr key={w} className="hover-tile">
