@@ -22,15 +22,27 @@ log = logging.getLogger(__name__)
 
 # Friendly name → the symbol the OHLCV table is likely keyed by. ``run_benchmark``
 # tries the alias first, then the raw input, so either form works.
+# We benchmark against liquid, investable **tracking ETFs** rather than raw
+# index symbols (^NSEI/^GSPC): the index price series aren't reliably available
+# from the free sources we use (NSE's index endpoint is flaky; index data on
+# AlphaVantage/Polygon free tiers is unavailable), whereas the tracking ETFs
+# fetch cleanly via the same daily pipeline. An ETF is also the more honest
+# benchmark — it's what the user could actually have bought. See PROXY_NOTES.
 BENCHMARK_ALIASES: dict[str, str] = {
-    "NIFTY": "^NSEI",
-    "NIFTY 50": "^NSEI",
-    "NIFTY50": "^NSEI",
-    "SENSEX": "^BSESN",
-    "SPX": "^GSPC",
-    "SP500": "^GSPC",
-    "S&P 500": "^GSPC",
+    "NIFTY": "NIFTYBEES.NS",
+    "NIFTY 50": "NIFTYBEES.NS",
+    "NIFTY50": "NIFTYBEES.NS",
+    "SENSEX": "^BSESN",  # no reliable free source yet — degrades to a null/no-data note
+    "SPX": "SPY",
+    "SP500": "SPY",
+    "S&P 500": "SPY",
     "SPY": "SPY",
+}
+
+# Resolved-symbol → human note shown when an ETF stands in for an index.
+PROXY_NOTES: dict[str, str] = {
+    "NIFTYBEES.NS": "benchmarked against NIFTYBEES.NS, the NIFTY 50 tracking ETF",
+    "SPY": "benchmarked against SPY, the S&P 500 tracking ETF",
 }
 
 DEFAULT_BENCHMARK = "NIFTY 50"
@@ -190,6 +202,8 @@ async def run_benchmark(
         note = f"no OHLCV history for benchmark {symbol!r} (tried {resolved!r}) — returns are null"
     elif not portfolio:
         note = "no priced holdings — portfolio returns are null"
+    elif resolved in PROXY_NOTES:
+        note = PROXY_NOTES[resolved]
     return {
         "benchmark": symbol,
         "benchmark_symbol_resolved": resolved,

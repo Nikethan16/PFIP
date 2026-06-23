@@ -24,7 +24,9 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { useBenchmark } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-const BENCHMARKS = ["NIFTY 50", "SENSEX", "S&P 500", "SPY"];
+// Each resolves to a liquid tracking ETF on the backend (NIFTY 50 → NIFTYBEES.NS,
+// S&P 500 → SPY) — the raw index series aren't reliably available from free sources.
+const BENCHMARKS = ["NIFTY 50", "S&P 500"];
 const WINDOW_ORDER = ["1M", "3M", "YTD", "1Y", "Max"];
 
 function pct(v: number | null): string {
