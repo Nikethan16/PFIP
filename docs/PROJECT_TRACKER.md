@@ -8,10 +8,32 @@
 > **Import to Notion:** drag this file into a Notion page (it has native Markdown import) —
 > headings become toggles, tables become tables, `- [ ]` become checkboxes.
 
-**Last updated:** 2026-06-16
-**Overall state:** Platform code is ~feature-complete for v0.5 (321 code files, 70 test files,
-18 frontend pages, 43 ingest modules). The gap is **operational, not architectural** — data
-coverage is partial and the ML signal layer is intentionally off until enough history exists.
+**Last updated:** 2026-06-23
+**Overall state:** Platform code is ~feature-complete for v0.5. The gap is **operational, not
+architectural** — data coverage is partial and the ML signal layer is intentionally off until
+enough history exists.
+
+> **Update 2026-06-23 — personal-finance feature batch (backend).** Added a set of
+> user-facing planning/analytics features on `claude/amazing-noether-va818n`, each pure-core
+> + endpoint + tests (full backend suite green):
+> - **A — Goal planning** (`pfip/portfolio/goals.py`): Monte Carlo net-worth projection,
+>   P(reach target), required-SIP solver. `POST /portfolio/goals/project`.
+> - **C — What-if simulator** (`whatif.py`): before/after exposure, HHI, and realised
+>   STCG/LTCG/VDA tax for a proposed BUY/SELL. `POST /portfolio/what-if`.
+> - **E — Live vs benchmark** (`benchmark.py`): windowed (1M/3M/YTD/1Y/Max) return + excess
+>   vs NIFTY/SENSEX/S&P 500. `GET /portfolio/benchmark`.
+> - **B — Net-worth timeline** (`networth.py`): all categories; priced→MTM, illiquid→cost.
+>   `GET /portfolio/net-worth`.
+> - **D — Stress testing** (`stress.py`): 2008 / COVID / +200bps / INR-depreciation scenarios.
+>   `GET /portfolio/stress-test`.
+> - **F — SIP tracker** (`sip.py`): XIRR (Newton + bisection) + corpus projection.
+>   `POST /portfolio/sip/xirr`, `/sip/project`.
+> - **G — Proactive alerts** (`alerts/proactive.py`): rebalance-drift + event-calendar via the
+>   existing dispatcher (new `REBALANCE_DRIFT` / `EVENT_CALENDAR` kinds + templates).
+> - **H — Tax PDF export**: already present (`/tax/summary/pdf`, `/tax/export`) — no new code.
+>
+> **Frontend pages for these endpoints are NOT yet built** (Node/pnpm unavailable in the
+> work environment); they remain backend + tested only.
 
 ---
 
