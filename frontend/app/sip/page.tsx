@@ -13,6 +13,9 @@ import { PiggyBank } from "lucide-react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import { Kpi } from "@/components/shared/kpi";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useSipProjection } from "@/lib/api";
 import { formatINR } from "@/lib/utils";
 
@@ -57,13 +60,9 @@ export default function SipPage() {
         <Field label="Years" value={years} onChange={setYears} />
         <Field label="Return % p.a." value={ret} onChange={setRet} />
         <Field label="Existing corpus ₹" value={corpus} onChange={setCorpus} />
-        <button
-          type="submit"
-          disabled={mutation.isPending}
-          className="self-end border border-primary bg-primary px-4 py-2 font-label text-xs uppercase tracking-wider text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
+        <Button type="submit" disabled={mutation.isPending} className="self-end">
           {mutation.isPending ? "Projecting…" : "Project"}
-        </button>
+        </Button>
       </form>
 
       {mutation.isError ? (
@@ -99,14 +98,16 @@ function Field({
   onChange: (v: string) => void;
 }) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="font-label text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
-      <input
+    <div className="flex flex-col gap-1.5">
+      <Label className="font-label text-[10px] uppercase tracking-wider text-muted-foreground">
+        {label}
+      </Label>
+      <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         inputMode="decimal"
-        className="border border-border bg-background px-3 py-2 font-mono text-sm"
+        className="font-mono"
       />
-    </label>
+    </div>
   );
 }

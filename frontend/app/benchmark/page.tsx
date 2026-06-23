@@ -12,6 +12,14 @@ import * as React from "react";
 import { Trophy } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/shared/empty-state";
 import { useBenchmark } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -41,22 +49,23 @@ export default function BenchmarkPage() {
             and the excess you earned (or gave up) over each window.
           </p>
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <span className="font-label text-[11px] uppercase tracking-wider text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm">
+          <Label className="font-label text-[11px] uppercase tracking-wider text-muted-foreground">
             Benchmark
-          </span>
-          <select
-            value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
-            className="border border-border bg-background px-3 py-2 font-mono text-sm"
-          >
-            {BENCHMARKS.map((b) => (
-              <option key={b} value={b}>
-                {b}
-              </option>
-            ))}
-          </select>
-        </label>
+          </Label>
+          <Select value={symbol} onValueChange={setSymbol}>
+            <SelectTrigger className="w-[140px] font-mono">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {BENCHMARKS.map((b) => (
+                <SelectItem key={b} value={b} className="font-mono">
+                  {b}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {isLoading ? (

@@ -12,6 +12,16 @@ import * as React from "react";
 import { GitCompareArrows, Scale } from "lucide-react";
 
 import { EmptyState } from "@/components/shared/empty-state";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useWhatIf, type WhatIfResult } from "@/lib/api";
 import { cn, formatINR } from "@/lib/utils";
 
@@ -49,53 +59,58 @@ export default function WhatIfPage() {
         onSubmit={submit}
         className="grid grid-cols-2 gap-4 border border-border/60 bg-card p-5 sm:grid-cols-5"
       >
-        <label className="flex flex-col gap-1">
-          <span className="font-label text-[10px] uppercase tracking-wider text-muted-foreground">Action</span>
-          <select
-            value={action}
-            onChange={(e) => setAction(e.target.value as "BUY" | "SELL")}
-            className="border border-border bg-background px-3 py-2 text-sm"
-          >
-            <option value="BUY">BUY</option>
-            <option value="SELL">SELL</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="font-label text-[10px] uppercase tracking-wider text-muted-foreground">Symbol</span>
-          <input
+        <div className="flex flex-col gap-1.5">
+          <Label className="font-label text-[10px] uppercase tracking-wider text-muted-foreground">
+            Action
+          </Label>
+          <Select value={action} onValueChange={(v) => setAction(v as "BUY" | "SELL")}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="BUY">BUY</SelectItem>
+              <SelectItem value="SELL">SELL</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label className="font-label text-[10px] uppercase tracking-wider text-muted-foreground">
+            Symbol
+          </Label>
+          <Input
             value={symbol}
             onChange={(e) => setSymbol(e.target.value)}
             placeholder="RELIANCE.NS"
-            className="border border-border bg-background px-3 py-2 font-mono text-sm"
+            className="font-mono"
           />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="font-label text-[10px] uppercase tracking-wider text-muted-foreground">Qty</span>
-          <input
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label className="font-label text-[10px] uppercase tracking-wider text-muted-foreground">
+            Qty
+          </Label>
+          <Input
             value={qty}
             onChange={(e) => setQty(e.target.value)}
             inputMode="decimal"
             placeholder="10"
-            className="border border-border bg-background px-3 py-2 font-mono text-sm"
+            className="font-mono"
           />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="font-label text-[10px] uppercase tracking-wider text-muted-foreground">Price (INR)</span>
-          <input
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label className="font-label text-[10px] uppercase tracking-wider text-muted-foreground">
+            Price (INR)
+          </Label>
+          <Input
             value={price}
             onChange={(e) => setPrice(e.target.value)}
             inputMode="decimal"
             placeholder="1500"
-            className="border border-border bg-background px-3 py-2 font-mono text-sm"
+            className="font-mono"
           />
-        </label>
-        <button
-          type="submit"
-          disabled={mutation.isPending}
-          className="self-end border border-primary bg-primary px-4 py-2 font-label text-xs uppercase tracking-wider text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
+        </div>
+        <Button type="submit" disabled={mutation.isPending} className="self-end">
           {mutation.isPending ? "Simulating…" : "Simulate"}
-        </button>
+        </Button>
       </form>
 
       {mutation.isError ? (
