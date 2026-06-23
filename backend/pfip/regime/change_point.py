@@ -140,14 +140,20 @@ class ChangePointDetector:
         index = returns.index
         x = returns.to_numpy(dtype=float)
 
-        if x.size < _MIN_OBS:
+        method = "ruptures_pelt" if _RUPTURES_OK else "binseg_l2_fallback"
+
+        # Too few observations, or a degenerate (constant / near-constant)
+        # series, has no structural break by definition. The degenerate guard
+        # matters because a ~zero-variance series collapses the BIC penalty
+        # toward 0, which makes ruptures over-segment into spurious breaks.
+        if x.size < _MIN_OBS or float(np.std(x)) < 1e-12:
             self._result = ChangePointResult(
                 breakpoints=[],
                 n_changepoints=0,
                 last_change_index=None,
                 last_change_at=None,
                 days_since_change=None,
-                method="binseg_l2_fallback",
+                method=method,
             )
             return self
 
