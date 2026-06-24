@@ -47,7 +47,7 @@ from loguru import logger
 from qdrant_client.http import models as qmodels
 from sqlalchemy import select
 
-from pfip.agent.llm_client import LLMUnavailable, get_llm_router
+from pfip.agent.llm_client import LLMUnavailable
 from pfip.db.session import get_sessionmaker
 from pfip.kb.search import KB_COLLECTION, get_qdrant
 
@@ -276,20 +276,28 @@ async def ingest_book(path: Path, *, title: str, author: str, category: str) -> 
             path=path, title=title, chunks_written=0, skipped=True, reason="no chunks produced"
         )
 
-    # 3. Embed.
-    router = get_llm_router()
+    # 3. Embed — batched (one request per BATCH chunks, not one per chunk), via
+    # the embedder facade so it uses the configured provider (NVIDIA NIM / Ollama).
+    from pfip.agent.embedder import get_embedder
+
+    embedder = get_embedder()
+    texts = [c for c, _ in chunks]
+    _BATCH = 50
+    vectors: list[list[float]] = []
     try:
-        first_vec = await router.embed(chunks[0][0])
+        for start in range(0, len(texts), _BATCH):
+            vectors.extend(await embedder.embed(texts[start : start + _BATCH]))
     except LLMUnavailable as exc:
         raise RuntimeError(
-            f"Cannot embed — {exc}. Run `make pull-models` to pull nomic-embed-text."
+            f"Cannot embed — {exc}. Set NVIDIA_NIM_API_KEY or run a local Ollama "
+            "with nomic-embed-text."
         ) from exc
-    dim = len(first_vec)
+    if not vectors:
+        return IngestResult(
+            path=path, title=title, chunks_written=0, skipped=True, reason="no vectors produced"
+        )
+    dim = len(vectors[0])
     await _ensure_collection(dim)
-
-    vectors: list[list[float]] = [first_vec]
-    for c, _ in chunks[1:]:
-        vectors.append(await router.embed(c))
 
     # 4. Upsert into Qdrant with rich metadata.
     client = get_qdrant()
@@ -306,7 +314,13 @@ async def ingest_book(path: Path, *, title: str, author: str, category: str) -> 
             **meta,
         }
         points.append(qmodels.PointStruct(id=point_id, vector=vec, payload=payload))
-    await client.upsert(collection_name=KB_COLLECTION, points=points)
+    # Upsert in batches — a whole large book in one request exceeds Qdrant's
+    # 32 MB payload limit (a ~3k-chunk book is ~84 MB of vectors + text).
+    _UPSERT_BATCH = 256
+    for start in range(0, len(points), _UPSERT_BATCH):
+        await client.upsert(
+            collection_name=KB_COLLECTION, points=points[start : start + _UPSERT_BATCH]
+        )
 
     # 5. Ledger row.
     await _record_ingestion(
