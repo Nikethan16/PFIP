@@ -53,18 +53,26 @@ them. Purchase and drop the PDF/EPUB into `data/kb_sources/`:
 | 19 | A Random Walk Down Wall Street | Malkiel | EMH counterpoint. |
 | 20 | The Little Book of Common Sense Investing | Bogle | Index/SIP discipline (ties to the SIP/Goals pages). |
 
-## How to ingest (once Qdrant is up)
+## Infrastructure (serverless — no VPS)
 
-1. Drop files into `data/kb_sources/` (any folder layout; PDF/EPUB/TXT).
-2. Start Qdrant (Docker or VPS) and set `QDRANT_URL`.
-3. Run `python -m pfip.kb.ingest data/kb_sources/`.
-4. Optional: `book_to_rules.py` extracts machine-readable rules into `data/kb_rules/<book>.jsonl`.
-5. Validate retrieval quality against `backend/pfip/kb/eval_qa.json` (RAGAS via `ragas_eval.py`).
+- **Vector store:** Qdrant Cloud (free 1 GB). Set `QDRANT_URL` + `QDRANT_API_KEY`.
+- **Embeddings:** NVIDIA NIM `baai/bge-m3` (1024-dim, symmetric). Set `NVIDIA_NIM_API_KEY`.
+  Falls back to local Ollama `nomic-embed-text` if NIM isn't configured.
 
-## Status
+## How to ingest
 
-- Tier 1 + Tier 2: legitimately free — can be fetched on demand (a fetch helper can pull the
-  Gutenberg IDs above). **Not downloaded yet** (no Qdrant target; avoids committing large blobs).
-- Tier 3: **awaiting user-supplied files.**
-- Blocker: **Qdrant** (VPS decision = "decide later"). Until then the chat agent answers without
-  book citations (hosted LLM only).
+1. Fetch the public-domain titles: `python -m scripts.fetch_kb_public_domain`
+   (drops Tier-1 books into `data/kb_sources/`). Add Tier-3 (purchased) files manually.
+2. Ingest: `python -m pfip.kb.ingest data/kb_sources/`
+   (embeds in batches of 50, upserts to Qdrant in batches of 256).
+3. Optional: `book_to_rules.py` extracts machine-readable rules into `data/kb_rules/<book>.jsonl`.
+4. Validate retrieval against `backend/pfip/kb/eval_qa.json` (RAGAS via `ragas_eval.py`).
+
+## Status (2026-06-24)
+
+- **Tier 1 — ingested ✅.** 4 public-domain books in the `kb` Qdrant collection, **8,796 chunks**:
+  Reminiscences of a Stock Operator (1,087), The Crowd (650), Extraordinary Popular Delusions
+  (2,893), The Wealth of Nations (4,166). RAG search verified — returns relevant, cited passages.
+- **Tier 2** (papers) and **Tier 3** (in-copyright): pending — drop files into `data/kb_sources/`
+  and re-run the ingest command (idempotent).
+- The chat agent can now cite the Tier-1 corpus.
