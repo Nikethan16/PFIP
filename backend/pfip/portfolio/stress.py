@@ -135,27 +135,28 @@ async def run_stress_test(session: Any) -> dict[str, Any]:
     # Mark to latest close where available; exposure_by_category already handles
     # the cost-basis fallback for unpriced names.
     holdings = await service.list_holdings(active=True)
+    symbols = sorted({h.symbol for h in holdings if h.symbol})
     mark_prices: dict[str, Decimal] = {}
-    for h in holdings:
-        if not h.symbol:
-            continue
+    if symbols:
         try:
             from sqlalchemy import select
 
             from pfip.models.ohlcv import OHLCVRow
 
+            # Latest close per symbol in one query (Postgres DISTINCT ON), instead
+            # of a separate round-trip per holding.
             stmt = (
-                select(OHLCVRow.close)
-                .where(OHLCVRow.symbol == h.symbol)
-                .order_by(OHLCVRow.time.desc())
-                .limit(1)
+                select(OHLCVRow.symbol, OHLCVRow.close)
+                .where(OHLCVRow.symbol.in_(symbols))
+                .order_by(OHLCVRow.symbol.asc(), OHLCVRow.time.desc())
+                .distinct(OHLCVRow.symbol)
             )
             res = await session.execute(stmt)
-            close = res.scalars().first()
-            if close is not None:
-                mark_prices[h.symbol] = Decimal(str(close))
+            for sym, close in res.all():
+                if close is not None:
+                    mark_prices[sym] = Decimal(str(close))
         except Exception as exc:  # pragma: no cover - defensive
-            log.debug("stress mark load failed for %s: %s", h.symbol, exc)
+            log.debug("stress mark batch load failed: %s", exc)
 
     exposure = await service.exposure_by_category(mark_prices=mark_prices)
     values = {cat: float(v) for cat, v in exposure.items()}

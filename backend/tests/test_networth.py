@@ -30,6 +30,47 @@ def test_priced_holding_marks_to_close():
     assert out["timeline"][-1]["net_worth_inr"] == 140000.0
 
 
+def test_lot_not_counted_before_acquisition():
+    # A position acquired part-way through the price history must not contribute
+    # to net worth on dates before it was held (regression: build_networth used
+    # to add current holdings across the full history behind them).
+    h = Holding(
+        category=HoldingCategory.CRYPTO_EXCHANGE,
+        symbol="BTC/USD",
+        acquired_at=datetime(2025, 1, 2, tzinfo=timezone.utc),
+        qty=Decimal("1"),
+        cost_basis_inr=Decimal("100000"),
+    )
+    closes = {"BTC/USD": [(date(2025, 1, 1), 60000.0), (date(2025, 1, 2), 70000.0)]}
+    out = build_networth([h], closes)
+    tl = {row["date"]: row["net_worth_inr"] for row in out["timeline"]}
+    assert tl["2025-01-01"] == 0.0  # not held yet
+    assert tl["2025-01-02"] == 70000.0  # held now, marked to close
+
+
+def test_flat_lot_not_counted_before_acquisition():
+    # Illiquid (cost-basis) lots are likewise gated on their acquisition date.
+    priced = Holding(
+        category=HoldingCategory.EQUITY,
+        symbol="X",
+        acquired_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        qty=Decimal("1"),
+        cost_basis_inr=Decimal("100"),
+    )
+    fd = Holding(
+        category=HoldingCategory.FD,
+        symbol=None,
+        acquired_at=datetime(2025, 1, 2, tzinfo=timezone.utc),
+        qty=Decimal("1"),
+        cost_basis_inr=Decimal("500000"),
+    )
+    closes = {"X": [(date(2025, 1, 1), 100.0), (date(2025, 1, 2), 100.0)]}
+    out = build_networth([priced, fd], closes)
+    tl = {row["date"]: row["net_worth_inr"] for row in out["timeline"]}
+    assert tl["2025-01-01"] == 100.0  # FD not opened yet
+    assert tl["2025-01-02"] == 500100.0  # FD now included
+
+
 def test_illiquid_held_at_cost_basis():
     holdings = [
         _h(None, HoldingCategory.PPF, "1", "500000"),
