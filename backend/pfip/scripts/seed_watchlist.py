@@ -51,6 +51,10 @@ INDIA_EQUITIES = [
     ("HDFCBANK.NS", "HDFC Bank"),
     ("INFY.NS", "Infosys"),
     ("ICICIBANK.NS", "ICICI Bank"),
+    # NIFTY 50 tracking ETF — the investable benchmark proxy for the /benchmark
+    # page (NSE's raw ^NSEI index series isn't reliably free). Daily-refreshed
+    # here so the comparison stays current.
+    ("NIFTYBEES.NS", "Nippon NIFTY 50 ETF (benchmark proxy)"),
 ]
 
 INDIAN_MFS = [

@@ -373,12 +373,15 @@ async def _ingest_fundamentals() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-async def stage_features(*, timeframe: str = "1d") -> StageSummary:
+async def stage_features(*, timeframe: str = "1d", historical_extras: bool = False) -> StageSummary:
     """Compute + persist the feature bundle for every watchlist asset.
 
     Reuses ``pfip.features.runner.run_for_watchlist`` which resolves each
     symbol's REAL OHLCV source from the DB (US under ``tiingo``, NSE under
     ``jugaad``/``nse_bhavcopy``), so it reads the bars that actually exist.
+
+    ``historical_extras`` (set by the one-time backfill) stamps the time-varying
+    extras onto every historical bar; the daily run leaves it off.
     """
     summary = StageSummary(name="features")
 
@@ -387,7 +390,9 @@ async def stage_features(*, timeframe: str = "1d") -> StageSummary:
 
         factory = get_sessionmaker()
         async with factory() as s:
-            results = await run_for_watchlist(s, timeframe=timeframe)
+            results = await run_for_watchlist(
+                s, timeframe=timeframe, historical_extras=historical_extras
+            )
         total_rows = sum(r.rows_written for r in results)
         return {
             "symbols": len(results),

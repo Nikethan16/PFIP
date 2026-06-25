@@ -8,10 +8,32 @@
 > **Import to Notion:** drag this file into a Notion page (it has native Markdown import) —
 > headings become toggles, tables become tables, `- [ ]` become checkboxes.
 
-**Last updated:** 2026-06-16
-**Overall state:** Platform code is ~feature-complete for v0.5 (321 code files, 70 test files,
-18 frontend pages, 43 ingest modules). The gap is **operational, not architectural** — data
-coverage is partial and the ML signal layer is intentionally off until enough history exists.
+**Last updated:** 2026-06-23
+**Overall state:** Platform code is ~feature-complete for v0.5. The gap is **operational, not
+architectural** — data coverage is partial and the ML signal layer is intentionally off until
+enough history exists.
+
+> **Update 2026-06-23 — personal-finance feature batch (backend).** Added a set of
+> user-facing planning/analytics features on `claude/amazing-noether-va818n`, each pure-core
+> + endpoint + tests (full backend suite green):
+> - **A — Goal planning** (`pfip/portfolio/goals.py`): Monte Carlo net-worth projection,
+>   P(reach target), required-SIP solver. `POST /portfolio/goals/project`.
+> - **C — What-if simulator** (`whatif.py`): before/after exposure, HHI, and realised
+>   STCG/LTCG/VDA tax for a proposed BUY/SELL. `POST /portfolio/what-if`.
+> - **E — Live vs benchmark** (`benchmark.py`): windowed (1M/3M/YTD/1Y/Max) return + excess
+>   vs NIFTY/SENSEX/S&P 500. `GET /portfolio/benchmark`.
+> - **B — Net-worth timeline** (`networth.py`): all categories; priced→MTM, illiquid→cost.
+>   `GET /portfolio/net-worth`.
+> - **D — Stress testing** (`stress.py`): 2008 / COVID / +200bps / INR-depreciation scenarios.
+>   `GET /portfolio/stress-test`.
+> - **F — SIP tracker** (`sip.py`): XIRR (Newton + bisection) + corpus projection.
+>   `POST /portfolio/sip/xirr`, `/sip/project`.
+> - **G — Proactive alerts** (`alerts/proactive.py`): rebalance-drift + event-calendar via the
+>   existing dispatcher (new `REBALANCE_DRIFT` / `EVENT_CALENDAR` kinds + templates).
+> - **H — Tax PDF export**: already present (`/tax/summary/pdf`, `/tax/export`) — no new code.
+>
+> **Frontend pages for these endpoints are NOT yet built** (Node/pnpm unavailable in the
+> work environment); they remain backend + tested only.
 
 ---
 
@@ -137,14 +159,21 @@ ICICIBANK sideways (0.95).
 | # | Issue | Impact | Priority | Fix owner |
 |---|---|---|---|---|
 | 1 | US equities = 0 rows (no Tiingo key) | Biggest market empty; halves usable universe | **P0** | 👤 key → then auto |
-| 2 | FX ingest times out >180s | No USD→INR; blocks US/crypto rupee MTM | **P0** | code |
-| 3 | MLflow persistence fails in cloud | Regime/signal models not saved or versioned | **P1** | code |
-| 4 | India MFs + BNB/XRP not backfilled | 7 watchlist symbols stay no-data | P1 | code |
-| 5 | Extras only on latest bar | Supervised ML effectively sees 5 features, no history | P1 | code |
-| 6 | Precommitment Sharpe-floor gate is a no-op | Safety gate silently never fires | P2 | code |
-| 7 | Shadow `/vs-actual` thinner than CONTRACTS spec | No Sharpe/return comparison | P2 | code |
-| 8 | Chat history sidebar unwired | Minor UX | P3 | code |
-| 9 | Missing unit tests for portfolio service/risk/allocation | Load-bearing money code only covered indirectly | P2 | code |
+| 2 | ~~FX ingest times out >180s~~ | — | ✅ FIXED | concurrent fetch + 600s (Phase 0) |
+| 3 | ~~MLflow persistence fails in cloud~~ | — | ✅ FIXED | `setuptools` + `/tmp/mlruns` |
+| 4 | ~~India MFs + BNB/XRP not backfilled~~ | — | ✅ FIXED | symbol rewrites + AMFI block in backfill |
+| 5 | ~~Extras only on latest bar~~ | — | ✅ FIXED 2026-06-22 | `historical_extras` flag stamps per-bar extras (backfill path), one load per source |
+| 6 | ~~Precommitment Sharpe-floor gate is a no-op~~ | — | ✅ FIXED 2026-06-22 | real 3-month rolling Sharpe vs floor; blocks advance when unverifiable |
+| 7 | ~~Shadow `/vs-actual` thinner than CONTRACTS spec~~ | — | ✅ FIXED 2026-06-22 | adds marked value + return% + Sharpe comparison per book |
+| 8 | ~~Chat history sidebar unwired~~ | — | ✅ FIXED | client-side `useConversations` (localStorage) |
+| 9 | ~~Missing unit tests for portfolio service/risk/allocation~~ | — | ✅ FIXED 2026-06-22 | direct unit tests added (service/risk/allocation/change-point/Sharpe-gate) |
+
+> **2026-06-22 implementation pass.** Closed gaps 5–7 and 9; verified 2–4 and 8 were
+> already done (docs were stale). Also added a `ruptures` change-point detector
+> (`pfip/regime/change_point.py`, numpy fallback) run alongside the HMM, and fixed a
+> latent `trailing_sharpe`/`_weighted_sharpe` bug (float std of a constant series
+> exploded the Sharpe to ~1e16 instead of 0). 122 affected tests green. **Remaining
+> real gap: #1 (Tiingo key — needs you).**
 
 ---
 

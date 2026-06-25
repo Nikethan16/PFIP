@@ -240,12 +240,27 @@ class ShadowPortfolio:
         return True
 
     async def vs_actual(self) -> dict[str, Any]:
-        """Diff shadow vs actual portfolio (holdings + PnL totals)."""
+        """Diff shadow vs actual portfolio.
+
+        Reports three layers, per the CONTRACTS.md "compared metrics" spec:
+
+        1. **Membership** — which symbols are only-shadow / only-actual / both.
+        2. **Value** — cost-basis estimate (``*_value_inr``, kept for backward
+           compatibility) plus a marked-to-market value (``*_marked_inr``).
+        3. **Performance** — unrealized return % and an annualised Sharpe of the
+           cost-weighted daily-return series for each book, and the shadow-minus-
+           actual gap on both. This is what tells you whether the model book is
+           actually *out-performing* the real one, not just holding different
+           names.
+        """
         actual_rows = await self._all_actual_open_holdings()
         shadow_rows = await self._open_holdings()
 
         actual_value = sum(self._estimated_value(r) for r in actual_rows)
         shadow_value = sum(self._estimated_value(r) for r in shadow_rows)
+
+        actual_perf = await self._book_performance(actual_rows)
+        shadow_perf = await self._book_performance(shadow_rows)
 
         actual_symbols = {r.symbol for r in actual_rows if r.symbol}
         shadow_symbols = {r.symbol for r in shadow_rows if r.symbol}
@@ -253,12 +268,75 @@ class ShadowPortfolio:
             "actual_value_inr": float(actual_value),
             "shadow_value_inr": float(shadow_value),
             "diff_inr": float(shadow_value - actual_value),
+            # Marked-to-market value + performance comparison.
+            "actual_marked_inr": actual_perf["marked_value_inr"],
+            "shadow_marked_inr": shadow_perf["marked_value_inr"],
+            "actual_return_pct": actual_perf["return_pct"],
+            "shadow_return_pct": shadow_perf["return_pct"],
+            "return_pct_diff": round(shadow_perf["return_pct"] - actual_perf["return_pct"], 6),
+            "actual_sharpe": actual_perf["sharpe"],
+            "shadow_sharpe": shadow_perf["sharpe"],
+            "sharpe_diff": round(shadow_perf["sharpe"] - actual_perf["sharpe"], 4),
             "only_in_shadow": sorted(shadow_symbols - actual_symbols),
             "only_in_actual": sorted(actual_symbols - shadow_symbols),
             "in_both": sorted(actual_symbols & shadow_symbols),
             "n_actual_positions": len(actual_symbols),
             "n_shadow_positions": len(shadow_symbols),
         }
+
+    async def _book_performance(self, rows: list[Any]) -> dict[str, float]:
+        """Marked value, unrealized return %, and Sharpe for a set of holdings.
+
+        ``return_pct`` is ``(marked_value - cost_basis) / cost_basis``. ``sharpe``
+        is the annualised Sharpe of the cost-weighted daily-return series across
+        the book's symbols over the trailing 90 days; it's 0.0 when there isn't
+        enough overlapping return history to compute one.
+        """
+        marked_value = Decimal(0)
+        cost_basis = Decimal(0)
+        weighted: list[tuple[str, Decimal, pd.Series]] = []
+        for h in rows:
+            qty = Decimal(str(h.qty)) if h.qty is not None else Decimal(0)
+            basis = Decimal(str(h.cost_basis_inr or 0))
+            cost_basis += basis
+            price = await self._latest_close(h.symbol)
+            if price is None or price <= 0:
+                marked_value += basis  # no live quote → don't fabricate a move
+            else:
+                marked_value += qty * price
+            if h.symbol and basis > 0:
+                rets = await self._recent_returns(h.symbol, 90)
+                if rets is not None and len(rets) >= 10:
+                    weighted.append((h.symbol, basis, rets))
+
+        return_pct = float((marked_value - cost_basis) / cost_basis) if cost_basis > 0 else 0.0
+        sharpe = self._weighted_sharpe(weighted)
+        return {
+            "marked_value_inr": float(marked_value),
+            "cost_basis_inr": float(cost_basis),
+            "return_pct": round(return_pct, 6),
+            "sharpe": round(sharpe, 4),
+        }
+
+    @staticmethod
+    def _weighted_sharpe(weighted: list[tuple[str, Decimal, pd.Series]]) -> float:
+        """Annualised Sharpe of a cost-weighted blend of per-symbol return series."""
+        if not weighted:
+            return 0.0
+        total_w = sum((float(w) for _, w, _ in weighted), 0.0)
+        if total_w <= 0:
+            return 0.0
+        frame = pd.concat({sym: rets for sym, _, rets in weighted}, axis=1, join="inner").dropna()
+        if len(frame) < 10:
+            return 0.0
+        weights = {sym: float(w) / total_w for sym, w, _ in weighted}
+        portfolio_rets = sum(frame[sym] * weights[sym] for sym in frame.columns)
+        sd = float(portfolio_rets.std(ddof=1))
+        # ``sd < 1e-12`` rather than ``== 0``: float std of a constant series is
+        # a tiny non-zero value that would otherwise explode the Sharpe.
+        if sd < 1e-12 or np.isnan(sd):
+            return 0.0
+        return float(portfolio_rets.mean() / sd) * (252**0.5)
 
     # ------------------------------------------------------------------
     # Helpers (private)

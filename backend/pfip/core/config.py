@@ -53,6 +53,9 @@ class Settings(BaseSettings):
 
     # --- Qdrant ---
     qdrant_url: str = Field(default="http://qdrant:6333", alias="QDRANT_URL")
+    # Required by Qdrant Cloud (managed clusters reject unauthenticated calls);
+    # leave blank for a local/unsecured Qdrant.
+    qdrant_api_key: str = Field(default="", alias="QDRANT_API_KEY")
 
     # --- MLflow ---
     mlflow_tracking_uri: str = Field(default="http://mlflow:5000", alias="MLFLOW_TRACKING_URI")

@@ -73,6 +73,8 @@ class AlertKind(str, Enum):
     POST_MORTEM_REQUIRED = "post_mortem_required"
     SYSTEM_HEALTH = "system_health"
     WEEKLY_REVIEW = "weekly_review"
+    REBALANCE_DRIFT = "rebalance_drift"
+    EVENT_CALENDAR = "event_calendar"
     CUSTOM = "custom"
 
 

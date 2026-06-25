@@ -7,7 +7,7 @@ advisory ``DISCLAIMER``.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID
@@ -30,6 +30,12 @@ from pfip.portfolio.allocation import (
     suggestions_to_dict,
     tactical_adjust,
 )
+from pfip.portfolio.benchmark import run_benchmark
+from pfip.portfolio.goals import project_goal, required_monthly_contribution
+from pfip.portfolio.networth import run_networth
+from pfip.portfolio.sip import CashFlow, project_sip_corpus, sip_summary
+from pfip.portfolio.stress import run_stress_test
+from pfip.portfolio.whatif import run_what_if
 from pfip.portfolio.marking import build_marking, fetch_return_series
 from pfip.portfolio.risk_manager import RiskManager
 from pfip.portfolio.rollup import (
@@ -86,6 +92,61 @@ class RebalanceRequest(BaseModel):
     regime_per_market: dict[str, str] | None = None
     sentiment: float | None = None
     drift_threshold: float = 0.05
+
+
+class GoalProjectRequest(BaseModel):
+    """Body for ``POST /portfolio/goals/project``.
+
+    All monetary values are INR. ``expected_annual_return`` / ``annual_volatility``
+    are fractions (0.10 = 10%). When ``target_inr`` is given, the response also
+    reports the probability of reaching it and the monthly contribution needed to
+    hit it at the median.
+    """
+
+    current_corpus_inr: float
+    monthly_contribution_inr: float = 0.0
+    years: float
+    expected_annual_return: float = 0.10
+    annual_volatility: float = 0.15
+    target_inr: float | None = None
+    n_sims: int = 10_000
+
+
+class WhatIfRequest(BaseModel):
+    """Body for ``POST /portfolio/what-if``.
+
+    ``mark_prices`` maps symbol → current INR price per unit (used to value the
+    book before/after); missing symbols fall back to cost basis.
+    """
+
+    action: str  # BUY or SELL
+    symbol: str
+    qty: Decimal
+    price: Decimal
+    mark_prices: dict[str, Decimal] | None = None
+
+
+class SipInstalment(BaseModel):
+    """One dated SIP cash flow. Negative amount = invested (money out)."""
+
+    date: date
+    amount: float
+
+
+class SipXirrRequest(BaseModel):
+    """Body for ``POST /portfolio/sip/xirr``."""
+
+    instalments: list[SipInstalment]
+    current_value_inr: float
+
+
+class SipProjectRequest(BaseModel):
+    """Body for ``POST /portfolio/sip/project``."""
+
+    monthly_amount_inr: float
+    years: float
+    annual_return: float = 0.12
+    current_corpus_inr: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -467,6 +528,140 @@ async def rebalance(body: RebalanceRequest, _user: CurrentUser) -> dict:
         "tactical_targets": adjusted,
         **suggestions_to_dict(suggestions),
     }
+
+
+# ---------------------------------------------------------------------------
+# Goal-based planning
+# ---------------------------------------------------------------------------
+
+
+@router.post("/goals/project")
+async def goals_project(body: GoalProjectRequest, _user: CurrentUser) -> dict:
+    """Monte Carlo net-worth projection for a savings goal.
+
+    Stateless: takes the plan parameters and returns the terminal-value
+    distribution. With a ``target_inr`` it also reports the probability of
+    reaching the goal and the monthly contribution required to hit it at the
+    median. Advisory only — the figures are a distribution, not a promise.
+    """
+    if body.years <= 0:
+        raise HTTPException(status_code=422, detail="years must be > 0")
+    n_sims = max(1000, min(body.n_sims, 50_000))
+    projection = project_goal(
+        current_corpus_inr=body.current_corpus_inr,
+        monthly_contribution_inr=body.monthly_contribution_inr,
+        years=body.years,
+        expected_annual_return=body.expected_annual_return,
+        annual_volatility=body.annual_volatility,
+        target_inr=body.target_inr,
+        n_sims=n_sims,
+    )
+    out = projection.as_dict()
+    if body.target_inr is not None:
+        out["required_monthly_contribution_inr"] = required_monthly_contribution(
+            current_corpus_inr=body.current_corpus_inr,
+            target_inr=body.target_inr,
+            years=body.years,
+            expected_annual_return=body.expected_annual_return,
+            annual_volatility=body.annual_volatility,
+            n_sims=n_sims,
+        )
+    out["disclaimer"] = DISCLAIMER
+    return out
+
+
+@router.post("/what-if")
+async def what_if(body: WhatIfRequest, db: DbSession, _user: CurrentUser) -> dict:
+    """Simulate a proposed BUY/SELL against the live book.
+
+    Returns before/after exposure-by-category + concentration (HHI) and, for a
+    SELL, the Indian capital-gains tax it would realise. Nothing is executed.
+    """
+    action = body.action.upper()
+    if action not in ("BUY", "SELL"):
+        raise HTTPException(status_code=422, detail="action must be BUY or SELL")
+    if body.qty <= 0:
+        raise HTTPException(status_code=422, detail="qty must be > 0")
+    service = PortfolioService(db)
+    result = await run_what_if(
+        service,
+        action=action,
+        symbol=body.symbol,
+        qty=body.qty,
+        price=body.price,
+        mark_prices=body.mark_prices,
+    )
+    return result.as_dict()
+
+
+@router.get("/benchmark")
+async def benchmark(
+    db: DbSession,
+    _user: CurrentUser,
+    symbol: str = Query(default="NIFTY 50"),
+) -> dict:
+    """Compare the live portfolio's return vs a benchmark over 1M/YTD/1Y/Max.
+
+    ``symbol`` accepts friendly names (NIFTY 50, SENSEX, S&P 500, SPY). Returns
+    per-window portfolio return, benchmark return, and excess; values are null
+    where history is missing.
+    """
+    out = await run_benchmark(db, symbol=symbol)
+    out["disclaimer"] = DISCLAIMER
+    return out
+
+
+@router.get("/net-worth")
+async def net_worth(db: DbSession, _user: CurrentUser) -> dict:
+    """Consolidated net-worth timeline + current breakdown across all categories.
+
+    Liquid holdings are marked to their latest close per day; illiquid/manual
+    assets (PPF/EPF/NPS/FD/SGB/G-Sec/bonds/cash) are held at cost basis.
+    """
+    out = await run_networth(db)
+    out["disclaimer"] = DISCLAIMER
+    return out
+
+
+@router.get("/stress-test")
+async def stress_test(db: DbSession, _user: CurrentUser) -> dict:
+    """Apply named historical shock scenarios to the live book.
+
+    Each scenario applies per-category return shocks (2008 GFC, 2020 COVID,
+    rate-shock, INR depreciation) and reports the projected portfolio loss.
+    """
+    out = await run_stress_test(db)
+    out["disclaimer"] = DISCLAIMER
+    return out
+
+
+# ---------------------------------------------------------------------------
+# SIP — XIRR + corpus projection
+# ---------------------------------------------------------------------------
+
+
+@router.post("/sip/xirr")
+async def sip_xirr(body: SipXirrRequest, _user: CurrentUser) -> dict:
+    """Total invested + annualised XIRR for a SIP given its dated instalments."""
+    flows = [CashFlow(when=i.date, amount=i.amount) for i in body.instalments]
+    out = sip_summary(flows, current_value=body.current_value_inr)
+    out["disclaimer"] = DISCLAIMER
+    return out
+
+
+@router.post("/sip/project")
+async def sip_project(body: SipProjectRequest, _user: CurrentUser) -> dict:
+    """Project the corpus a monthly SIP grows to at an assumed annual return."""
+    if body.years < 0:
+        raise HTTPException(status_code=422, detail="years must be >= 0")
+    out = project_sip_corpus(
+        monthly_amount=body.monthly_amount_inr,
+        years=body.years,
+        annual_return=body.annual_return,
+        current_corpus=body.current_corpus_inr,
+    )
+    out["disclaimer"] = DISCLAIMER
+    return out
 
 
 # ---------------------------------------------------------------------------

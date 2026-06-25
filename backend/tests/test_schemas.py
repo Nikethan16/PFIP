@@ -20,10 +20,10 @@ def _ohlcv(n: int = 100, seed: int = 1) -> pd.DataFrame:
     idx = pd.date_range("2023-01-01", periods=n, freq="B", tz="UTC")
     return pd.DataFrame(
         {
-            "open":   close * 0.999,
-            "high":   close * 1.003,
-            "low":    close * 0.997,
-            "close":  close,
+            "open": close * 0.999,
+            "high": close * 1.003,
+            "low": close * 0.997,
+            "close": close,
             "volume": rng.uniform(1000, 5000, n),
         },
         index=idx,
@@ -35,12 +35,12 @@ def _features(n: int = 100, seed: int = 2) -> pd.DataFrame:
     idx = pd.date_range("2023-01-01", periods=n, freq="B")
     return pd.DataFrame(
         {
-            "rsi_14":       rng.uniform(20, 80, n),
-            "macd":         rng.normal(0, 1, n),
-            "macd_signal":  rng.normal(0, 1, n),
-            "macd_hist":    rng.normal(0, 0.5, n),
-            "atr_14":       rng.uniform(0.5, 5, n),
-            "return_7d":    rng.normal(0, 0.05, n),
+            "rsi_14": rng.uniform(20, 80, n),
+            "macd": rng.normal(0, 1, n),
+            "macd_signal": rng.normal(0, 1, n),
+            "macd_hist": rng.normal(0, 0.5, n),
+            "atr_14": rng.uniform(0.5, 5, n),
+            "return_7d": rng.normal(0, 0.05, n),
             "volatility_30d": rng.uniform(0.005, 0.03, n),
         },
         index=idx,
@@ -49,11 +49,12 @@ def _features(n: int = 100, seed: int = 2) -> pd.DataFrame:
 
 def _regime(n: int = 50) -> pd.DataFrame:
     import random
+
     labels = ["bull_trend", "bear_trend", "sideways", "high_volatility"]
     idx = pd.date_range("2023-01-01", periods=n, freq="B")
     return pd.DataFrame(
         {
-            "regime":     [random.choice(labels) for _ in range(n)],
+            "regime": [random.choice(labels) for _ in range(n)],
             "confidence": np.random.uniform(0.6, 0.99, n),
         },
         index=idx,

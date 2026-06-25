@@ -50,10 +50,10 @@ _MIN_OBS = 100
 class MSRegimeResult:
     """Per-bar Markov-switching output."""
 
-    regime: pd.Series          # Regime enum values, time-indexed
-    confidence: pd.Series      # max filtered probability, time-indexed
+    regime: pd.Series  # Regime enum values, time-indexed
+    confidence: pd.Series  # max filtered probability, time-indexed
     filtered_probs: pd.DataFrame  # k columns of P(state_k | data_1..t), time-indexed
-    method: str                # "markov_switching" or "rule_based"
+    method: str  # "markov_switching" or "rule_based"
 
 
 def _state_to_regime(state_means: np.ndarray) -> dict[int, Regime]:
@@ -122,10 +122,9 @@ class MarkovSwitchingDetector:
         states[(~high_vol) & (roll_ret > roll_ret.quantile(0.60))] = 0
         states[(~high_vol) & (roll_ret < roll_ret.quantile(0.40))] = 1
 
-        state_means = np.array([
-            float(returns[states == s].mean()) if (states == s).any() else 0.0
-            for s in range(k)
-        ])
+        state_means = np.array(
+            [float(returns[states == s].mean()) if (states == s).any() else 0.0 for s in range(k)]
+        )
         mapping = _state_to_regime(state_means)
         regime = states.map(mapping)
         probs = pd.DataFrame(
@@ -147,9 +146,7 @@ class MarkovSwitchingDetector:
         """Fit on a price series (log-returns computed internally)."""
         returns = self._log_returns(prices)
         if len(returns) < _MIN_OBS:
-            log.info(
-                "MS: only %d obs (<%d); using rule-based fallback", len(returns), _MIN_OBS
-            )
+            log.info("MS: only %d obs (<%d); using rule-based fallback", len(returns), _MIN_OBS)
             self._result = self._rule_based(returns, k=self.k_regimes)
             return self
 
@@ -177,8 +174,10 @@ class MarkovSwitchingDetector:
 
             # Map states to Regime labels by their mean return.
             state_means = np.array(
-                [float(returns[hard_state == s].mean()) if (hard_state == s).any() else 0.0
-                 for s in range(self.k_regimes)]
+                [
+                    float(returns[hard_state == s].mean()) if (hard_state == s).any() else 0.0
+                    for s in range(self.k_regimes)
+                ]
             )
             self._state_map = _state_to_regime(state_means)
             regime_labels = hard_state.map(self._state_map)

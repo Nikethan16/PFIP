@@ -66,10 +66,17 @@ _client: AsyncQdrantClient | None = None
 
 
 def get_qdrant() -> AsyncQdrantClient:
-    """Async Qdrant client, configured from settings."""
+    """Async Qdrant client, configured from settings.
+
+    Sends ``QDRANT_API_KEY`` when set (required by Qdrant Cloud); omits it for a
+    local/unsecured Qdrant.
+    """
     global _client
     if _client is None:
-        _client = AsyncQdrantClient(url=get_settings().qdrant_url)
+        s = get_settings()
+        # Generous timeout: managed Qdrant Cloud can be slow on large batch
+        # upserts, and the client default is short enough to trip on them.
+        _client = AsyncQdrantClient(url=s.qdrant_url, api_key=s.qdrant_api_key or None, timeout=120)
     return _client
 
 

@@ -674,7 +674,10 @@ def trailing_sharpe(returns: list[float], *, window: int = 30, rf: float = 0.0) 
 
         mu = statistics.fmean(tail) - rf / 252
         sd = statistics.pstdev(tail)
-    if sd == 0:
+    # Guard against a (near-)constant series: floating-point std of identical
+    # values is ~1e-19, not exactly 0, which would otherwise blow the Sharpe up
+    # to ~1e16 instead of the intended 0.0.
+    if sd < 1e-12:
         return 0.0
     return (mu / sd) * (252**0.5)
 

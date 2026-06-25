@@ -357,6 +357,46 @@ async def enforce_ladder(
     )
 
 
+def _sharpe_floor_from_precommitment() -> Decimal:
+    """Read the signed Sharpe floor; default to the plan's 0.4 when unsigned."""
+    pre = parse_signed()
+    return pre.sharpe_floor if pre is not None else Decimal("0.4")
+
+
+async def _rolling_sharpe(db: AsyncSession, *, lookback_days: int = 90) -> tuple[float, bool]:
+    """Annualised Sharpe over the trailing ``lookback_days`` of the NAV proxy.
+
+    Returns ``(sharpe, verifiable)``. ``verifiable`` is False when there is not
+    enough NAV history (or the series is degenerate) to compute a meaningful
+    Sharpe — callers should treat that as "could not prove the floor was met".
+    """
+    from pfip.portfolio.service import PortfolioService, trailing_sharpe
+
+    try:
+        nav = await PortfolioService(db).nav_history(days=lookback_days)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"nav_history read failed for Sharpe gate: {exc}")
+        return (0.0, False)
+
+    # Need at least a handful of points to form returns over the window.
+    if len(nav) < 21:
+        return (0.0, False)
+
+    # Period-over-period returns off the NAV proxy, guarding against the
+    # non-positive / zero-prior points the realized-flow curve can contain.
+    returns: list[float] = []
+    prev: Decimal | None = None
+    for _, value in nav:
+        if prev is not None and prev > 0:
+            returns.append(float((value - prev) / prev))
+        prev = value
+    if len(returns) < 20:
+        return (0.0, False)
+
+    sharpe = trailing_sharpe(returns, window=len(returns))
+    return (sharpe, True)
+
+
 async def can_advance_tier(db: AsyncSession, tier: LadderTier) -> tuple[bool, list[str]]:
     """Check the 4-week graduation gates for a given tier.
 
@@ -399,9 +439,29 @@ async def can_advance_tier(db: AsyncSession, tier: LadderTier) -> tuple[bool, li
     except Exception as exc:  # noqa: BLE001
         logger.debug(f"risk_breaches read failed: {exc}")
 
-    # Sharpe floor: 3-month rolling Sharpe ≥ floor (placeholder; computed by
-    # calibration module in real runs)
-    # No-op for now; the Stage 4 calibration module will populate the gate.
+    # Sharpe floor: 3-month rolling Sharpe ≥ floor.
+    #
+    # We derive the return series from the portfolio NAV proxy
+    # (``PortfolioService.nav_history`` — the cumulative realized-flow curve;
+    # the same series ``portfolio_summary`` uses for drawdown). It's an
+    # imperfect proxy (it does not re-mark open positions intraday), but it is
+    # a real, defensible series — far better than the previous no-op, which
+    # meant this safety gate silently never fired.
+    #
+    # Graduation gate philosophy: require *positive evidence*. If the floor
+    # can't be verified (too little NAV history, or a degenerate flat series),
+    # we block the advance rather than wave it through.
+    floor = _sharpe_floor_from_precommitment()
+    sharpe, verifiable = await _rolling_sharpe(db, lookback_days=90)
+    if not verifiable:
+        reasons.append(
+            "Cannot verify the 3-month rolling Sharpe (insufficient NAV history) — "
+            "stay at the current tier until there is a 3-month track record."
+        )
+    elif sharpe < float(floor):
+        reasons.append(
+            f"3-month rolling Sharpe {sharpe:.2f} is below the pre-commitment floor {float(floor):.2f}"
+        )
 
     # Consecutive losing months
     try:

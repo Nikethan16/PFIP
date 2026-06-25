@@ -147,3 +147,60 @@ def test_parse_signed_missing_file_returns_none(tmp_path):
     """No file → None, not an exception."""
     p = tmp_path / "does_not_exist.md"
     assert parse_signed(p) is None
+
+
+# ---------------------------------------------------------------------------
+# Sharpe-floor gate (was a no-op; now a real 3-month rolling-Sharpe check)
+# ---------------------------------------------------------------------------
+
+
+def test_sharpe_floor_defaults_to_plan_value_when_unsigned():
+    """With no signed pre-commitment file, the floor falls back to the plan's 0.4."""
+    from pfip.portfolio.precommitment import _sharpe_floor_from_precommitment
+
+    assert _sharpe_floor_from_precommitment() == Decimal("0.4")
+
+
+@pytest.mark.asyncio
+async def test_rolling_sharpe_unverifiable_with_short_history(monkeypatch):
+    """Too few NAV points ⇒ (0.0, False) — the gate can't confirm the floor."""
+    from datetime import date
+
+    from pfip.portfolio import precommitment as pc
+    from pfip.portfolio import service as svc
+
+    async def _short_nav(self, days=90):  # noqa: ANN001, ARG001
+        return [(date(2024, 1, i + 1), Decimal("100")) for i in range(5)]
+
+    monkeypatch.setattr(svc.PortfolioService, "nav_history", _short_nav)
+    sharpe, verifiable = await pc._rolling_sharpe(object(), lookback_days=90)
+    assert verifiable is False
+    assert sharpe == 0.0
+
+
+@pytest.mark.asyncio
+async def test_rolling_sharpe_verifiable_with_enough_history(monkeypatch):
+    """A long, varying, positive NAV proxy yields a verifiable Sharpe."""
+    from datetime import date, timedelta
+
+    import numpy as np
+
+    from pfip.portfolio import precommitment as pc
+    from pfip.portfolio import service as svc
+
+    rng = np.random.default_rng(3)
+    vals = [100.0]
+    for _ in range(60):
+        vals.append(vals[-1] * (1 + rng.normal(0.002, 0.01)))
+    nav = [
+        (date(2024, 1, 1) + timedelta(days=i), Decimal(str(round(v, 4))))
+        for i, v in enumerate(vals)
+    ]
+
+    async def _nav(self, days=90):  # noqa: ANN001, ARG001
+        return nav
+
+    monkeypatch.setattr(svc.PortfolioService, "nav_history", _nav)
+    sharpe, verifiable = await pc._rolling_sharpe(object(), lookback_days=90)
+    assert verifiable is True
+    assert isinstance(sharpe, float)

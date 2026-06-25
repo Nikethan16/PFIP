@@ -66,8 +66,10 @@ MODELS: dict[str, str] = {
     # Groq — fastest free inference (~500 tok/s, 14k req/day)
     "groq_70b": "groq/llama-3.3-70b-versatile",
     "groq_8b": "groq/llama-3.1-8b-instant",
-    # NVIDIA NIM — embeddings + chat
-    "nim_embed": "nvidia_nim/nv-embedqa-e5-v5",
+    # NVIDIA NIM — embeddings + chat. bge-m3 is symmetric (one vector space for
+    # both queries and passages), so it works with our single embed() call shape;
+    # nv-embedqa-* are asymmetric and would require an input_type per call.
+    "nim_embed": "nvidia_nim/baai/bge-m3",
     "nim_70b": "nvidia_nim/meta/llama-3.3-70b-instruct",
     # Google Gemini
     "gemini_flash": "gemini/gemini-2.0-flash",

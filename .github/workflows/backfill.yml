@@ -2,14 +2,14 @@ name: Backfill history
 
 # One-time (or rare) seed of a FRESH Neon DB with ~3 years of history. Run this
 # manually right after creating the Neon project, BEFORE relying on daily-ingest.
-# It re-pulls from the free upstream sources (no Timescale dump/restore).
-# See docs/CLOUD_MIGRATION.md step (c).
+# Re-pulls from the free upstream sources (no Timescale dump/restore). Modeled on
+# the daily-ingest workflow so the two share one proven shape.
 
 on:
   workflow_dispatch:
     inputs:
       days:
-        description: "History depth in days (~1200 ≈ 3 years)."
+        description: "History depth in days (~1200 is about 3 years)."
         required: false
         default: "1200"
       skip_compute:
@@ -17,7 +17,6 @@ on:
         required: false
         default: "false"
 
-# Never run a backfill concurrently with a daily ingest on the same DB.
 concurrency:
   group: pfip-pipeline-${{ github.ref }}
   cancel-in-progress: false
@@ -27,7 +26,7 @@ permissions:
 
 jobs:
   backfill:
-    name: Seed ~3y history
+    name: Seed history
     runs-on: ubuntu-latest
     timeout-minutes: 120
     defaults:
@@ -60,10 +59,8 @@ jobs:
       BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
       TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
       TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-      # Headless ingest job: enforce real DB creds (prod) but skip web-auth secrets.
       APP_ENV: prod
       PFIP_PIPELINE_MODE: "true"
-      # Use file-based MLflow tracking in CI (the Docker mlflow service doesn't exist here).
       MLFLOW_TRACKING_URI: "file:/tmp/mlruns"
     steps:
       - name: Checkout
@@ -82,15 +79,13 @@ jobs:
       - name: Apply DB migrations (creates the schema on the fresh Neon DB)
         run: alembic upgrade head
 
-      # Seed the default universe so the post-backfill features/regime stages have
-      # symbols to iterate (idempotent — safe to re-run).
       - name: Seed default watchlist (idempotent)
         run: python -m pfip.scripts.seed_watchlist
 
-      - name: Backfill ~3y history
+      - name: Backfill history
         run: |
-          ARGS="--days ${{ github.event.inputs.days }}"
           if [ "${{ github.event.inputs.skip_compute }}" = "true" ]; then
-            ARGS="$ARGS --skip-compute"
+            python -m scripts.backfill_history --days "${{ github.event.inputs.days }}" --skip-compute
+          else
+            python -m scripts.backfill_history --days "${{ github.event.inputs.days }}"
           fi
-          python -m scripts.backfill_history $ARGS
