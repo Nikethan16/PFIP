@@ -44,3 +44,11 @@ Local runs against Neon hit **intermittent DNS failures** (`getaddrinfo`, WinErr
 LAN's router resolver. Workaround in use for local data ops: resolve the Neon host once and pin the
 IP via libpq `hostaddr` while keeping `host` for SNI/TLS. The cloud (GitHub Actions) path is
 unaffected. See [VALIDATION_REPORT_2026-06-23.md](VALIDATION_REPORT_2026-06-23.md) §5.
+
+## Live deployment (2026-06-26)
+
+PFIP is hosted on the Oracle ARM VM as the 3rd app (systemd + venv, not Docker), alongside
+Agent_System and OPPs_Finder. Public URL (Tailscale Funnel, HTTPS): **https://apps.tail1d9a60.ts.net:8443**
+(login-gated). DB on Neon, Redis shared (logical DB 1). Services: `pfip-api` (:8000), `pfip-web` (:3000),
+`pfip-pipeline.timer` (daily 02:30 UTC). **CI/CD:** push to `main` → CI → on success the VM's self-hosted
+runner auto-redeploys via `.github/workflows/deploy-oracle.yml`. See `docs/DEPLOY_ORACLE.md`.
