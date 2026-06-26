@@ -6,11 +6,11 @@
 #   uv pip install -r requirements.txt
 
 # --- Web framework / API ---
-fastapi==0.111.0
+fastapi==0.138.1  # was 0.111.0 — clears starlette/fastapi CVE cluster
 uvicorn[standard]==0.30.1
-starlette==0.37.2
+starlette==1.3.1  # was 0.37.2 — patches CVE-2024-47874 + 2025/2026 advisories
 python-multipart==0.0.20  # CVE-2024-53981 + later form-parsing CVEs
-sse-starlette==2.1.0
+sse-starlette==3.4.5  # 3.x for starlette 1.x compat (EventSourceResponse API unchanged)
 
 # --- Validation / settings ---
 pydantic==2.7.4
