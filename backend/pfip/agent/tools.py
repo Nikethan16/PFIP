@@ -147,7 +147,7 @@ async def get_open_signals(session: Any, *, limit: int = 20) -> dict[str, Any]:
         "ok": True,
         "signals": [
             {
-                "symbol": s.symbol,
+                "symbol": s.asset,
                 "direction": s.direction,
                 "confidence": float(s.confidence),
                 "regime": getattr(s, "regime", None),
