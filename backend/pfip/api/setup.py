@@ -20,8 +20,7 @@ just for first-run.
 
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter
@@ -57,13 +56,13 @@ async def setup_status(db: DbSession, _user: CurrentUser) -> dict[str, Any]:
         try:
             row = (await db.execute(text(f"SELECT COUNT(*) AS n FROM {table}"))).mappings().first()
             counts[table] = int(row["n"]) if row else 0
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.debug(f"setup_status: table {table} count failed: {exc}")
             counts[table] = -1  # table missing or query failed
 
     needs_setup = counts.get("watchlist", 0) <= 0 or counts.get("ohlcv", 0) < 100
     return {
-        "time": datetime.now(tz=timezone.utc).isoformat(),
+        "time": datetime.now(tz=UTC).isoformat(),
         "counts": counts,
         "needs_setup": needs_setup,
         "checklist": {
@@ -90,37 +89,29 @@ async def bootstrap(_user: CurrentUser) -> dict[str, Any]:
     LLM keys are NOT required. Each step that doesn't have a configured
     API key is skipped with status "skipped".
     """
-    started = datetime.now(tz=timezone.utc)
+    started = datetime.now(tz=UTC)
     steps: list[dict[str, Any]] = []
 
     # ---- Step 1: seed watchlist ----
     try:
         added = await _upsert_watchlist()
         steps.append({"step": "seed_watchlist", "ok": True, "added": added})
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning(f"seed_watchlist failed: {exc}")
         steps.append({"step": "seed_watchlist", "ok": False, "error": str(exc)[:300]})
 
-    # Run the rest of the ingest flows concurrently — they don't share state.
-    async def _run(name: str, target: str) -> dict[str, Any]:
-        try:
-            module = __import__(f"pfip.prefect.flows.{target}", fromlist=[target])
-            fn = getattr(module, target)
-            n = await fn()
-            return {"step": name, "ok": True, "rows": int(n)}
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(f"{name} failed: {exc}")
-            return {"step": name, "ok": False, "error": f"{type(exc).__name__}: {exc}"[:300]}
+    # First-wave ingest — reuse the plain-async daily-pipeline ingest stage
+    # (the Prefect ingest flows were retired). Non-fatal: each source inside is
+    # individually guarded.
+    try:
+        from scripts.run_daily_pipeline import stage_ingest
 
-    results = await asyncio.gather(
-        _run("ingest_mf_daily", "ingest_mf_daily"),
-        _run("ingest_fx_daily", "ingest_fx_daily"),
-        _run("ingest_macro_daily", "ingest_macro_daily"),
-        _run("ingest_crypto_hourly", "ingest_crypto_hourly"),
-        return_exceptions=False,
-    )
-    steps.extend(results)
-    elapsed = (datetime.now(tz=timezone.utc) - started).total_seconds()
+        summ = await stage_ingest(include_news=True, include_fundamentals=True)
+        steps.append({"step": "ingest", "ok": True, **summ.as_dict()})
+    except Exception as exc:
+        logger.warning(f"ingest failed: {exc}")
+        steps.append({"step": "ingest", "ok": False, "error": str(exc)[:300]})
+    elapsed = (datetime.now(tz=UTC) - started).total_seconds()
     return {
         "started_at": started.isoformat(),
         "elapsed_seconds": elapsed,
@@ -149,7 +140,7 @@ async def seed_demo_endpoint(_user: CurrentUser) -> dict[str, Any]:
                 "Remove anytime via DELETE /api/v1/setup/demo."
             ),
         }
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
 
 
@@ -159,5 +150,5 @@ async def clear_demo_endpoint(_user: CurrentUser) -> dict[str, Any]:
     try:
         counts = await _clear_demo()
         return {"ok": True, "deleted": counts}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
