@@ -7,11 +7,12 @@ advisory ``DISCLAIMER``.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Literal
 from uuid import UUID
 
+import pandas as pd
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 
@@ -22,7 +23,6 @@ from pfip.brokers.csv_adapters.router import (
     route_and_parse,
 )
 from pfip.core.contracts import Holding, PortfolioSummary
-from pfip.models.holdings import HoldingRow
 from pfip.models.portfolio_tx import PortfolioTxRow
 from pfip.portfolio.allocation import (
     StrategicTargets,
@@ -32,11 +32,8 @@ from pfip.portfolio.allocation import (
 )
 from pfip.portfolio.benchmark import run_benchmark
 from pfip.portfolio.goals import project_goal, required_monthly_contribution
+from pfip.portfolio.marking import build_marking, fetch_close_series, fetch_return_series
 from pfip.portfolio.networth import run_networth
-from pfip.portfolio.sip import CashFlow, project_sip_corpus, sip_summary
-from pfip.portfolio.stress import run_stress_test
-from pfip.portfolio.whatif import run_what_if
-from pfip.portfolio.marking import build_marking, fetch_return_series
 from pfip.portfolio.risk_manager import RiskManager
 from pfip.portfolio.rollup import (
     asset_class_for,
@@ -49,7 +46,11 @@ from pfip.portfolio.service import (
     PortfolioService,
     trailing_sharpe,
 )
+from pfip.portfolio.sip import CashFlow, project_sip_corpus, sip_summary
+from pfip.portfolio.stress import run_stress_test
+from pfip.portfolio.whatif import run_what_if
 from pfip.tax.indian_rules import DISCLAIMER
+from pfip.vol.cone import forecast_vol_cone
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
@@ -63,8 +64,8 @@ class CloseHoldingRequest(BaseModel):
     """Body for ``POST /portfolio/holdings/{id}/close``."""
 
     exit_price_inr: Decimal
-    when: Optional[datetime] = None
-    qty: Optional[Decimal] = None
+    when: datetime | None = None
+    qty: Decimal | None = None
 
 
 class PreTradeRequest(BaseModel):
@@ -74,10 +75,10 @@ class PreTradeRequest(BaseModel):
     qty: Decimal
     price: Decimal
     portfolio_value_inr: Decimal
-    stop_distance_pct: Optional[float] = None
-    regime: Optional[str] = None
-    signal_confidence: Optional[int] = None
-    news_count_24h: Optional[int] = None
+    stop_distance_pct: float | None = None
+    regime: str | None = None
+    signal_confidence: int | None = None
+    news_count_24h: int | None = None
     event_calendar_conflict: bool = False
     positions_added_today: int = 0
     current_drawdown_pct: float = 0.0
@@ -110,6 +111,11 @@ class GoalProjectRequest(BaseModel):
     annual_volatility: float = 0.15
     target_inr: float | None = None
     n_sims: int = 10_000
+    # "manual" uses annual_volatility as given; "auto" derives a data-driven vol
+    # prior from vol_proxy_symbol via the vol-cone (Chronos if installed, else
+    # realised historical vol; falls back to annual_volatility if no data).
+    vol_source: Literal["manual", "auto"] = "manual"
+    vol_proxy_symbol: str = "NIFTYBEES.NS"
 
 
 class WhatIfRequest(BaseModel):
@@ -441,12 +447,12 @@ async def var_panel(
         for d, nav in nav_history:
             if nav > running_peak:
                 running_peak = nav
-            dd_pct = float((Decimal("1") - nav / running_peak)) * 100.0 if running_peak > 0 else 0.0
+            dd_pct = float(Decimal("1") - nav / running_peak) * 100.0 if running_peak > 0 else 0.0
             drawdown_series.append({"date": d.isoformat(), "drawdown_pct": round(dd_pct, 4)})
         if len(nav_history) >= 2:
             prev_nav = nav_history[-2][1]
             last_nav = nav_history[-1][1]
-            day_change_inr = float((last_nav - prev_nav))
+            day_change_inr = float(last_nav - prev_nav)
             if prev_nav != 0:
                 day_change_pct = float((last_nav - prev_nav) / prev_nav) * 100.0
 
@@ -536,23 +542,42 @@ async def rebalance(body: RebalanceRequest, _user: CurrentUser) -> dict:
 
 
 @router.post("/goals/project")
-async def goals_project(body: GoalProjectRequest, _user: CurrentUser) -> dict:
+async def goals_project(body: GoalProjectRequest, db: DbSession, _user: CurrentUser) -> dict:
     """Monte Carlo net-worth projection for a savings goal.
 
-    Stateless: takes the plan parameters and returns the terminal-value
-    distribution. With a ``target_inr`` it also reports the probability of
-    reaching the goal and the monthly contribution required to hit it at the
-    median. Advisory only — the figures are a distribution, not a promise.
+    Takes the plan parameters and returns the terminal-value distribution. With a
+    ``target_inr`` it also reports the probability of reaching the goal and the
+    monthly contribution required to hit it at the median. Advisory only — the
+    figures are a distribution, not a promise.
+
+    ``vol_source="auto"`` derives the volatility prior from market data via the
+    vol-cone (Chronos-Bolt if installed, else realised historical vol of
+    ``vol_proxy_symbol``) instead of the hand-entered ``annual_volatility``.
     """
     if body.years <= 0:
         raise HTTPException(status_code=422, detail="years must be > 0")
     n_sims = max(1000, min(body.n_sims, 50_000))
+
+    # Resolve the volatility prior.
+    vol_used = body.annual_volatility
+    vol_source = "manual"
+    vol_cone_meta: dict | None = None
+    if body.vol_source == "auto":
+        closes = await fetch_close_series(db, body.vol_proxy_symbol)
+        cone = forecast_vol_cone(pd.Series(closes, dtype=float)) if closes else None
+        if cone is not None:
+            vol_used = cone.annual_vol
+            vol_source = cone.source  # "chronos" | "historical"
+            vol_cone_meta = cone.as_dict()
+        else:
+            vol_source = "manual_fallback"  # no data for the proxy → keep manual
+
     projection = project_goal(
         current_corpus_inr=body.current_corpus_inr,
         monthly_contribution_inr=body.monthly_contribution_inr,
         years=body.years,
         expected_annual_return=body.expected_annual_return,
-        annual_volatility=body.annual_volatility,
+        annual_volatility=vol_used,
         target_inr=body.target_inr,
         n_sims=n_sims,
     )
@@ -563,9 +588,13 @@ async def goals_project(body: GoalProjectRequest, _user: CurrentUser) -> dict:
             target_inr=body.target_inr,
             years=body.years,
             expected_annual_return=body.expected_annual_return,
-            annual_volatility=body.annual_volatility,
+            annual_volatility=vol_used,
             n_sims=n_sims,
         )
+    out["annual_volatility_used"] = round(vol_used, 4)
+    out["vol_source"] = vol_source
+    if vol_cone_meta is not None:
+        out["vol_cone"] = vol_cone_meta
     out["disclaimer"] = DISCLAIMER
     return out
 
@@ -741,7 +770,7 @@ async def import_csv(
             persisted += 1
         try:
             await db.commit()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -752,7 +781,7 @@ async def import_csv(
         # is populated in a single import call. Idempotent — safe to re-run.
         try:
             rebuilt = await rebuild_holdings_from_tx(db)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

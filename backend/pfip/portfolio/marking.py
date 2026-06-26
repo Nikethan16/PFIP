@@ -26,10 +26,10 @@ not silently use last quarter's FX.
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from typing import Iterable
 
 from sqlalchemy import select
 
@@ -79,7 +79,7 @@ def compute_log_returns(closes: Iterable[Decimal | float]) -> list[float]:
     prices (which would make the log undefined) by breaking the pair."""
     vals = [float(c) for c in closes]
     out: list[float] = []
-    for prev, cur in zip(vals, vals[1:]):
+    for prev, cur in zip(vals, vals[1:], strict=False):
         if prev > 0 and cur > 0:
             out.append(math.log(cur / prev))
     return out
@@ -170,7 +170,7 @@ async def fetch_return_series(
     if not syms:
         return {}
     # Buffer a few extra calendar days so we keep ~window_days *returns*.
-    since = datetime.now(tz=timezone.utc) - timedelta(days=window_days + 7)
+    since = datetime.now(tz=UTC) - timedelta(days=window_days + 7)
     stmt = (
         select(OHLCVRow.symbol, OHLCVRow.time, OHLCVRow.close)
         .where(OHLCVRow.symbol.in_(syms), OHLCVRow.time >= since)
@@ -181,6 +181,34 @@ async def fetch_return_series(
     for r in rows:
         by_sym.setdefault(r.symbol, []).append(Decimal(str(r.close)))
     return {s: compute_log_returns(cl) for s, cl in by_sym.items()}
+
+
+async def fetch_close_series(db, symbol: str, window_days: int = 504) -> list[float]:
+    """Ascending daily closes for one symbol over the trailing window.
+
+    Resolves the symbol's canonical OHLCV source first so multi-source symbols
+    (e.g. crypto on several exchanges) don't double-count timestamps. Returns
+    plain floats (caller wraps in a Series); empty if the symbol has no data.
+    """
+    if not symbol:
+        return []
+    from pfip.db.sources import resolve_ohlcv_source
+
+    source = await resolve_ohlcv_source(db, symbol, "1d")
+    if not source:
+        return []
+    since = datetime.now(tz=UTC) - timedelta(days=window_days + 7)
+    stmt = (
+        select(OHLCVRow.close)
+        .where(
+            OHLCVRow.symbol == symbol,
+            OHLCVRow.source == source,
+            OHLCVRow.time >= since,
+        )
+        .order_by(OHLCVRow.time.asc())
+    )
+    rows = (await db.execute(stmt)).all()
+    return [float(r.close) for r in rows]
 
 
 async def build_marking(db, holdings) -> MarkResult:
