@@ -1,0 +1,58 @@
+name: Deploy (Oracle VM)
+
+# Continuous deployment to the self-hosted Oracle ARM VM.
+#
+# Flow: push to main -> the "CI" workflow runs (lint/tests) -> on success this
+# workflow runs ON the VM's self-hosted runner (label: pfip) and redeploys:
+#   git pull -> backend deps + migrations -> frontend build -> restart services.
+#
+# Secrets live in ~/pfip/backend/.env and ~/pfip/frontend/.env.local on the VM
+# (gitignored), so `git reset --hard` never disturbs them. The runner user
+# (ubuntu) has passwordless sudo for `systemctl`, so it can restart the units.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-oracle
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Deploy only when triggered manually, or when CI passed on main.
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           github.event.workflow_run.head_branch == 'main') }}
+    runs-on: [self-hosted, pfip]
+    steps:
+      - name: Sync repo on the VM
+        run: |
+          cd ~/pfip
+          git fetch origin main
+          git reset --hard origin/main
+          echo "Deploying commit:"; git log --oneline -1
+
+      - name: Backend — deps + migrations
+        run: |
+          cd ~/pfip/backend
+          ./.venv/bin/pip install -q -r requirements.txt
+          ./.venv/bin/pip install -q "setuptools<81"
+          ./.venv/bin/alembic upgrade head
+
+      - name: Frontend — install + build
+        run: |
+          cd ~/pfip/frontend
+          export COREPACK_HOME="$HOME/.cache/corepack"
+          corepack pnpm@9.6.0 install --frozen-lockfile
+          corepack pnpm@9.6.0 run build
+
+      - name: Restart services + health check
+        run: |
+          sudo systemctl restart pfip-api pfip-web
+          sleep 14
+          systemctl is-active pfip-api pfip-web
+          curl -fsS http://127.0.0.1:8000/api/v1/health && echo "  <- deploy OK"
