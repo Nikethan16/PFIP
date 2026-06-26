@@ -17,9 +17,10 @@ intent classifier emits alongside the intent).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 
 async def _safe_decimal(value: Any) -> float:
@@ -90,7 +91,7 @@ async def get_recent_pnl(session: Any, *, days: int = 7) -> dict[str, Any]:
         from pfip.models.journal import JournalRow
     except Exception as exc:
         return {"ok": False, "error": f"journal model unavailable: {exc}"}
-    since = datetime.now(tz=timezone.utc) - timedelta(days=max(1, days))
+    since = datetime.now(tz=UTC) - timedelta(days=max(1, days))
     rows = (
         (
             await session.execute(
@@ -124,7 +125,16 @@ async def get_recent_pnl(session: Any, *, days: int = 7) -> dict[str, Any]:
 
 
 async def get_open_signals(session: Any, *, limit: int = 20) -> dict[str, Any]:
-    """Return recent signals above confidence floor (default 65)."""
+    """Return recent signals above confidence floor (default 65).
+
+    Honours the ``FEATURE_ML_SIGNALS`` gate: returns an empty set when signals
+    are off (the directional model has no demonstrated edge — see
+    docs/SIGNAL_BACKTEST_2026-06-26), so the agent never cites gated signals.
+    """
+    from pfip.core.config import get_settings
+
+    if not get_settings().feature_ml_signals:
+        return {"ok": True, "signals": [], "count": 0, "note": "signals gated off"}
     try:
         from sqlalchemy import desc, select
 
@@ -179,7 +189,7 @@ async def get_diligence(session: Any, *, symbol: str) -> dict[str, Any]:
         from pfip.diligence.service import build_diligence
 
         data = await build_diligence(session, sym)
-    except Exception as exc:  # noqa: BLE001 — tool surface never raises
+    except Exception as exc:  # — tool surface never raises
         return {"ok": False, "error": f"diligence aggregation failed: {exc}"}
     return {"ok": True, "diligence": data, "found": bool(data.get("found"))}
 
@@ -187,13 +197,13 @@ async def get_diligence(session: Any, *, symbol: str) -> dict[str, Any]:
 async def get_tax_summary(session: Any, *, fy: str) -> dict[str, Any]:
     """Quick tax-summary lookup for an FY. Just the headline numbers."""
     try:
+        from sqlalchemy import select
+
+        from pfip.models.portfolio_tx import PortfolioTxRow
         from pfip.tax.engine import (
             build_tax_summary,
             classify_capital_gains,
         )
-        from sqlalchemy import select
-
-        from pfip.models.portfolio_tx import PortfolioTxRow
 
         rows = (await session.execute(select(PortfolioTxRow))).scalars().all()
         events = classify_capital_gains([dict(r.__dict__) for r in rows])
