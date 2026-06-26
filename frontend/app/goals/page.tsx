@@ -27,6 +27,7 @@ export default function GoalsPage() {
   const [ret, setRet] = React.useState("11");
   const [vol, setVol] = React.useState("15");
   const [target, setTarget] = React.useState("10000000");
+  const [autoVol, setAutoVol] = React.useState(false);
   const mutation = useGoalProjection();
 
   function submit(e: React.FormEvent) {
@@ -40,6 +41,7 @@ export default function GoalsPage() {
       expected_annual_return: (Number(ret) || 0) / 100,
       annual_volatility: (Number(vol) || 0) / 100,
       target_inr: target ? Number(target) : null,
+      vol_source: autoVol ? "auto" : "manual",
     });
   }
 
@@ -65,8 +67,17 @@ export default function GoalsPage() {
         <Field label="Monthly SIP ₹" value={monthly} onChange={setMonthly} />
         <Field label="Years" value={years} onChange={setYears} />
         <Field label="Return % p.a." value={ret} onChange={setRet} />
-        <Field label="Volatility %" value={vol} onChange={setVol} />
+        <Field label={autoVol ? "Volatility % (fallback)" : "Volatility %"} value={vol} onChange={setVol} />
         <Field label="Target ₹ (optional)" value={target} onChange={setTarget} />
+        <label className="col-span-2 flex items-center gap-2 self-end pb-2 text-xs text-muted-foreground sm:col-span-1">
+          <input
+            type="checkbox"
+            checked={autoVol}
+            onChange={(e) => setAutoVol(e.target.checked)}
+            className="h-4 w-4 accent-primary"
+          />
+          Auto vol (NIFTY history)
+        </label>
         <Button
           type="submit"
           disabled={mutation.isPending}
@@ -113,6 +124,25 @@ function GoalResultView({ res }: { res: GoalProjection }) {
           />
         ) : null}
       </div>
+
+      {res.vol_source ? (
+        <p className="text-xs text-muted-foreground">
+          Volatility used:{" "}
+          <span className="font-mono">
+            {(((res.annual_volatility_used ?? res.annual_volatility) || 0) * 100).toFixed(1)}%
+          </span>{" "}
+          · source:{" "}
+          <span className="font-medium text-foreground">
+            {res.vol_source === "historical"
+              ? "NIFTY realised vol"
+              : res.vol_source === "chronos"
+                ? "Chronos model"
+                : res.vol_source === "manual_fallback"
+                  ? "manual (no market data)"
+                  : "manual"}
+          </span>
+        </p>
+      ) : null}
 
       <section className="border border-border/60 bg-card p-5">
         <div className="eyebrow">Outcome distribution</div>

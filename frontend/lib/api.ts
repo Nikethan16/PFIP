@@ -2526,6 +2526,17 @@ const GoalProjectionSchema = z.object({
   target_inr: z.number().optional(),
   probability_of_target: z.number().nullable().optional(),
   required_monthly_contribution_inr: z.number().optional(),
+  // Vol-cone: which volatility the sim actually used + its provenance.
+  annual_volatility_used: z.number().optional(),
+  vol_source: z.string().optional(),
+  vol_cone: z
+    .object({
+      annual_vol: z.number(),
+      horizon_days: z.number(),
+      source: z.string(),
+    })
+    .nullable()
+    .optional(),
   disclaimer: z.string().optional(),
 });
 export type GoalProjection = z.infer<typeof GoalProjectionSchema>;
@@ -2538,6 +2549,8 @@ export interface GoalProjectRequest {
   annual_volatility?: number;
   target_inr?: number | null;
   n_sims?: number;
+  vol_source?: "manual" | "auto";
+  vol_proxy_symbol?: string;
 }
 
 export function useGoalProjection(): UseMutationResult<
