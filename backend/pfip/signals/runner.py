@@ -176,6 +176,28 @@ def _direction(proba: float, model: LGBMBaselineModel) -> SignalDirection:
     return SignalDirection.HOLD
 
 
+def _champion_for(regime: Any) -> tuple[Any, str | None]:
+    """Load the pinned champion model for ``regime`` from the registry.
+
+    Returns ``(model, version)`` or ``(None, None)`` so the caller falls back to
+    inline walk-forward training. The champion is produced by the weekly
+    ``signals.retrain`` pass (OOS-gated), trained on the same ``FEATURE_COLUMNS``
+    fed here — so it predicts the latest bar directly, no training needed.
+    """
+    try:
+        from pfip.signals.registry import get_pinned, load_pickle
+
+        reg = regime.value if hasattr(regime, "value") else str(regime)
+        entry = get_pinned(task="signal", regime=reg, horizon="3d")
+        if entry is None:
+            return None, None
+        model = load_pickle(entry, current_schema_revision=None)
+        return model, entry.version
+    except Exception as exc:  # noqa: BLE001 — registry optional; fall back to inline
+        log.warning("champion load failed for %s: %s", regime, exc)
+        return None, None
+
+
 async def run_for_symbol(
     session,
     symbol: str,
@@ -184,7 +206,12 @@ async def run_for_symbol(
     timeframe: str = "1d",
     persist: bool = True,
 ) -> SignalRunResult:
-    """Train + predict + persist a signal for one symbol."""
+    """Predict + persist a signal for one symbol.
+
+    Uses the registry **champion** for the symbol's regime when one is pinned
+    (retrained weekly, OOS-gated); otherwise falls back to inline walk-forward
+    training on the trailing window.
+    """
     df = await _load_recent_ohlcv(session, symbol, source, timeframe)
     if df.empty or len(df) < 80:
         return SignalRunResult(
@@ -208,39 +235,27 @@ async def run_for_symbol(
         )
 
     regime = await _current_regime(session, symbol)
-    router = RegimeRouter()
-    model = router.get(regime)
 
-    y = make_label(df["close"], horizon=model.horizon).reindex(feats.index)
-    valid = y.dropna().index
-    if len(valid) < 60:
-        return SignalRunResult(
-            symbol=symbol,
-            direction=SignalDirection.HOLD,
-            confidence=0,
-            regime=regime,
-            status="not-enough-labels",
-        )
+    # Prefer the registry champion (weekly-retrained, OOS-gated) — it predicts
+    # the latest bar directly. Fall back to inline walk-forward training when no
+    # champion is pinned for this regime yet.
+    champion, model_version_override = _champion_for(regime)
+    model = champion
+    if champion is not None:
+        try:
+            calibrated_last = float(model.predict_proba_up(feats.iloc[[-1]])[0])
+        except Exception as exc:  # noqa: BLE001 — degrade to inline on any failure
+            log.warning("champion predict failed for %s: %s", symbol, exc)
+            champion = None
 
-    # Walk-forward train; the model ends up fit to the most recent training
-    # window so .predict_proba on the latest row is in-sample free.
-    try:
-        wf_df = model.walk_forward_train(
-            features=feats.loc[valid],
-            close=df["close"].loc[valid],
-            train_window=min(756, max(60, len(valid) - 30)),
-            step=21,
-            test_window=21,
-            embargo=5,
-        )
-    except Exception as exc:
-        log.warning("walk_forward_train failed for %s: %s", symbol, exc)
-        wf_df = pd.DataFrame()
+    if champion is None:
+        model_version_override = None
+        router = RegimeRouter()
+        model = router.get(regime)
 
-    if wf_df.empty:
-        # Fall back to one-shot train on everything-up-to-now-21 to keep some embargo.
-        cutoff = len(valid) - 21
-        if cutoff < 30:
+        y = make_label(df["close"], horizon=model.horizon).reindex(feats.index)
+        valid = y.dropna().index
+        if len(valid) < 60:
             return SignalRunResult(
                 symbol=symbol,
                 direction=SignalDirection.HOLD,
@@ -248,28 +263,52 @@ async def run_for_symbol(
                 regime=regime,
                 status="not-enough-labels",
             )
-        train_idx = valid[:cutoff]
-        model.fit(feats.loc[train_idx], y.loc[train_idx])
-        raw_last = float(model.predict_proba_up(feats.iloc[[-1]])[0])
-        calibrated_last = raw_last
-    else:
-        # Calibrate predictions using the WF holdout data. The helper applies a
-        # consistent NaN mask to BOTH raw and y and returns the *fitted*
-        # calibrator, which we reuse here — no second, mask-inconsistent refit.
-        raw = wf_df["proba_up"].to_numpy()
-        yt = wf_df["y"].to_numpy()
-        _, calibrator = _calibrate_probabilities(raw, yt, method="isotonic")
-        # Now compute today's raw and pipe through the same calibrator.
-        raw_last = float(model.predict_proba_up(feats.iloc[[-1]])[0])
-        if calibrator is not None:
-            try:  # pragma: no cover
-                calibrated_last = float(
-                    calibrator.transform([float(np.clip(raw_last, 0.0, 1.0))])[0]
+
+        # Walk-forward train; the model ends up fit to the most recent training
+        # window so .predict_proba on the latest row is in-sample free.
+        try:
+            wf_df = model.walk_forward_train(
+                features=feats.loc[valid],
+                close=df["close"].loc[valid],
+                train_window=min(756, max(60, len(valid) - 30)),
+                step=21,
+                test_window=21,
+                embargo=5,
+            )
+        except Exception as exc:
+            log.warning("walk_forward_train failed for %s: %s", symbol, exc)
+            wf_df = pd.DataFrame()
+
+        if wf_df.empty:
+            # Fall back to one-shot train on everything-up-to-now-21 for embargo.
+            cutoff = len(valid) - 21
+            if cutoff < 30:
+                return SignalRunResult(
+                    symbol=symbol,
+                    direction=SignalDirection.HOLD,
+                    confidence=0,
+                    regime=regime,
+                    status="not-enough-labels",
                 )
-            except Exception:
-                calibrated_last = raw_last
-        else:
+            train_idx = valid[:cutoff]
+            model.fit(feats.loc[train_idx], y.loc[train_idx])
+            raw_last = float(model.predict_proba_up(feats.iloc[[-1]])[0])
             calibrated_last = raw_last
+        else:
+            # Calibrate predictions using the WF holdout data.
+            raw = wf_df["proba_up"].to_numpy()
+            yt = wf_df["y"].to_numpy()
+            _, calibrator = _calibrate_probabilities(raw, yt, method="isotonic")
+            raw_last = float(model.predict_proba_up(feats.iloc[[-1]])[0])
+            if calibrator is not None:
+                try:  # pragma: no cover
+                    calibrated_last = float(
+                        calibrator.transform([float(np.clip(raw_last, 0.0, 1.0))])[0]
+                    )
+                except Exception:
+                    calibrated_last = raw_last
+            else:
+                calibrated_last = raw_last
 
     # Direction + confidence after calibration.
     direction = _direction(calibrated_last, model)
@@ -288,7 +327,7 @@ async def run_for_symbol(
         counter_arguments=pred_out.counter_arguments,
         regime=regime,
         model_name=model.model_name,
-        model_version=model.model_version,
+        model_version=model_version_override or model.model_version,
         asset=symbol,
         generated_at=datetime.now(tz=timezone.utc),
     )

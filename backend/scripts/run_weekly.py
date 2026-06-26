@@ -111,22 +111,25 @@ async def stage_fundamentals_and_diligence() -> StageSummary:
 
 
 async def stage_training(*, symbol: str = TRAIN_SYMBOL) -> StageSummary:
-    """Train per-regime LightGBM models for the deepest-history symbol.
+    """Retrain per-regime LightGBM champions across the watchlist.
 
-    Reuses ``pfip.prefect.flows.train_lgbm_per_regime.train_lgbm_per_regime``.
-    That function is plain-async at its core (only the inner slot trainer is a
-    Prefect ``@task``, which runs fine without a server). Non-fatal: missing
-    LightGBM / thin data just yields an empty result.
+    Uses ``pfip.signals.retrain.retrain_universe`` — a plain-async retrainer that
+    pools data across the universe per regime, OOS-gates, and promotes a new
+    champion only if it beats the incumbent. Replaces the old Prefect flow, which
+    no longer runs (Prefect 2.20 is incompatible with the upgraded anyio).
+    Non-fatal: thin data / missing LightGBM just yields an empty result.
     """
     summary = StageSummary(name="training")
 
     async def _train() -> dict[str, Any]:
-        from pfip.prefect.flows.train_lgbm_per_regime import train_lgbm_per_regime
+        from pfip.db.session import get_sessionmaker
+        from pfip.signals.retrain import retrain_universe
 
-        results = await train_lgbm_per_regime(symbol=symbol)
-        return {"symbol": symbol, "slots_trained": len(results)}
+        factory = get_sessionmaker()
+        async with factory() as s:
+            return await retrain_universe(s)
 
-    await _guarded(summary, "lgbm_per_regime", _train, timeout=900.0)
+    await _guarded(summary, "retrain_universe", _train, timeout=1800.0)
     summary.finish()
     return summary
 
