@@ -56,7 +56,7 @@ log = get_logger("scripts.run_daily_pipeline")
 # Stage / source configuration
 # ---------------------------------------------------------------------------
 
-ALL_STAGES: tuple[str, ...] = ("ingest", "features", "regime", "signals", "retention")
+ALL_STAGES: tuple[str, ...] = ("ingest", "features", "regime", "signals", "shadow", "retention")
 
 # Crypto symbols to refresh daily (ccxt slash form; the adapter canonicalizes to
 # dash form on write). Matches the watchlist crypto universe.
@@ -570,6 +570,42 @@ async def stage_signals(*, timeframe: str = "1d") -> StageSummary:
 
 
 # ---------------------------------------------------------------------------
+# SHADOW (paper-trading) stage
+# ---------------------------------------------------------------------------
+
+
+async def stage_shadow() -> StageSummary:
+    """Paper-trade today's signals through the shadow portfolio.
+
+    Reads today's high-confidence signals, applies them under the shadow risk
+    rules (max 10%/position, correlation guard, 2 new/day), marks-to-market, and
+    records shadow-vs-actual metrics — a forward paper-trading track record that
+    accrues daily. Respects ``FEATURE_SHADOW_PORTFOLIO``; a no-op when signals
+    were skipped (nothing to act on).
+    """
+    summary = StageSummary(name="shadow")
+    from pfip.core.config import get_settings
+
+    if not get_settings().feature_shadow_portfolio:
+        summary.skipped = True
+        summary.record("shadow", "skipped: FEATURE_SHADOW_PORTFOLIO=false")
+        summary.finish()
+        return summary
+
+    async def _run() -> dict[str, Any]:
+        from pfip.shadow.runner import run_daily
+
+        factory = get_sessionmaker()
+        async with factory() as s:
+            res = await run_daily(s)
+        return res.headline()
+
+    await _guarded(summary, "shadow", _run, timeout=TIMEOUT_COMPUTE)
+    summary.finish()
+    return summary
+
+
+# ---------------------------------------------------------------------------
 # RETENTION stage
 # ---------------------------------------------------------------------------
 
@@ -658,6 +694,9 @@ async def run_pipeline(
     if "signals" in requested:
         summ = await stage_signals(timeframe=timeframe)
         results["signals"] = summ.as_dict()
+    if "shadow" in requested:
+        summ = await stage_shadow()
+        results["shadow"] = summ.as_dict()
     if "retention" in requested:
         summ = await stage_retention()
         results["retention"] = summ.as_dict()
