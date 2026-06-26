@@ -136,7 +136,7 @@ async def _load_closes_batch(
         from pfip.models.ohlcv import OHLCVRow
 
         stmt = (
-            select(OHLCVRow.symbol, OHLCVRow.time, OHLCVRow.close)
+            select(OHLCVRow.symbol, OHLCVRow.time, OHLCVRow.close, OHLCVRow.market)
             .where(OHLCVRow.symbol.in_(symbols))
             .order_by(OHLCVRow.symbol.asc(), OHLCVRow.time.asc())
         )
@@ -146,8 +146,30 @@ async def _load_closes_batch(
         log.debug("net-worth batch close load failed: %s", exc)
         return {}
     out: dict[str, list[tuple[date, float]]] = {}
-    for sym, t, c in rows:
+    market_by: dict[str, str | None] = {}
+    for sym, t, c, market in rows:
         out.setdefault(sym, []).append(((t.date() if hasattr(t, "date") else t), float(c)))
+        market_by.setdefault(sym, market)
+
+    # OHLCV ``close`` is in the instrument's native currency. USD-priced names
+    # (US equities, most crypto) must be converted to INR or net worth is wildly
+    # understated. Use the latest USD->INR (same source as /portfolio/marking) so
+    # the two surfaces agree; INR names pass through unchanged.
+    try:
+        from pfip.portfolio.marking import resolve_price_ccy
+        from pfip.tax.fx_cost_basis import prefetch_fx_rates
+
+        usd_syms = [s for s in out if resolve_price_ccy(market_by.get(s), s) == "USD"]
+        if usd_syms:
+            today = date.today()
+            cache = await prefetch_fx_rates(session, [("USD", today)])
+            usdinr = cache.get(("USD", today))
+            if usdinr is not None:
+                rate = float(usdinr)
+                for s in usd_syms:
+                    out[s] = [(d, px * rate) for d, px in out[s]]
+    except Exception as exc:  # pragma: no cover - defensive; never break the timeline
+        log.debug("net-worth FX conversion skipped: %s", exc)
     return out
 
 
