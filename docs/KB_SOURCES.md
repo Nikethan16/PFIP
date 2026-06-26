@@ -68,11 +68,20 @@ them. Purchase and drop the PDF/EPUB into `data/kb_sources/`:
 3. Optional: `book_to_rules.py` extracts machine-readable rules into `data/kb_rules/<book>.jsonl`.
 4. Validate retrieval against `backend/pfip/kb/eval_qa.json` (RAGAS via `ragas_eval.py`).
 
-## Status (2026-06-24)
+## Status (2026-06-27)
 
-- **Tier 1 — ingested ✅.** 4 public-domain books in the `kb` Qdrant collection, **8,796 chunks**:
-  Reminiscences of a Stock Operator (1,087), The Crowd (650), Extraordinary Popular Delusions
-  (2,893), The Wealth of Nations (4,166). RAG search verified — returns relevant, cited passages.
-- **Tier 2** (papers) and **Tier 3** (in-copyright): pending — drop files into `data/kb_sources/`
-  and re-run the ingest command (idempotent).
-- The chat agent can now cite the Tier-1 corpus.
+- **Tier 1 — ingested ✅.** **7 public-domain books** in the `kb` Qdrant collection,
+  **12,001 chunks** (clean — collection wiped & re-ingested with proper titles, no duplicates):
+  Reminiscences of a Stock Operator (1,087), Extraordinary Popular Delusions (2,893),
+  The Crowd (650), The Wealth of Nations (4,166), **Lombard Street — Bagehot (829)**,
+  **The Theory of the Leisure Class — Veblen (1,120)**, **Principles of Political Economy —
+  Ricardo (1,256)**. RAG verified: "lender of last resort" → Bagehot; "conspicuous consumption"
+  → Veblen.
+- **Tier 2** (open-access papers) and **Tier 3** (in-copyright, user-supplied): pending — drop
+  files into `data/kb_sources/` and re-run `python -m pfip.kb.ingest`.
+- ⚠️ **Re-ingest caveat:** the ledger keys on file path and point IDs are non-deterministic, so
+  re-running ingest from a *different* path duplicates rather than replaces. To refresh cleanly,
+  wipe the `kb` collection + `kb_ingestions` ledger first (as done 2026-06-27), or ingest only
+  new files. The folder CLI auto-derives titles from filenames; ingest per-book with explicit
+  `title=`/`author=` (via the `fetch_kb_public_domain.BOOKS` mapping) for clean citations.
+- The chat agent cites this Tier-1 corpus.

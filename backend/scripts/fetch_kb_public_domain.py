@@ -37,6 +37,24 @@ BOOKS: list[tuple[int, str, str, str]] = [
     ),
     (445, "lebon_the_crowd.txt", "The Crowd: A Study of the Popular Mind", "Gustave Le Bon"),
     (3300, "smith_wealth_of_nations.txt", "The Wealth of Nations", "Adam Smith"),
+    (
+        4359,
+        "bagehot_lombard_street.txt",
+        "Lombard Street: A Description of the Money Market",
+        "Walter Bagehot",
+    ),
+    (
+        833,
+        "veblen_theory_of_the_leisure_class.txt",
+        "The Theory of the Leisure Class",
+        "Thorstein Veblen",
+    ),
+    (
+        33310,
+        "ricardo_principles_of_political_economy.txt",
+        "On the Principles of Political Economy, and Taxation",
+        "David Ricardo",
+    ),
 ]
 
 # Stable plain-text endpoint for a Gutenberg ebook id.
@@ -60,12 +78,12 @@ def fetch_all(dest: Path) -> int:
         url = _URL.format(id=book_id)
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "pfip-kb-fetch/1.0"})
-            with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310 - trusted host
+            with urllib.request.urlopen(req, timeout=60) as resp:  # - trusted host
                 data = resp.read()
             out.write_bytes(data)
             print(f"fetched: {title} — {author}  ({len(data) // 1024} KB) -> {filename}")
             fetched += 1
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"FAILED {title} ({url}): {type(exc).__name__}: {exc}")
     return fetched
 
