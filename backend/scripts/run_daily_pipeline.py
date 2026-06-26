@@ -574,27 +574,40 @@ async def stage_signals(*, timeframe: str = "1d") -> StageSummary:
 # ---------------------------------------------------------------------------
 
 
-async def stage_retention(*, features_days: int = FEATURES_RETENTION_DAYS) -> StageSummary:
-    """Bound DB size for the free tier: prune old features + ensure news prune.
+async def stage_retention(*, features_days: int = 0) -> StageSummary:
+    """News hygiene + (optional, off by default) feature pruning.
 
-    * Deletes ``features`` rows older than ``features_days`` (~3.3y). Features
-      are recomputable from OHLCV, so they're the cheap thing to drop.
-    * Runs the news age/relevance prune (``prune_old`` + ``prune_irrelevant``)
-      in case the ingest stage was skipped this run.
+    * **Feature pruning is DISABLED by default** (``features_days=0``). We
+      deliberately keep all historical ``features`` — back data is never deleted.
+      The DB sits well under the Neon free-tier ceiling (~74 MB of 512 MB), so
+      there's no need to drop history; ML training wants the full feature record.
+      To re-enable bounded pruning, pass a positive ``features_days`` (or set the
+      ``PFIP_FEATURES_RETENTION_DAYS`` env var) — e.g. if the DB ever nears the
+      free-tier limit.
+    * Always runs the news age/relevance prune (``prune_old`` +
+      ``prune_irrelevant``) — that's transient noise, not historical market data.
     """
+    import os
+
     summary = StageSummary(name="retention")
+
+    env_days = int(os.environ.get("PFIP_FEATURES_RETENTION_DAYS", "0") or "0")
+    effective_days = features_days or env_days
 
     async def _prune_features() -> int:
         factory = get_sessionmaker()
         async with factory() as s:
             r = await s.execute(
                 text("DELETE FROM features " "WHERE time < now() - (:d || ' days')::interval"),
-                {"d": int(features_days)},
+                {"d": int(effective_days)},
             )
             await s.commit()
             return r.rowcount or 0
 
-    await _guarded(summary, "features_pruned", _prune_features, timeout=120.0)
+    if effective_days > 0:
+        await _guarded(summary, "features_pruned", _prune_features, timeout=120.0)
+    else:
+        summary.record("features_pruned", "disabled (keep all history)")
 
     async def _prune_news() -> dict[str, int]:
         from pfip.ingest.news._pipeline import prune_irrelevant, prune_old

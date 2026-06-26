@@ -5,14 +5,15 @@ name: Daily ingest
 # against DATABASE_URL. See docs/CLOUD_MIGRATION.md for the runbook.
 
 on:
-  schedule:
-    # Times are UTC (GitHub cron has no TZ). Both run Mon–Fri only.
-    # 22:30 UTC — ~30 min after the US cash close (16:00 ET / 20:00–21:00 UTC),
-    # so Tiingo EOD bars for the tracked US tickers are published.
-    - cron: "30 22 * * 1-5"
-    # 12:30 UTC — ~1h after the NSE/BSE close (15:30 IST = 10:00 UTC), giving
-    # jugaad time to publish the day's NSE EOD for the NIFTY-50 watchlist.
-    - cron: "30 12 * * 1-5"
+  # NOTE: the daily schedule is DISABLED. The pipeline now runs on the Oracle VM
+  # via the `pfip-pipeline.timer` systemd timer (02:30 UTC) against the same Neon
+  # DB. Running both here AND on the VM would double-ingest. Kept as a manual
+  # fallback (workflow_dispatch) — e.g. if the VM is down. To re-enable the cloud
+  # scheduler, restore the `schedule:` block below and disable the VM timer.
+  #
+  # schedule:
+  #   - cron: "30 22 * * 1-5"   # ~30m after US close (Tiingo EOD)
+  #   - cron: "30 12 * * 1-5"   # ~1h after NSE/BSE close (jugaad EOD)
   workflow_dispatch:
     inputs:
       stages:
