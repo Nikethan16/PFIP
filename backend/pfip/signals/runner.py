@@ -243,7 +243,15 @@ async def run_for_symbol(
     model = champion
     if champion is not None:
         try:
-            calibrated_last = float(model.predict_proba_up(feats.iloc[[-1]])[0])
+            raw_last = float(model.predict_proba_up(feats.iloc[[-1]])[0])
+            # Apply the holdout-fit calibrator the retrainer stored on the
+            # champion so its confidence is calibrated like the inline path.
+            # Falls back to raw when the champion carries no calibrator.
+            iso = getattr(model, "isotonic_calibrator", None)
+            if iso is not None:
+                calibrated_last = float(iso.transform([float(np.clip(raw_last, 0.0, 1.0))])[0])
+            else:
+                calibrated_last = raw_last
         except Exception as exc:  # noqa: BLE001 — degrade to inline on any failure
             log.warning("champion predict failed for %s: %s", symbol, exc)
             champion = None

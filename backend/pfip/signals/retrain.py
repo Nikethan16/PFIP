@@ -34,6 +34,7 @@ from sqlalchemy import select
 
 from pfip.signals.lgbm_baseline import FEATURE_COLUMNS, LGBMBaselineModel, make_label
 from pfip.signals.registry import get_pinned, pin_model, upload_model
+from pfip.signals.runner import _calibrate_probabilities
 
 log = logging.getLogger("pfip.signals.retrain")
 
@@ -154,16 +155,24 @@ async def retrain_universe(session) -> dict[str, Any]:
         if len(X) < _MIN_ROWS:
             continue
 
-        # Time-split OOS gate score.
+        # Time-split OOS gate score + calibrator fit (both on the honest holdout).
         idx = pd.to_datetime(X.index, utc=True)
         is_test = np.asarray(idx >= cutoff)
         oos_hit = float("nan")
+        calibrator = None
         try:
             if is_test.sum() >= 20 and (~is_test).sum() >= 60:
                 mval = LGBMBaselineModel()
                 mval.fit(X[~is_test], y[~is_test])
                 proba = mval.predict_proba_up(X[is_test])
-                oos_hit = float(((proba > 0.5).astype(int) == y[is_test].to_numpy()).mean())
+                y_test = y[is_test].to_numpy()
+                oos_hit = float(((proba > 0.5).astype(int) == y_test).mean())
+                # Fit an isotonic calibrator on the same holdout so the served
+                # champion's confidence is calibrated — matching the inline
+                # walk-forward path (runner._calibrate_probabilities).
+                _, calibrator = _calibrate_probabilities(
+                    proba, y_test.astype(float), method="isotonic"
+                )
         except Exception as exc:
             log.warning("retrain: OOS score failed for %s: %s", regime, exc)
 
@@ -174,6 +183,9 @@ async def retrain_universe(session) -> dict[str, Any]:
         except Exception as exc:
             log.warning("retrain: fit failed for %s: %s", regime, exc)
             continue
+        # Carry the holdout-fit calibrator on the champion so the runner applies
+        # it at serve time (None when the holdout was too thin — degrades to raw).
+        model.isotonic_calibrator = calibrator
 
         # Champion/challenger gate.
         champ = get_pinned(task=TASK, regime=regime, horizon=HORIZON_STR)

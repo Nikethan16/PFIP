@@ -14,6 +14,7 @@ it is unit-testable without a DB. :func:`run_networth` is the async wrapper.
 
 from __future__ import annotations
 
+import bisect
 import logging
 from datetime import date
 from typing import Any
@@ -153,24 +154,53 @@ async def _load_closes_batch(
 
     # OHLCV ``close`` is in the instrument's native currency. USD-priced names
     # (US equities, most crypto) must be converted to INR or net worth is wildly
-    # understated. Use the latest USD->INR (same source as /portfolio/marking) so
-    # the two surfaces agree; INR names pass through unchanged.
+    # understated. Convert each close with the USD->INR rate in effect *on that
+    # bar's date* (as-of lookup), so the historical timeline isn't skewed by
+    # today's FX; INR names pass through unchanged.
     try:
         from pfip.portfolio.marking import resolve_price_ccy
-        from pfip.tax.fx_cost_basis import prefetch_fx_rates
 
         usd_syms = [s for s in out if resolve_price_ccy(market_by.get(s), s) == "USD"]
         if usd_syms:
-            today = date.today()
-            cache = await prefetch_fx_rates(session, [("USD", today)])
-            usdinr = cache.get(("USD", today))
-            if usdinr is not None:
-                rate = float(usdinr)
+            fx = await _usd_inr_series(session)
+            if fx:
+                fx_dates = [d for d, _ in fx]
+                fx_rates = [r for _, r in fx]
+
+                def _rate_on(d: date) -> float:
+                    # Latest rate at-or-before ``d``; earliest rate for dates
+                    # that predate any FX history (closest available).
+                    i = bisect.bisect_right(fx_dates, d)
+                    return fx_rates[i - 1] if i > 0 else fx_rates[0]
+
                 for s in usd_syms:
-                    out[s] = [(d, px * rate) for d, px in out[s]]
+                    out[s] = [(d, px * _rate_on(d)) for d, px in out[s]]
     except Exception as exc:  # pragma: no cover - defensive; never break the timeline
         log.debug("net-worth FX conversion skipped: %s", exc)
     return out
+
+
+async def _usd_inr_series(session: Any) -> list[tuple[date, float]]:
+    """Full USD->INR history as ascending ``(date, rate)`` for as-of conversion.
+
+    One query (vs. per-date round-trips); the caller bisects it to value each
+    historical close at the rate that was actually in effect on its bar date.
+    """
+    from sqlalchemy import text
+
+    rows = (
+        await session.execute(
+            text(
+                "SELECT rate_date, rate FROM fx_rates "
+                "WHERE base = 'USD' AND quote = 'INR' ORDER BY rate_date ASC"
+            )
+        )
+    ).all()
+    series: list[tuple[date, float]] = []
+    for rd, rate in rows:
+        d = rd.date() if hasattr(rd, "date") else rd
+        series.append((d, float(rate)))
+    return series
 
 
 async def run_networth(session: Any) -> dict[str, Any]:

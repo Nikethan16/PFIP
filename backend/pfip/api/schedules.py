@@ -22,7 +22,7 @@ from pfip.api.deps import CurrentUser, DbSession
 router = APIRouter(prefix="/schedules", tags=["schedules"])
 
 # The configured schedule (cron in UTC). Mirrors the systemd units on the VM
-# (pfip-pipeline.timer @ 02:30, pfip-backup.timer @ 03:30) and weekly.yml.
+# (pfip-pipeline.timer @ 02:30, pfip-backup.timer @ 03:30, pfip-weekly.timer @ 04:00 Sun).
 _JOBS: list[dict[str, Any]] = [
     {
         "name": "daily-pipeline",
@@ -36,8 +36,8 @@ _JOBS: list[dict[str, Any]] = [
     },
     {
         "name": "weekly-review-train",
-        "tags": ["github-actions", "weekly.yml"],
-        "cron": "30 3 * * 0",  # 03:30 UTC Sundays
+        "tags": ["systemd", "pfip-weekly.timer"],
+        "cron": "0 4 * * 0",  # 04:00 UTC Sundays
     },
 ]
 
