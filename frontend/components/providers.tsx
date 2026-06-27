@@ -7,8 +7,9 @@ import {
   QueryClient,
   QueryClientProvider,
 } from "@tanstack/react-query";
-import { SessionProvider } from "next-auth/react";
+import { SessionProvider, useSession } from "next-auth/react";
 import { ThemeProvider } from "next-themes";
+import { Loader2 } from "lucide-react";
 
 import { Toaster, toast } from "@/components/ui/toast";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
@@ -70,11 +71,35 @@ export function Providers({ children }: { children: React.ReactNode }) {
           enableSystem
           disableTransitionOnChange
         >
-          <ErrorBoundary>{children}</ErrorBoundary>
-          <CommandPalette />
+          <SessionGate>
+            <ErrorBoundary>{children}</ErrorBoundary>
+            <CommandPalette />
+          </SessionGate>
           <Toaster position="top-right" richColors />
         </ThemeProvider>
       </QueryClientProvider>
     </SessionProvider>
   );
+}
+
+/**
+ * Holds rendering of the app's data surfaces until NextAuth has hydrated the
+ * session. Without this, the ~25 `useQuery` hooks below mount while
+ * `useSession()` is still "loading" — so `useAuthToken()` returns null, those
+ * requests go out with NO bearer token, the backend 401s them, and `apiFetch`
+ * turns the first 401 into a forced sign-out (bouncing the user to /login with
+ * half the data missing). The session resolves in a few hundred ms; a brief
+ * loader here removes the race entirely. (`status` is only "loading" on a cold
+ * load, not on client-side navigations, so there's no per-route flicker.)
+ */
+function SessionGate({ children }: { children: React.ReactNode }) {
+  const { status } = useSession();
+  if (status === "loading") {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Loading" />
+      </div>
+    );
+  }
+  return <>{children}</>;
 }

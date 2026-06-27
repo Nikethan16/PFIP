@@ -129,9 +129,14 @@ export async function apiFetch<T>(
   });
 
   if (resp.status === 401) {
-    // Token expired or invalid — drop the session AND bounce the user to the
-    // login page so an expired session never leaves them on a broken shell.
-    await signOut({ callbackUrl: "/login" });
+    // Only force a sign-out when a token was actually sent and STILL rejected
+    // (genuinely expired/invalid). A 401 with no token attached means the call
+    // fired before the session hydrated — don't nuke the session for that, just
+    // fail so the query can refetch once the token is ready. The SessionGate in
+    // providers.tsx normally prevents token-less calls; this is belt-and-braces.
+    if (token) {
+      await signOut({ callbackUrl: "/login" });
+    }
     throw new ApiError("Unauthorized", 401, null);
   }
 
@@ -727,7 +732,7 @@ export function useMorningBrief(date?: string): UseQueryResult<MorningBrief> {
         },
       });
       if (resp.status === 401) {
-        await signOut({ callbackUrl: "/login" });
+        if (token) await signOut({ callbackUrl: "/login" });
         throw new ApiError("Unauthorized", 401, null);
       }
       if (!resp.ok) {
