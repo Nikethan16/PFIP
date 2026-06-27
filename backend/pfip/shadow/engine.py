@@ -326,7 +326,12 @@ class ShadowPortfolio:
         total_w = sum((float(w) for _, w, _ in weighted), 0.0)
         if total_w <= 0:
             return 0.0
-        frame = pd.concat({sym: rets for sym, _, rets in weighted}, axis=1, join="inner").dropna()
+        # Drop duplicate timestamps per symbol first: a return series with a
+        # duplicated index makes ``pd.concat(..., join="inner")`` raise
+        # "cannot reindex on an axis with duplicate labels" (dup bars across
+        # sources / re-ingests). Keep the last value for any repeated stamp.
+        deduped = {sym: rets[~rets.index.duplicated(keep="last")] for sym, _, rets in weighted}
+        frame = pd.concat(deduped, axis=1, join="inner").dropna()
         if len(frame) < 10:
             return 0.0
         weights = {sym: float(w) / total_w for sym, w, _ in weighted}

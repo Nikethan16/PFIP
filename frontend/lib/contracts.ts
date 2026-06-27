@@ -40,6 +40,7 @@ export const SourceSchema = z.enum([
   "okx",
   "yfinance",
   "stooq",
+  "tiingo", // primary US equity/ETF OHLCV source — keep in sync with backend ingest
   "jugaad",
   "amfi",
   "frankfurter",

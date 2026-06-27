@@ -45,27 +45,28 @@ test.describe("interactions: core user flows", () => {
     await expect(input, "chat input not found").toBeVisible();
 
     const log = page.getByRole("log");
-    const baseline = ((await log.innerText().catch(() => "")) ?? "").length;
-
     const question = "In one sentence, what is rupee cost averaging?";
     await input.fill(question);
     await page.getByRole("button", { name: /^send$/i }).click();
 
-    // The user's message should echo into the transcript...
+    // The user's message should echo into the transcript (the empty-state text
+    // clears once a turn exists)...
     await expect(log, "user message did not appear in transcript").toContainText(
       "rupee cost averaging",
       { timeout: 20_000 },
     );
 
-    // ...and an assistant reply should stream in (transcript grows well past the
-    // echoed question). This is the real "the agent answered" assertion.
+    // ...and the assistant reply should stream in. Baseline is captured AFTER
+    // the echo (so the cleared empty-state text doesn't skew it); the transcript
+    // then grows as tokens arrive.
+    const afterSend = (await log.innerText().catch(() => "")).length;
     await expect
       .poll(async () => (await log.innerText().catch(() => "")).length, {
         message: "assistant response never streamed in",
         timeout: 70_000,
         intervals: [1000, 2000, 3000],
       })
-      .toBeGreaterThan(baseline + question.length + 60);
+      .toBeGreaterThan(afterSend + 40);
 
     await recordIssues(testInfo, "/chat [ask]", issues);
     expect(issues.pageErrors, "JS errors during chat").toEqual([]);
@@ -99,13 +100,14 @@ test.describe("interactions: core user flows", () => {
 
     // ...and the parsed-rows preview should render (the chip reads "N parsed").
     await expect(
-      page.getByText(/\bparsed\b/i),
+      page.getByText(/\d+\s+parsed/i).first(),
       "import preview did not render",
     ).toBeVisible({ timeout: 20_000 });
 
-    // Make sure we did NOT accidentally persist: dry-run response carries dry_run=true.
+    // Make sure we did NOT accidentally persist, and that rows actually parsed.
     const payload = await importResp.json().catch(() => ({}) as Record<string, unknown>);
     expect(payload.dry_run, "import was not a dry-run").not.toBe(false);
+    expect(Number(payload.imported ?? 0), "no rows parsed from the CSV").toBeGreaterThan(0);
 
     await recordIssues(testInfo, "/portfolio [import dry-run]", issues);
     expect(issues.pageErrors).toEqual([]);

@@ -106,7 +106,7 @@ async def changes_today(
     )
     signals = [
         SignalDelta(
-            symbol=s.symbol,
+            symbol=s.asset,  # SignalRow's column is ``asset`` (no ``symbol``)
             direction=str(s.direction),
             confidence=float(getattr(s, "confidence", 0.0) or 0.0),
             generated_at=s.generated_at,
