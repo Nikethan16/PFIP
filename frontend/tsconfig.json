@@ -32,6 +32,8 @@
     "node_modules",
     "vitest.config.ts",
     "test",
+    "e2e",
+    "playwright.config.ts",
     "**/*.test.ts",
     "**/*.test.tsx"
   ]

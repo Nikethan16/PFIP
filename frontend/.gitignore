@@ -27,3 +27,11 @@ pnpm-debug.log*
 *.pem
 .vercel
 *.tsbuildinfo
+
+# e2e (Playwright) — session, generated reports, and run artifacts
+/e2e/.auth/
+/e2e/.artifacts/
+/e2e/report/
+/test-results/
+/playwright-report/
+/playwright/.cache/
