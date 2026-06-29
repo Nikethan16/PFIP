@@ -134,6 +134,16 @@ export default function SignalsPage() {
         <FeedToggle feed={feed} onChange={setFeed} />
       </div>
 
+      {/* Honesty banner: these signals have NO demonstrated out-of-sample edge
+          (walk-forward backtest ~ -3% vs naive). They run for learning / paper-
+          trade evaluation only — never act on them as if they were validated. */}
+      <div className="border border-amber-500/40 bg-amber-500/5 px-4 py-2.5 text-xs text-amber-700 dark:text-amber-400">
+        <span className="font-label uppercase tracking-wider">Experimental</span>{" "}
+        — these signals have <strong>no demonstrated out-of-sample edge</strong>{" "}
+        (backtest ~&minus;3% vs naive). Shown for learning &amp; paper-trade
+        evaluation only, not as validated trade advice.
+      </div>
+
       {/* Filter rail (Sahara restyle). */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[10rem] max-w-xs flex-1">

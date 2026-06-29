@@ -25,24 +25,27 @@ import { useCandles } from "@/lib/api";
 import type { Timeframe } from "@/lib/contracts";
 import { cn, formatPct } from "@/lib/utils";
 
-type DashboardTimeframe = "1D" | "1W" | "1M" | "3M" | "1Y";
+type DashboardTimeframe = "1W" | "1M" | "3M" | "6M" | "1Y";
 
 const TIMEFRAMES: readonly DashboardTimeframe[] = [
-  "1D",
   "1W",
   "1M",
   "3M",
+  "6M",
   "1Y",
 ] as const;
 
+// PFIP ingests DAILY bars only (it's a daily-cadence platform), so every range
+// uses the "1d" timeframe. The old 1D/1W tabs requested "1h" candles that are
+// never ingested → they rendered empty. Ranges are now all daily windows.
 const TIMEFRAME_MAP: Record<
   DashboardTimeframe,
   { timeframe: Timeframe; sinceDays: number }
 > = {
-  "1D": { timeframe: "1h", sinceDays: 1 },
-  "1W": { timeframe: "1h", sinceDays: 7 },
+  "1W": { timeframe: "1d", sinceDays: 7 },
   "1M": { timeframe: "1d", sinceDays: 30 },
   "3M": { timeframe: "1d", sinceDays: 90 },
+  "6M": { timeframe: "1d", sinceDays: 180 },
   "1Y": { timeframe: "1d", sinceDays: 365 },
 };
 

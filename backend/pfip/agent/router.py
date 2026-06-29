@@ -184,11 +184,7 @@ def route(
     _chat_cloud_exempt = task == TaskType.CHAT_SENSITIVE and getattr(
         s, "allow_cloud_fallback", True
     )
-    if (
-        sensitivity == Sensitivity.SENSITIVE
-        and s.llm_privacy_strict
-        and not _chat_cloud_exempt
-    ):
+    if sensitivity == Sensitivity.SENSITIVE and s.llm_privacy_strict and not _chat_cloud_exempt:
         # Embeddings still need an embedding model, not chat.
         if task == TaskType.EMBEDDING:
             return RouteDecision(

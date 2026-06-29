@@ -1292,7 +1292,9 @@ export function useChangesToday(
     queryKey: ["changes-today", { hours, z, top }],
     queryFn: () =>
       apiFetch<ChangesToday>(
-        `/changes-today/?hours=${hours}&z_threshold=${z}&news_top=${top}`,
+        // No trailing slash: the route is `/changes-today` (prefix + ""), so a
+        // trailing slash 307-redirects and some clients drop the query string.
+        `/changes-today?hours=${hours}&z_threshold=${z}&news_top=${top}`,
         ChangesTodaySchema,
         { token },
       ),
