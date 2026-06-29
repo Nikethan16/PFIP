@@ -264,6 +264,15 @@ async def stage_ingest(
 
     await _guarded(summary, "us_yfinance", _us_yf, timeout=TIMEOUT_US)
 
+    # --- US EOD fallback #2 (Stooq, no key) — reachable where Yahoo blocks the
+    # VM's datacenter IP (observed: us_yfinance returns 0 rows on the Oracle box). ---
+    async def _us_stooq() -> int:
+        from pfip.ingest.us_equities.stooq_ohlcv import ingest_stooq
+
+        return await ingest_stooq(symbols=await _us_watchlist_symbols())
+
+    await _guarded(summary, "us_stooq", _us_stooq, timeout=TIMEOUT_US)
+
     # --- India EOD (jugaad) ---
     async def _india() -> int:
         from pfip.ingest.indian_equities.jugaad_ohlcv import ingest_jugaad
