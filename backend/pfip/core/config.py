@@ -95,6 +95,13 @@ class Settings(BaseSettings):
     # pfip.agent.privacy is hard-pinned to local Ollama, no override.
     llm_privacy_strict: bool = Field(default=True, alias="LLM_PRIVACY_STRICT")
 
+    # When True, tasks that would otherwise be pinned to local Ollama (sensitive
+    # chat etc.) may fall back to cloud providers when local is unavailable. On a
+    # host with no working local LLM this is what keeps chat alive. Set False for a
+    # hard privacy boundary (sensitive data never leaves the host, even if chat
+    # then fails). Overrides llm_privacy_strict for routing purposes.
+    allow_cloud_fallback: bool = Field(default=True, alias="ALLOW_CLOUD_FALLBACK")
+
     # Per-request LLM timeout (seconds). Passed to every litellm call so a
     # hung local Ollama can't block the SSE stream forever.
     llm_request_timeout_s: float = Field(default=120.0, alias="LLM_REQUEST_TIMEOUT_S")

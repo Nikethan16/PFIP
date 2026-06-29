@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from pfip.api.deps import CurrentUser, DbSession
 from pfip.core.contracts import OHLCV, NewsItem
@@ -116,7 +116,22 @@ async def get_candles(
     Bounded to the most recent ``limit`` rows (default 1000, max 5000) so the
     endpoint can never stream an entire multi-year history in one response.
     """
-    stmt = select(OHLCVRow).where(OHLCVRow.symbol == symbol, OHLCVRow.timeframe == timeframe)
+    # A symbol can have rows from several sources (e.g. tiingo + the yfinance
+    # fallback). Pin to the source with the FRESHEST bar so (a) the chart never
+    # shows duplicate timestamps and (b) a fresh fallback wins over a stale
+    # primary instead of the other way round.
+    freshest_source = (
+        select(OHLCVRow.source)
+        .where(OHLCVRow.symbol == symbol, OHLCVRow.timeframe == timeframe)
+        .order_by(OHLCVRow.time.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    stmt = select(OHLCVRow).where(
+        OHLCVRow.symbol == symbol,
+        OHLCVRow.timeframe == timeframe,
+        OHLCVRow.source == freshest_source,
+    )
     if since is not None:
         stmt = stmt.where(OHLCVRow.time >= since)
     if until is not None:
@@ -184,7 +199,12 @@ async def get_news(
     Bounded to the most recent ``limit`` rows (default 50, max 200). Empty list
     if there's no news for the symbol.
     """
-    stmt = select(NewsRow).where(NewsRow.symbol == symbol)
+    # Match the scalar ``symbol`` OR membership in the ``entity_tickers`` JSONB
+    # array (the entity-linker tags multi-symbol stories there, so filtering on
+    # the mostly-NULL scalar alone silently returned nothing).
+    stmt = select(NewsRow).where(
+        or_(NewsRow.symbol == symbol, NewsRow.entity_tickers.contains([symbol]))
+    )
     if since is not None:
         stmt = stmt.where(NewsRow.time >= since)
     stmt = stmt.order_by(NewsRow.time.desc()).limit(limit)

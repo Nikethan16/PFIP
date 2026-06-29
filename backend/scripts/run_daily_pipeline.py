@@ -126,19 +126,31 @@ async def _guarded(
     non-fatal: one bad source can't abort the others or the job.
     """
     t0 = time.monotonic()
+    err: str | None = None
+    result: Any = None
+    rows = 0
     try:
         result = await asyncio.wait_for(coro_factory(), timeout=timeout)
         summary.record(source, result)
+        rows = result if isinstance(result, int) else 0
         log.info(f"[{summary.name}] {source}: {result} ({time.monotonic() - t0:.0f}s)")
-        return result
     except asyncio.TimeoutError:
-        summary.record(source, f"timeout>{timeout:.0f}s")
+        err = f"timeout>{timeout:.0f}s"
+        summary.record(source, err)
         log.warning(f"[{summary.name}] {source} timed out after {timeout:.0f}s; skipping")
-        return None
     except Exception as e:  # noqa: BLE001 — non-fatal by design
-        summary.record(source, f"error: {type(e).__name__}: {e}")
+        err = f"{type(e).__name__}: {e}"
+        summary.record(source, f"error: {err}")
         log.warning(f"[{summary.name}] {source} failed: {type(e).__name__}: {e}")
-        return None
+    # Observability: record per-source health (rows + error + timestamp) so silent
+    # source failures surface on the ops page. Best-effort — never fatal.
+    try:
+        from pfip.ingest._common.source_health import record_run
+
+        await record_run(f"{summary.name}:{source}", rows=rows, error=err)
+    except Exception as he:  # noqa: BLE001
+        log.debug(f"source_health record skipped for {source}: {he}")
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +256,14 @@ async def stage_ingest(
 
     await _guarded(summary, "us_tiingo", _us, timeout=TIMEOUT_US)
 
+    # --- US EOD fallback (yfinance, no key) — fills gaps when Tiingo lags ---
+    async def _us_yf() -> int:
+        from pfip.ingest.us_equities.yfinance_ohlcv import ingest_yfinance
+
+        return await ingest_yfinance(symbols=await _us_watchlist_symbols(), lookback_days=60)
+
+    await _guarded(summary, "us_yfinance", _us_yf, timeout=TIMEOUT_US)
+
     # --- India EOD (jugaad) ---
     async def _india() -> int:
         from pfip.ingest.indian_equities.jugaad_ohlcv import ingest_jugaad
@@ -252,6 +272,19 @@ async def stage_ingest(
         return await ingest_jugaad(symbols=symbols, lookback_days=india_lookback_days)
 
     await _guarded(summary, "india_jugaad", _india, timeout=TIMEOUT_INDIA)
+
+    # --- India EOD fallback (yfinance handles .NS) — fills gaps when NSE/jugaad lags ---
+    async def _india_yf() -> int:
+        from pfip.ingest.us_equities.yfinance_ohlcv import ingest_yfinance
+
+        # _india_watchlist_symbols() returns BARE names (jugaad-style); yfinance
+        # needs the .NS/.BO suffix, and we store under that suffixed symbol to
+        # match how jugaad rows + the frontend reference them.
+        bare = await _india_watchlist_symbols()
+        symbols = [s if s.endswith((".NS", ".BO")) else f"{s}.NS" for s in bare]
+        return await ingest_yfinance(symbols=symbols, lookback_days=60)
+
+    await _guarded(summary, "india_yfinance", _india_yf, timeout=TIMEOUT_INDIA)
 
     # --- FX (frankfurter, no key) ---
     async def _fx() -> int:
@@ -264,6 +297,22 @@ async def stage_ingest(
         return total
 
     await _guarded(summary, "fx_frankfurter", _fx, timeout=TIMEOUT_FX)
+
+    # --- Mutual-fund NAVs (AMFI, no key) ---
+    async def _mf() -> int:
+        from pfip.ingest.indian_mf.amfi_nav import ingest_amfi_nav
+
+        return await ingest_amfi_nav()
+
+    await _guarded(summary, "mf_amfi", _mf, timeout=TIMEOUT_INDIA)
+
+    # --- Macro series (FRED; no-ops without FRED_API_KEY) ---
+    async def _macro() -> int:
+        from pfip.ingest.macro.fred import ingest_fred_macro
+
+        return await ingest_fred_macro()
+
+    await _guarded(summary, "macro_fred", _macro, timeout=TIMEOUT_FX)
 
     # --- news (raw adapters + post-ingest pipeline incl. relevance/age prune) ---
     if include_news:
@@ -661,6 +710,87 @@ async def stage_retention(*, features_days: int = 0) -> StageSummary:
 
 
 # ---------------------------------------------------------------------------
+# Freshness SLA check (data observability)
+# ---------------------------------------------------------------------------
+
+# Max acceptable age (calendar days) of the freshest bar per asset class before
+# we alert. Generous enough to absorb weekends/holidays; trips on real staleness.
+_FRESHNESS_SLA_DAYS = {"crypto": 2.0, "india_equity": 5.0, "us_equity": 5.0}
+
+
+def _asset_class(symbol: str) -> str | None:
+    """Coarse asset class from a symbol, for freshness bucketing."""
+    s = symbol.upper()
+    if s.endswith(".NS") or s.endswith(".BO"):
+        return "india_equity"
+    if "-USD" in s or "/USD" in s or s.endswith("USDT") or "-USDT" in s:
+        return "crypto"
+    if s.isalpha() and 1 <= len(s) <= 5:
+        return "us_equity"
+    return None
+
+
+async def check_data_freshness() -> dict[str, Any]:
+    """Alert if the freshest OHLCV bar per asset class is older than its SLA.
+
+    Turns silent source staleness (the kind a green pipeline run hides) into a
+    visible WARN alert + log line. Best-effort; never raises.
+    """
+    from sqlalchemy import func, select
+
+    from pfip.models.ohlcv import OHLCVRow
+
+    now = datetime.now(tz=timezone.utc)
+    factory = get_sessionmaker()
+    try:
+        async with factory() as s:
+            rows = (
+                await s.execute(
+                    select(OHLCVRow.symbol, func.max(OHLCVRow.time)).group_by(OHLCVRow.symbol)
+                )
+            ).all()
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"freshness check skipped: {type(e).__name__}: {e}")
+        return {"checked": 0, "stale": {}}
+
+    per_class: dict[str, float] = {}
+    for sym, ts in rows:
+        cls = _asset_class(str(sym))
+        if not cls or ts is None:
+            continue
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        age_d = (now - ts).total_seconds() / 86400.0
+        per_class[cls] = min(per_class.get(cls, age_d), age_d)  # freshest in class
+
+    stale = {c: round(a, 1) for c, a in per_class.items() if a > _FRESHNESS_SLA_DAYS.get(c, 5.0)}
+    if stale:
+        lines = ", ".join(
+            f"{c}: {a}d old (SLA {_FRESHNESS_SLA_DAYS[c]}d)" for c, a in stale.items()
+        )
+        log.warning(f"[freshness] STALE data: {lines}")
+        try:
+            from pfip.alerts.dispatcher import AlertKind, AlertSeverity, send_alert
+
+            await send_alert(
+                AlertKind.INGEST_FAILURE,
+                AlertSeverity.WARN,
+                title_override="Stale market data",
+                body_override=f"Newest bars exceed freshness SLA — {lines}. Check /ops/sources.",
+                context={"stale": stale},
+            )
+        except Exception as e:  # noqa: BLE001
+            log.warning(f"freshness alert failed: {type(e).__name__}: {e}")
+    else:
+        log.info(f"[freshness] all classes within SLA: {per_class}")
+    return {
+        "checked": len(rows),
+        "stale": stale,
+        "per_class": {c: round(a, 1) for c, a in per_class.items()},
+    }
+
+
+# ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 
@@ -700,6 +830,10 @@ async def run_pipeline(
     if "retention" in requested:
         summ = await stage_retention()
         results["retention"] = summ.as_dict()
+
+    # Always run the freshness SLA check at the end (independent of stages) so
+    # silent source staleness surfaces as an alert rather than going unnoticed.
+    results["freshness"] = await check_data_freshness()
 
     summary = {
         "stages_run": requested,

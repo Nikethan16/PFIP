@@ -102,10 +102,54 @@ async def dedupe_recent(session: AsyncSession, *, hours: int = 24) -> int:
         return 0
 
 
+# Company/crypto name aliases so the linker matches PROSE ("Bitcoin", "Reliance")
+# — the raw watchlist ticker ("BTC-USD", "RELIANCE.NS") never appears verbatim in
+# news text, which is why entity-linking previously tagged almost nothing. Keyed
+# by canonical watchlist symbol; extend as the watchlist grows.
+_NAME_ALIASES: dict[str, list[str]] = {
+    "BTC-USD": ["bitcoin", "btc"],
+    "ETH-USD": ["ethereum", "ether", "eth"],
+    "SOL-USD": ["solana", "sol"],
+    "BNB-USD": ["binance coin", "bnb"],
+    "XRP-USD": ["ripple", "xrp"],
+    "DOGE-USD": ["dogecoin", "doge"],
+    "ADA-USD": ["cardano"],
+    "AAPL": ["apple"],
+    "NVDA": ["nvidia"],
+    "MSFT": ["microsoft"],
+    "GOOGL": ["alphabet", "google"],
+    "AMZN": ["amazon"],
+    "TSLA": ["tesla"],
+    "META": ["meta platforms", "facebook"],
+    "SPY": ["s&p 500", "s&p500", "sp 500"],
+    "QQQ": ["nasdaq 100", "nasdaq"],
+    "RELIANCE.NS": ["reliance", "reliance industries", "ril"],
+    "TCS.NS": ["tata consultancy", "tcs"],
+    "INFY.NS": ["infosys"],
+    "HDFCBANK.NS": ["hdfc bank"],
+    "ICICIBANK.NS": ["icici bank"],
+    "SBIN.NS": ["state bank of india", "sbi"],
+    "NIFTYBEES.NS": ["niftybees", "nifty 50", "nifty"],
+}
+
+
+def _aliases_for(symbol: str) -> set[str]:
+    """Search aliases for a watchlist symbol: itself, its base token, and names."""
+    up = symbol.upper()
+    base = re.split(r"[.\-/]", up)[0]
+    aliases = {up}
+    if len(base) >= 3:
+        aliases.add(base)
+    aliases.update(a.upper() for a in _NAME_ALIASES.get(up, []))
+    return aliases
+
+
 async def link_entities(session: AsyncSession) -> int:
     """Populate ``entity_tickers`` JSONB on rows where it is empty.
 
-    Matches against the watchlist symbol column; basic word-boundary regex.
+    Matches each watchlist symbol by its ALIASES (company/crypto names + base
+    ticker), not the raw symbol — so "Bitcoin"/"Reliance" in prose link to
+    ``BTC-USD``/``RELIANCE.NS``.
     """
     try:
         rows = await session.execute(text("SELECT symbol FROM watchlist"))
@@ -124,7 +168,7 @@ async def link_entities(session: AsyncSession) -> int:
                 FROM news
                 WHERE entity_tickers = '[]'::jsonb OR entity_tickers IS NULL
                 ORDER BY time DESC
-                LIMIT 500
+                LIMIT 5000
                 """
             )
         )
@@ -133,13 +177,20 @@ async def link_entities(session: AsyncSession) -> int:
         log.warning(f"link_entities: scan failed: {type(e).__name__}: {e}")
         return 0
 
-    patterns = {tk: re.compile(rf"\b{re.escape(tk)}\b", re.IGNORECASE) for tk in tickers}
+    # (canonical_symbol, compiled alias pattern) — match prose, tag the ticker.
+    pats: list[tuple[str, re.Pattern]] = []
+    for tk in tickers:
+        for alias in _aliases_for(tk):
+            pats.append((tk, re.compile(rf"\b{re.escape(alias)}\b", re.IGNORECASE)))
+
     updated = 0
     import json
 
     for row_id, title, summary in items:
         haystack = " ".join(s for s in (title, summary) if s) or ""
-        matches = [tk for tk, pat in patterns.items() if pat.search(haystack)]
+        if not haystack:
+            continue
+        matches = sorted({sym for sym, pat in pats if pat.search(haystack)})
         if not matches:
             continue
         try:

@@ -41,6 +41,7 @@ def _settings(**kwargs) -> Settings:  # type: ignore[no-untyped-def]
         "cohere_api_key": "COHERE_API_KEY",
         "cerebras_api_key": "CEREBRAS_API_KEY",
         "llm_privacy_strict": "LLM_PRIVACY_STRICT",
+        "allow_cloud_fallback": "ALLOW_CLOUD_FALLBACK",
     }
     base = {
         "GROQ_API_KEY": "",
@@ -51,6 +52,7 @@ def _settings(**kwargs) -> Settings:  # type: ignore[no-untyped-def]
         "COHERE_API_KEY": "",
         "CEREBRAS_API_KEY": "",
         "LLM_PRIVACY_STRICT": True,
+        "ALLOW_CLOUD_FALLBACK": True,
     }
     for k, v in kwargs.items():
         base[alias_map.get(k, k)] = v
@@ -71,13 +73,25 @@ def _settings(**kwargs) -> Settings:  # type: ignore[no-untyped-def]
         TaskType.REASONING,
         TaskType.QUICK_SUMMARY,
         TaskType.BULK_PREPROCESS,
-        TaskType.CHAT_SENSITIVE,
     ],
 )
 def test_sensitive_strict_forces_local(task: TaskType) -> None:
-    """Any task + Sensitive + strict → ollama, no fallbacks."""
+    """Any non-chat task + Sensitive + strict → ollama, no fallbacks.
+
+    Chat is the deliberate exception (see test_chat_sensitive_cloud_fallback):
+    it may cloud-fall-back so the assistant still works where no local LLM runs.
+    """
     s = _settings(groq_api_key="key", gemini_api_key="key", llm_privacy_strict=True)
     decision = route(task, Sensitivity.SENSITIVE, settings=s)
+    assert decision.provider == "ollama"
+    assert decision.model == MODELS["ollama_default"]
+    assert decision.fallback_chain == []
+
+
+def test_chat_sensitive_strict_local_when_cloud_disabled() -> None:
+    """Sensitive chat + strict + cloud fallback OFF → hard local (privacy boundary)."""
+    s = _settings(groq_api_key="g", llm_privacy_strict=True, allow_cloud_fallback=False)
+    decision = route(TaskType.CHAT_SENSITIVE, Sensitivity.SENSITIVE, settings=s)
     assert decision.provider == "ollama"
     assert decision.model == MODELS["ollama_default"]
     assert decision.fallback_chain == []
@@ -140,11 +154,18 @@ def test_chat_public_prefers_groq_70b() -> None:
     assert decision.model == MODELS["groq_70b"]
 
 
-def test_chat_sensitive_always_local_even_non_strict() -> None:
-    s = _settings(groq_api_key="g", llm_privacy_strict=False)
-    decision = route(TaskType.CHAT_SENSITIVE, Sensitivity.PUBLIC, settings=s)
-    assert decision.provider == "ollama"
-    assert decision.model == MODELS["ollama_default"]
+def test_chat_sensitive_cloud_fallback_when_allowed() -> None:
+    """Sensitive chat with cloud fallback ON (default) → cloud primary, Ollama last.
+
+    This is the fix that keeps chat working on a host with no reachable local LLM:
+    rather than dying on Ollama, sensitive chat uses Groq with Ollama as the final
+    fallback. A privacy-strict user opts out via ALLOW_CLOUD_FALLBACK=false.
+    """
+    s = _settings(groq_api_key="g", nvidia_nim_api_key="n", llm_privacy_strict=True)
+    decision = route(TaskType.CHAT_SENSITIVE, Sensitivity.SENSITIVE, settings=s)
+    assert decision.provider == "groq"
+    assert decision.model == MODELS["groq_70b"]
+    assert MODELS["ollama_default"] in decision.fallback_chain
 
 
 def test_post_mortem_prefers_deepseek_when_keyed() -> None:

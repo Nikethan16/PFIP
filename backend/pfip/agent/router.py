@@ -178,8 +178,17 @@ def route(
     """
     s = settings or get_settings()
 
-    # Hard rule: sensitive + strict → local. Nothing else matters.
-    if sensitivity == Sensitivity.SENSITIVE and s.llm_privacy_strict:
+    # Hard rule: sensitive + strict → local. Chat is the ONE exception — when
+    # cloud fallback is allowed it may use cloud so the assistant still works on a
+    # host with no reachable local LLM. Embeddings/reasoning stay strictly local.
+    _chat_cloud_exempt = task == TaskType.CHAT_SENSITIVE and getattr(
+        s, "allow_cloud_fallback", True
+    )
+    if (
+        sensitivity == Sensitivity.SENSITIVE
+        and s.llm_privacy_strict
+        and not _chat_cloud_exempt
+    ):
         # Embeddings still need an embedding model, not chat.
         if task == TaskType.EMBEDDING:
             return RouteDecision(
@@ -267,13 +276,32 @@ def route(
         )
 
     if task == TaskType.CHAT_SENSITIVE:
-        # Sensitive chat hits local even in non-strict mode by default;
-        # strict mode just makes it the *only* path.
+        # Privacy-preferred local. But when cloud fallback is allowed (default on
+        # this single-user box, which has no reachable local LLM), route to the
+        # cloud workhorse with Ollama as the final fallback so chat actually
+        # responds instead of dying on an unreachable Ollama.
+        if getattr(s, "allow_cloud_fallback", True) and (s.groq_api_key or s.nvidia_nim_api_key):
+            primary_provider, primary_model = (
+                ("groq", MODELS["groq_70b"])
+                if s.groq_api_key
+                else ("nvidia_nim", MODELS["nim_70b"])
+            )
+            chain = _filter_chain_by_keys(
+                [MODELS["groq_70b"], MODELS["nim_70b"], MODELS["ollama_default"]],
+                s,
+            )
+            chain = [m for m in chain if m != primary_model]
+            return RouteDecision(
+                provider=primary_provider,
+                model=primary_model,
+                fallback_chain=chain,
+                rationale="sensitive chat + cloud fallback → cloud primary, Ollama last",
+            )
         return RouteDecision(
             provider="ollama",
             model=MODELS["ollama_default"],
             fallback_chain=[],
-            rationale="chat marked sensitive → local Ollama",
+            rationale="chat marked sensitive → local Ollama (cloud fallback disabled)",
         )
 
     if task in (TaskType.POST_MORTEM, TaskType.REASONING):
