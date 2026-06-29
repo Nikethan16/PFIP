@@ -22,6 +22,7 @@ from pfip.api import (
     calibration,
     changes_today,
     diligence,
+    events,
     health,
     journal,
     model_registry,
@@ -34,6 +35,7 @@ from pfip.api import (
     shadow,
     signals,
     tax,
+    themes,
     watchlist,
 )
 from pfip.core.config import get_settings
@@ -135,6 +137,8 @@ def create_app() -> FastAPI:
     app.include_router(model_registry.router, prefix=prefix)
     app.include_router(changes_today.router, prefix=prefix)
     app.include_router(diligence.router, prefix=prefix)
+    app.include_router(events.router, prefix=prefix)
+    app.include_router(themes.router, prefix=prefix)
     app.include_router(notifications.router, prefix=prefix)
     app.include_router(schedules.router, prefix=prefix)
     app.include_router(settings_router.router, prefix=prefix)

@@ -96,6 +96,76 @@ async def chat(
 
 
 # ---------------------------------------------------------------------------
+# POST /agent/perspectives — multi-persona reasoning (Phase 5)
+# ---------------------------------------------------------------------------
+
+# Distinct analytical lenses, surfaced as *perspectives* (not a single verdict).
+_PERSONAS: dict[str, str] = {
+    "value": (
+        "You are a value investor in the Buffett/Graham tradition. Assess the "
+        "question through fundamentals, durable competitive advantage, margin of "
+        "safety, and long-term ownership. Be concise (2-3 sentences). Advisory only."
+    ),
+    "macro": (
+        "You are a global-macro strategist in the Druckenmiller tradition. Assess "
+        "the question through rates, liquidity, the cycle/regime, currencies and "
+        "positioning. Be concise (2-3 sentences). Advisory only."
+    ),
+    "risk": (
+        "You are a risk manager. Assess the question purely through downside: what "
+        "could go wrong, position sizing, correlation, and invalidation. Be concise "
+        "(2-3 sentences). Advisory only."
+    ),
+}
+
+
+class PerspectivesRequest(BaseModel):
+    """Body for ``POST /agent/perspectives``."""
+
+    question: str = Field(min_length=1)
+
+
+@router.post("/perspectives")
+async def perspectives(body: PerspectivesRequest, _user: CurrentUser) -> dict[str, Any]:
+    """Answer one question through several expert lenses at once.
+
+    Runs the value / macro / risk personas in parallel and returns each view as a
+    distinct perspective (deliberately NOT a single merged verdict). Each is an
+    independent LLM call via the router's chat path (cloud fallback applies).
+    Degrades per-persona: a failed lens returns an error string, never a 500.
+    """
+    import asyncio
+
+    from pfip.agent.llm_client import ChatMessage, get_llm_client
+    from pfip.agent.router import Sensitivity, TaskType
+
+    client = get_llm_client()
+
+    async def _one(persona: str, system: str) -> dict[str, str]:
+        try:
+            view = await client.complete(
+                [
+                    ChatMessage(role="system", content=system),
+                    ChatMessage(role="user", content=body.question),
+                ],
+                task=TaskType.CHAT_PUBLIC,
+                sensitivity=Sensitivity.PUBLIC,
+                max_tokens=220,
+                temperature=0.4,
+            )
+            return {"persona": persona, "view": view.strip()}
+        except Exception as exc:  # noqa: BLE001 — one lens failing must not 500
+            return {"persona": persona, "view": f"(unavailable: {type(exc).__name__})"}
+
+    results = await asyncio.gather(*(_one(p, s) for p, s in _PERSONAS.items()))
+    return {
+        "question": body.question,
+        "perspectives": list(results),
+        "disclaimer": "Independent analytical lenses for your own judgement — not advice.",
+    }
+
+
+# ---------------------------------------------------------------------------
 # GET /agent/morning-brief
 # ---------------------------------------------------------------------------
 

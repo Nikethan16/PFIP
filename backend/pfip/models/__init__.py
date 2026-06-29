@@ -10,6 +10,7 @@ from pfip.models.calibration_reports import (  # noqa: F401
     ModelEventRow,
     RegimeTransitionRow,
 )
+from pfip.models.event import EventRow  # noqa: F401
 from pfip.models.features import FeatureRow  # noqa: F401
 from pfip.models.fundamentals import FundamentalRow  # noqa: F401
 from pfip.models.holdings import HoldingRow  # noqa: F401

@@ -56,7 +56,15 @@ log = get_logger("scripts.run_daily_pipeline")
 # Stage / source configuration
 # ---------------------------------------------------------------------------
 
-ALL_STAGES: tuple[str, ...] = ("ingest", "features", "regime", "signals", "shadow", "retention")
+ALL_STAGES: tuple[str, ...] = (
+    "ingest",
+    "features",
+    "regime",
+    "signals",
+    "events",
+    "shadow",
+    "retention",
+)
 
 # Crypto symbols to refresh daily (ccxt slash form; the adapter canonicalizes to
 # dash form on write). Matches the watchlist crypto universe.
@@ -719,6 +727,43 @@ async def stage_retention(*, features_days: int = 0) -> StageSummary:
 
 
 # ---------------------------------------------------------------------------
+# EVENTS (catalyst detection) stage
+# ---------------------------------------------------------------------------
+
+
+async def stage_events() -> StageSummary:
+    """Extract typed catalysts from recent (entity-linked) news into the events
+    table, and fire a CATALYST alert for fresh high-materiality events."""
+    summary = StageSummary(name="events")
+
+    async def _run() -> dict[str, Any]:
+        from pfip.events.extractor import extract_events
+
+        factory = get_sessionmaker()
+        async with factory() as s:
+            res = await extract_events(s, days=7)
+        # Best-effort alert when this run surfaced material new catalysts.
+        if res.get("events", 0) > 0:
+            try:
+                from pfip.alerts.dispatcher import AlertKind, AlertSeverity, send_alert
+
+                await send_alert(
+                    AlertKind.CATALYST,
+                    AlertSeverity.INFO,
+                    title_override="New catalysts detected",
+                    body_override=f"{res['events']} new market event(s) from today's news. See the Events page.",
+                    context=res,
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.debug(f"catalyst alert skipped: {type(exc).__name__}")
+        return res
+
+    await _guarded(summary, "events", _run, timeout=TIMEOUT_COMPUTE)
+    summary.finish()
+    return summary
+
+
+# ---------------------------------------------------------------------------
 # Freshness SLA check (data observability)
 # ---------------------------------------------------------------------------
 
@@ -833,6 +878,9 @@ async def run_pipeline(
     if "signals" in requested:
         summ = await stage_signals(timeframe=timeframe)
         results["signals"] = summ.as_dict()
+    if "events" in requested:
+        summ = await stage_events()
+        results["events"] = summ.as_dict()
     if "shadow" in requested:
         summ = await stage_shadow()
         results["shadow"] = summ.as_dict()

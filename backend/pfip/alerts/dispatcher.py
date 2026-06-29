@@ -68,6 +68,7 @@ class AlertKind(str, Enum):
     RISK_BREACH = "risk_breach"
     DRAWDOWN_HALT = "drawdown_halt"
     INGEST_FAILURE = "ingest_failure"
+    CATALYST = "catalyst"
     CALIBRATION_BREACH = "calibration_breach"
     PAPER_TRADE_REPORT = "paper_trade_report"
     POST_MORTEM_REQUIRED = "post_mortem_required"

@@ -2758,3 +2758,232 @@ export function useStressTest(): UseQueryResult<StressTest> {
     staleTime: 5 * 60_000,
   });
 }
+
+// -----------------------------------------------------------------------------
+// Phase 2–5 insights: narrative "why", events, themes, multi-persona
+// -----------------------------------------------------------------------------
+
+export interface ExplainResult {
+  symbol: string;
+  window_days: number;
+  move_pct: number | null;
+  last_close: number | null;
+  regime: string;
+  explanation: string;
+  sources: { n: number; title: string; url: string; published_at: string }[];
+  used_llm: boolean;
+  cached: boolean;
+}
+
+const ExplainSchema = z
+  .object({
+    symbol: z.string(),
+    window_days: z.number(),
+    move_pct: z.number().nullable(),
+    last_close: z.number().nullable(),
+    regime: z.string(),
+    explanation: z.string(),
+    sources: z
+      .array(
+        z.object({
+          n: z.number(),
+          title: z.string(),
+          url: z.string(),
+          published_at: z.string(),
+        }),
+      )
+      .default([]),
+    used_llm: z.boolean().default(false),
+    cached: z.boolean().default(false),
+  })
+  .passthrough();
+
+/** GET /assets/{symbol}/explain — narrative "why did it move" (Phase 2). */
+export function useExplain(
+  symbol: string | null,
+  windowDays = 7,
+): UseQueryResult<ExplainResult> {
+  const token = useAuthToken();
+  return useQuery<ExplainResult>({
+    queryKey: ["explain", symbol, windowDays],
+    enabled: !!symbol,
+    queryFn: () =>
+      apiFetch<ExplainResult>(
+        `/assets/${encodeURIComponent(symbol as string)}/explain?window_days=${windowDays}`,
+        ExplainSchema,
+        { token },
+      ),
+    staleTime: 30 * 60_000,
+  });
+}
+
+export interface CatalystEvent {
+  id: string;
+  ticker: string;
+  kind: string;
+  materiality: number;
+  title: string;
+  summary: string | null;
+  source_url: string | null;
+  occurred_at: string | null;
+}
+
+const EventsSchema = z
+  .object({
+    count: z.number().default(0),
+    events: z
+      .array(
+        z
+          .object({
+            id: z.string(),
+            ticker: z.string(),
+            kind: z.string(),
+            materiality: z.coerce.number().default(0),
+            title: z.string(),
+            summary: z.string().nullable().default(null),
+            source_url: z.string().nullable().default(null),
+            occurred_at: z.string().nullable().default(null),
+          })
+          .passthrough(),
+      )
+      .default([]),
+  })
+  .passthrough();
+
+/** GET /events — catalyst feed (Phase 3). */
+export function useEvents(
+  opts: { ticker?: string; days?: number; minMateriality?: number } = {},
+): UseQueryResult<{ count: number; events: CatalystEvent[] }> {
+  const token = useAuthToken();
+  const days = opts.days ?? 30;
+  const minM = opts.minMateriality ?? 0;
+  return useQuery({
+    queryKey: ["events", opts.ticker ?? "all", days, minM],
+    queryFn: () => {
+      const qs = new URLSearchParams({ days: String(days), min_materiality: String(minM) });
+      if (opts.ticker) qs.set("ticker", opts.ticker);
+      return apiFetch<{ count: number; events: CatalystEvent[] }>(
+        `/events?${qs.toString()}`,
+        EventsSchema,
+        { token },
+      );
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
+const ThemesListSchema = z
+  .object({
+    themes: z.array(z.object({ slug: z.string(), label: z.string() })).default([]),
+  })
+  .passthrough();
+
+type ThemesList = { themes: { slug: string; label: string }[] };
+
+/** GET /themes — theme catalogue (Phase 4). */
+export function useThemes(): UseQueryResult<ThemesList> {
+  const token = useAuthToken();
+  return useQuery<ThemesList>({
+    queryKey: ["themes"],
+    queryFn: () => apiFetch<ThemesList>(`/themes`, ThemesListSchema, { token }),
+    staleTime: 60 * 60_000,
+  });
+}
+
+export interface ThemeBeneficiary {
+  ticker: string;
+  score: number;
+  n: number;
+  evidence: { title: string; url: string | null; published_at: string | null }[];
+}
+
+export interface ThemeDetail {
+  slug: string;
+  label: string;
+  window_days: number;
+  matched_stories: number;
+  beneficiaries: ThemeBeneficiary[];
+  universe: string;
+  disclaimer: string;
+}
+
+const ThemeDetailSchema = z
+  .object({
+    slug: z.string(),
+    label: z.string(),
+    window_days: z.number().default(90),
+    matched_stories: z.number().default(0),
+    beneficiaries: z
+      .array(
+        z
+          .object({
+            ticker: z.string(),
+            score: z.coerce.number().default(0),
+            n: z.coerce.number().default(0),
+            evidence: z
+              .array(
+                z.object({
+                  title: z.string(),
+                  url: z.string().nullable().default(null),
+                  published_at: z.string().nullable().default(null),
+                }),
+              )
+              .default([]),
+          })
+          .passthrough(),
+      )
+      .default([]),
+    universe: z.string().default("watchlist"),
+    disclaimer: z.string().default(""),
+  })
+  .passthrough();
+
+/** GET /themes/{slug} — beneficiaries with evidence (Phase 4). */
+export function useThemeBeneficiaries(
+  slug: string | null,
+  days = 90,
+): UseQueryResult<ThemeDetail> {
+  const token = useAuthToken();
+  return useQuery<ThemeDetail>({
+    queryKey: ["theme", slug, days],
+    enabled: !!slug,
+    queryFn: () =>
+      apiFetch<ThemeDetail>(
+        `/themes/${encodeURIComponent(slug as string)}?days=${days}`,
+        ThemeDetailSchema,
+        { token },
+      ),
+    staleTime: 15 * 60_000,
+  });
+}
+
+export interface Perspective {
+  persona: string;
+  view: string;
+}
+
+const PerspectivesSchema = z
+  .object({
+    question: z.string(),
+    perspectives: z.array(z.object({ persona: z.string(), view: z.string() })).default([]),
+    disclaimer: z.string().default(""),
+  })
+  .passthrough();
+
+/** POST /agent/perspectives — multi-persona reasoning (Phase 5). */
+export function usePerspectives(): UseMutationResult<
+  { question: string; perspectives: Perspective[]; disclaimer: string },
+  unknown,
+  { question: string }
+> {
+  const token = useAuthToken();
+  type Resp = { question: string; perspectives: Perspective[]; disclaimer: string };
+  return useMutation({
+    mutationFn: ({ question }) =>
+      apiFetch<Resp>(`/agent/perspectives`, PerspectivesSchema, {
+        method: "POST",
+        body: { question },
+        token,
+      }),
+  });
+}

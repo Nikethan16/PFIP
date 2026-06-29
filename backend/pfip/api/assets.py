@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+import json
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi import APIRouter, Query
 from sqlalchemy import or_, select
@@ -242,3 +244,198 @@ async def get_regime(symbol: str, db: DbSession, _user: CurrentUser) -> dict:
         "since": row.since.isoformat(),
         "confidence": row.confidence,
     }
+
+
+# ---------------------------------------------------------------------------
+# Narrative "why" engine (Phase 2) — explain a move from ingested news + KB
+# ---------------------------------------------------------------------------
+
+_EXPLAIN_SYS = (
+    "You are a sober financial analyst. Explain the LIKELY drivers of the given "
+    "price move using ONLY the provided news headlines and context. Cite each "
+    "claim inline like [1], [2] referring to the numbered sources. Be concise "
+    "(2-4 sentences). If the provided evidence does not plausibly explain the "
+    "move, reply EXACTLY: 'No clear catalyst in the available data.' Do NOT "
+    "speculate, invent causes, or use outside knowledge. Advisory only, not advice."
+)
+
+
+async def _explain_cache(key: str, value: dict | None = None):
+    """Tiny best-effort Redis cache (get if value is None, else set 6h)."""
+    from pfip.core.config import get_settings
+
+    url = getattr(get_settings(), "redis_url", None)
+    if not url:
+        return None
+    try:
+        from redis.asyncio import Redis
+
+        r = Redis.from_url(url, decode_responses=True)
+        if value is None:
+            raw = await r.get(key)
+            await r.aclose()
+            return json.loads(raw) if raw else None
+        await r.set(key, json.dumps(value), ex=6 * 3600)
+        await r.aclose()
+    except Exception:  # noqa: BLE001 — cache is optional
+        return None
+    return None
+
+
+@router.get("/{symbol:path}/explain")
+async def explain_move(
+    symbol: str,
+    db: DbSession,
+    _user: CurrentUser,
+    window_days: int = Query(7, ge=1, le=90),
+) -> dict[str, Any]:
+    """Explain *why* ``symbol`` moved over the trailing window, grounded in the
+    news PFIP ingested (+ KB), with numbered citations. Abstains ("No clear
+    catalyst…") when the evidence is thin — it never invents a cause.
+
+    Cached per (symbol, day, window) for 6h to bound LLM cost.
+    """
+    cache_key = f"explain:{symbol}:{datetime.now(tz=UTC).date()}:{window_days}"
+    cached = await _explain_cache(cache_key)
+    if cached:
+        cached["cached"] = True
+        return cached
+
+    # 1) Price move over the window (freshest source per symbol).
+    freshest = (
+        select(OHLCVRow.source)
+        .where(OHLCVRow.symbol == symbol, OHLCVRow.timeframe == "1d")
+        .order_by(OHLCVRow.time.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    since = datetime.now(tz=UTC) - timedelta(days=window_days)
+    closes = (
+        await db.execute(
+            select(OHLCVRow.time, OHLCVRow.close)
+            .where(
+                OHLCVRow.symbol == symbol,
+                OHLCVRow.timeframe == "1d",
+                OHLCVRow.source == freshest,
+                OHLCVRow.time >= since,
+            )
+            .order_by(OHLCVRow.time.asc())
+        )
+    ).all()
+    move_pct: float | None = None
+    last_close: float | None = None
+    if len(closes) >= 2:
+        first_c, last_c = float(closes[0][1]), float(closes[-1][1])
+        last_close = last_c
+        if first_c > 0:
+            move_pct = round((last_c - first_c) / first_c * 100.0, 2)
+
+    # 2) News linked to the symbol in the window (scalar or entity_tickers).
+    news_rows = (
+        (
+            await db.execute(
+                select(NewsRow)
+                .where(
+                    or_(NewsRow.symbol == symbol, NewsRow.entity_tickers.contains([symbol])),
+                    NewsRow.time >= since,
+                )
+                .order_by(NewsRow.time.desc())
+                .limit(12)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    sources = [
+        {"n": i + 1, "title": n.title, "url": n.url, "published_at": n.time.isoformat()}
+        for i, n in enumerate(news_rows)
+    ]
+
+    # 3) Latest regime (context only).
+    regime_row = (
+        (
+            await db.execute(
+                select(RegimeRow)
+                .where(RegimeRow.symbol == symbol)
+                .order_by(RegimeRow.since.desc())
+                .limit(1)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    regime = regime_row.regime if regime_row else "unknown"
+
+    # 4) Guardrail: with no news evidence, abstain rather than hallucinate.
+    if not sources:
+        out = {
+            "symbol": symbol,
+            "window_days": window_days,
+            "move_pct": move_pct,
+            "last_close": last_close,
+            "regime": regime,
+            "explanation": "No clear catalyst in the available data.",
+            "sources": [],
+            "used_llm": False,
+            "cached": False,
+        }
+        await _explain_cache(cache_key, out)
+        return out
+
+    # 5) Best-effort KB context (degrades to none if Qdrant is down).
+    kb_block = ""
+    try:
+        from pfip.kb.search import format_citations, search as kb_search
+
+        hits = await kb_search(f"drivers of {symbol} price move", k=3)
+        if hits:
+            kb_block = "\n\nReference context:\n" + format_citations(hits)
+    except Exception:  # noqa: BLE001
+        kb_block = ""
+
+    # 6) Synthesize with cite-or-abstain.
+    news_block = "\n".join(f"[{s['n']}] {s['title']} ({s['published_at'][:10]})" for s in sources)
+    move_desc = (
+        f"{symbol} moved {move_pct:+.2f}% over the last {window_days} days"
+        if move_pct is not None
+        else f"{symbol} over the last {window_days} days"
+    )
+    user_msg = (
+        f"{move_desc}. Current regime: {regime}.\n\nNews headlines:\n{news_block}{kb_block}\n\n"
+        "Explain the likely drivers using only the above, with [n] citations."
+    )
+
+    explanation = "No clear catalyst in the available data."
+    used_llm = False
+    try:
+        from pfip.agent.llm_client import ChatMessage, get_llm_client
+        from pfip.agent.router import Sensitivity, TaskType
+
+        explanation = await get_llm_client().complete(
+            [
+                ChatMessage(role="system", content=_EXPLAIN_SYS),
+                ChatMessage(role="user", content=user_msg),
+            ],
+            task=TaskType.QUICK_SUMMARY,
+            sensitivity=Sensitivity.PUBLIC,
+            max_tokens=400,
+            temperature=0.2,
+        )
+        used_llm = True
+    except Exception as exc:  # noqa: BLE001 — never 500 the page
+        explanation = f"Explanation unavailable (LLM error: {type(exc).__name__})."
+
+    out = {
+        "symbol": symbol,
+        "window_days": window_days,
+        "move_pct": move_pct,
+        "last_close": last_close,
+        "regime": regime,
+        "explanation": explanation,
+        "sources": sources,
+        "used_llm": used_llm,
+        "cached": False,
+    }
+    if used_llm:
+        await _explain_cache(cache_key, out)
+    return out

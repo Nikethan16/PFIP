@@ -12,14 +12,17 @@ import {
   Heart,
   Home,
   LayoutDashboard,
+  Lightbulb,
   LineChart,
   MessageSquare,
+  Newspaper,
   PiggyBank,
   ScanSearch,
   ShieldAlert,
   Stars,
   Target,
   Trophy,
+  Users,
   Wallet,
   Wrench,
 } from "lucide-react";
@@ -65,6 +68,8 @@ export const NAV_ITEMS: NavItem[] = [
   // Markets
   { label: "Watchlist", href: "/watchlist", icon: Eye, group: "markets", shortcut: "G then W" },
   { label: "Signals", href: "/signals", icon: Stars, group: "markets", shortcut: "G then S" },
+  { label: "Events", href: "/events", icon: Newspaper, group: "markets" },
+  { label: "Themes", href: "/themes", icon: Lightbulb, group: "markets" },
   { label: "Research", href: "/diligence", icon: ScanSearch, group: "markets", shortcut: "G then R" },
 
   // Portfolio
@@ -84,6 +89,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "SIP", href: "/sip", icon: PiggyBank, group: "tools" },
   { label: "Journal", href: "/journal", icon: BookOpen, mobile: true, group: "tools", shortcut: "G then J" },
   { label: "Chat", href: "/chat", icon: MessageSquare, mobile: true, group: "tools", shortcut: "G then C" },
+  { label: "Perspectives", href: "/perspectives", icon: Users, group: "tools" },
   { label: "Calibration", href: "/calibration", icon: LineChart, group: "tools" },
   { label: "Backtest", href: "/backtest", icon: FlaskConical, group: "tools" },
 
