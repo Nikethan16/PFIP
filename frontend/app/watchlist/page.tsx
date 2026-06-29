@@ -45,10 +45,24 @@ import { FreshnessBadge } from "@/components/shared/freshness-badge";
 import { Sparkline } from "@/components/charts/sparkline";
 import type { WatchlistItem } from "@/lib/contracts";
 
-type MarketGroup = "Crypto" | "US equity" | "India equity" | "FX" | "Other";
+type MarketGroup =
+  | "Crypto"
+  | "Metals"
+  | "US equity"
+  | "India equity"
+  | "FX"
+  | "Other";
 
 function groupOf(symbol: string): MarketGroup {
   const s = symbol.toUpperCase();
+  // Metals first — the ETF proxies (GLD/SLV, *BEES.NS) would otherwise be
+  // miscategorised as US/India equity by the rules below.
+  if (
+    /^(GLD|SLV|IAU|SGOL|GOLD|SILVER)$/.test(s) ||
+    /GOLDBEES|SILVERBEES/.test(s) ||
+    /XAU|XAG/.test(s)
+  )
+    return "Metals";
   if (
     /BTC|ETH|SOL|BNB|XRP|ADA|DOT|AVAX|LTC|DOGE|MATIC|LINK|UNI|SHIB|TRX|USDT|USDC|DAI/.test(
       s,

@@ -72,6 +72,17 @@ FX = [
     ("GBP-USD", "GBP/USD"),
 ]
 
+# Precious metals via liquid ETF proxies (reliably priced through the SAME
+# reachable adapters as equities — GLD/SLV via Tiingo/Stooq, *BEES.NS via jugaad
+# — rather than LBMA/COMEX spot, whose egress from the VM is unverified). The
+# .NS proxies give INR-denominated gold/silver; GLD/SLV give USD.
+METALS = [
+    ("GLD", "SPDR Gold Shares (USD gold ETF)"),
+    ("SLV", "iShares Silver Trust (USD silver ETF)"),
+    ("GOLDBEES.NS", "Nippon India Gold ETF (INR gold)"),
+    ("SILVERBEES.NS", "Nippon India Silver ETF (INR silver)"),
+]
+
 
 async def _upsert_watchlist() -> int:
     """Idempotent upsert over the curated list. Returns the number of new rows."""
@@ -98,6 +109,7 @@ async def _upsert_watchlist() -> int:
             ("us_equity", US_EQUITIES),
             ("india_equity", INDIA_EQUITIES),
             ("india_mf", INDIAN_MFS),
+            ("metal", METALS),
             ("fx", FX),
         ):
             for symbol, note in items:
