@@ -44,6 +44,7 @@ def _settings(**kwargs) -> Settings:  # type: ignore[no-untyped-def]
         "cohere_api_key": "COHERE_API_KEY",
         "cerebras_api_key": "CEREBRAS_API_KEY",
         "llm_privacy_strict": "LLM_PRIVACY_STRICT",
+        "allow_cloud_fallback": "ALLOW_CLOUD_FALLBACK",
     }
     base = {
         "GROQ_API_KEY": "g",
@@ -54,6 +55,7 @@ def _settings(**kwargs) -> Settings:  # type: ignore[no-untyped-def]
         "COHERE_API_KEY": "",
         "CEREBRAS_API_KEY": "",
         "LLM_PRIVACY_STRICT": False,
+        "ALLOW_CLOUD_FALLBACK": True,
     }
     for k, v in kwargs.items():
         base[alias_map.get(k, k)] = v
@@ -146,8 +148,13 @@ async def test_complete_raises_when_all_providers_fail(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_strict_sensitive_only_calls_ollama(monkeypatch) -> None:
-    """Sensitive + strict mode → only ollama is attempted."""
-    s = _settings(llm_privacy_strict=True)
+    """Sensitive + strict + cloud fallback OFF → only ollama (privacy boundary).
+
+    With ALLOW_CLOUD_FALLBACK=false the strict-local guarantee holds: sensitive
+    chat never leaves the host. (When cloud fallback is on — the default — chat
+    may use a cloud provider; see test_router.test_chat_sensitive_cloud_fallback.)
+    """
+    s = _settings(llm_privacy_strict=True, allow_cloud_fallback=False)
     client = MultiProviderClient(s)
     calls: list[str] = []
 
