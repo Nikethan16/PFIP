@@ -29,7 +29,11 @@ log = get_logger("pfip.ingest.news.reddit_praw")
 DEFAULT_SUBS: tuple[str, ...] = (
     "wallstreetbets",
     "stocks",
+    "investing",
+    "SecurityAnalysis",  # high-signal fundamental analysis
     "IndianStockMarket",
+    "IndiaInvestments",  # best-moderated Indian investing community
+    "IndianStreetBets",
     "CryptoCurrency",
     "CryptoMarkets",
 )

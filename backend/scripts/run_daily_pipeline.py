@@ -355,12 +355,14 @@ async def _ingest_news() -> dict[str, Any]:
     news so the table stays small.
     """
     from pfip.ingest.crypto.cryptopanic import ingest_cryptopanic
+    from pfip.ingest.news.alphavantage_news import ingest_alphavantage_news
     from pfip.ingest.news.bluesky import ingest_bluesky
     from pfip.ingest.news.farcaster import ingest_farcaster
     from pfip.ingest.news.gdelt import ingest_gdelt
     from pfip.ingest.news.google_news_rss import ingest_google_news
     from pfip.ingest.news.marketaux import ingest_marketaux
     from pfip.ingest.news.newsapi import ingest_newsapi
+    from pfip.ingest.news.newsdata_io import ingest_newsdata
     from pfip.ingest.news.reddit_praw import ingest_reddit
     from pfip.ingest.news.rss_fetcher import ingest_rss
     from pfip.ingest.news.telegram_telethon import ingest_telegram
@@ -379,6 +381,8 @@ async def _ingest_news() -> dict[str, Any]:
         ("cryptopanic", ingest_cryptopanic, 45.0),
         ("newsapi", ingest_newsapi, 45.0),
         ("marketaux", ingest_marketaux, 45.0),
+        ("alphavantage", ingest_alphavantage_news, 45.0),
+        ("newsdata", ingest_newsdata, 45.0),
     ]
 
     per_source: dict[str, Any] = {}
