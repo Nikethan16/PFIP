@@ -2987,3 +2987,68 @@ export function usePerspectives(): UseMutationResult<
       }),
   });
 }
+
+// -----------------------------------------------------------------------------
+// Deep company-research dossier (Phase 6) — POST /research
+// -----------------------------------------------------------------------------
+
+export interface ResearchDossier {
+  query: string;
+  resolved?: {
+    company: string;
+    ticker: string | null;
+    exchange: string | null;
+    confident: boolean;
+  } | null;
+  matched_symbol?: string | null;
+  is_tracked: boolean;
+  performance?: {
+    last_close: number;
+    as_of: string;
+    ret_1m_pct: number | null;
+    ret_3m_pct: number | null;
+    ret_1y_pct: number | null;
+    bars: number;
+  } | null;
+  news: { title: string; url: string; time: string; sentiment: number | null; source: string }[];
+  dossier_markdown: string;
+  suggest_add_to_watchlist: boolean;
+  disclaimer: string;
+}
+
+const ResearchDossierSchema = z
+  .object({
+    query: z.string().default(""),
+    resolved: z
+      .object({
+        company: z.string().default(""),
+        ticker: z.string().nullable().default(null),
+        exchange: z.string().nullable().default(null),
+        confident: z.boolean().default(false),
+      })
+      .passthrough()
+      .nullable()
+      .optional(),
+    matched_symbol: z.string().nullable().optional(),
+    is_tracked: z.boolean().default(false),
+    performance: z.any().nullable().optional(),
+    fundamentals: z.any().optional(),
+    news: z.array(z.any()).default([]),
+    dossier_markdown: z.string().default(""),
+    suggest_add_to_watchlist: z.boolean().default(false),
+    disclaimer: z.string().default(""),
+  })
+  .passthrough();
+
+/** POST /research — deep company-research dossier (resolve → gather → synthesise). */
+export function useResearch(): UseMutationResult<ResearchDossier, unknown, { query: string }> {
+  const token = useAuthToken();
+  return useMutation({
+    mutationFn: ({ query }) =>
+      apiFetch<ResearchDossier>(`/research`, ResearchDossierSchema, {
+        method: "POST",
+        body: { query },
+        token,
+      }),
+  });
+}

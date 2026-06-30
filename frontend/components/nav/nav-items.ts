@@ -15,6 +15,7 @@ import {
   Lightbulb,
   LineChart,
   MessageSquare,
+  Microscope,
   Newspaper,
   PiggyBank,
   ScanSearch,
@@ -71,6 +72,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Events", href: "/events", icon: Newspaper, group: "markets" },
   { label: "Themes", href: "/themes", icon: Lightbulb, group: "markets" },
   { label: "Research", href: "/diligence", icon: ScanSearch, group: "markets", shortcut: "G then R" },
+  { label: "Deep Research", href: "/research", icon: Microscope, group: "markets" },
 
   // Portfolio
   { label: "Holdings", href: "/portfolio", icon: Briefcase, mobile: true, group: "trading", shortcut: "G then P" },
