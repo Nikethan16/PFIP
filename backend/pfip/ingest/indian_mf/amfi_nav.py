@@ -29,8 +29,11 @@ URL = "https://www.amfiindia.com/spages/NAVAll.txt"
 
 @retry_http(max_attempts=3)
 async def _download() -> str:
+    # AMFI now 302-redirects NAVAll.txt; httpx does NOT follow redirects by
+    # default, so without this the adapter got a tiny redirect page (0 NAV rows)
+    # and could hang. With follow_redirects it pulls the full ~1.6MB file in <1s.
     async with get_async_client(headers={"Accept": "text/plain"}) as client:
-        r = await client.get(URL)
+        r = await client.get(URL, follow_redirects=True, timeout=60.0)
         r.raise_for_status()
         return r.text
 

@@ -329,7 +329,9 @@ async def stage_ingest(
 
         return await ingest_fred_macro()
 
-    await _guarded(summary, "macro_fred", _macro, timeout=TIMEOUT_FX)
+    # FRED fetches several series sequentially; 90s (TIMEOUT_FX) was cutting it
+    # off mid-run, so give it real headroom.
+    await _guarded(summary, "macro_fred", _macro, timeout=240.0)
 
     # --- news (raw adapters + post-ingest pipeline incl. relevance/age prune) ---
     if include_news:
