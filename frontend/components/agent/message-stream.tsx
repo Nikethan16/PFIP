@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Markdown } from "@/components/shared/markdown";
 import { SuggestedStarters } from "@/components/chat/suggested-starters";
 import { useAgentChat } from "@/lib/sse";
-import { useAuthToken } from "@/lib/api";
+import { AGENT_CHAT_ENDPOINT, useAuthToken } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/toast";
 import type { SSESourceTag } from "@/lib/sse";
@@ -37,10 +37,9 @@ import type { SSESourceTag } from "@/lib/sse";
  */
 export function MessageStream() {
   const token = useAuthToken();
-  const endpoint = `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1"}/agent/chat`;
   const { messages, streaming, send, cancel, reset, error } = useAgentChat({
     token,
-    endpoint,
+    endpoint: AGENT_CHAT_ENDPOINT,
   });
 
   const [draft, setDraft] = React.useState("");

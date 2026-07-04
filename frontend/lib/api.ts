@@ -60,9 +60,15 @@ import {
 // "every page 404s" footgun if NEXT_PUBLIC_API_URL is set to bare host.
 const RAW_API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
-const API_BASE = RAW_API_BASE.replace(/\/+$/, "").endsWith("/api/v1")
+// Exported so non-fetch consumers (the SSE chat endpoints) build URLs off the
+// SAME normalized base — otherwise a bare-host NEXT_PUBLIC_API_URL 404/307s chat
+// while every apiFetch page works, which is exactly what broke the chatbot.
+export const API_BASE = RAW_API_BASE.replace(/\/+$/, "").endsWith("/api/v1")
   ? RAW_API_BASE.replace(/\/+$/, "")
   : `${RAW_API_BASE.replace(/\/+$/, "")}/api/v1`;
+
+/** Full URL for the agent SSE chat endpoint, normalized like every other call. */
+export const AGENT_CHAT_ENDPOINT = `${API_BASE}/agent/chat`;
 
 /**
  * Current Indian fiscal year as "YYYY-YY" (Apr 1 – Mar 31). The backend's

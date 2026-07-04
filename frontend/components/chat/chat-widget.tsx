@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Markdown } from "@/components/shared/markdown";
 import { useAgentChat } from "@/lib/sse";
-import { useAuthToken } from "@/lib/api";
+import { AGENT_CHAT_ENDPOINT, useAuthToken } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { ChatTurn } from "@/lib/sse";
 
@@ -124,10 +124,9 @@ function ChatPanel({
   prefill?: string;
 }) {
   const token = useAuthToken();
-  const endpoint = `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1"}/agent/chat`;
   const { messages, streaming, send, cancel, error } = useAgentChat({
     token,
-    endpoint,
+    endpoint: AGENT_CHAT_ENDPOINT,
   });
 
   const [draft, setDraft] = React.useState("");
