@@ -65,7 +65,7 @@ export default function ResearchPage() {
           {/* Resolution + performance header */}
           <div className="flex flex-wrap items-center gap-3 border border-border/60 bg-card p-4">
             <div className="font-serif text-xl tracking-tight">
-              {d.resolved?.company ?? d.query}
+              {d.business_overview?.name ?? d.resolved?.company ?? d.query}
             </div>
             {(d.matched_symbol ?? d.resolved?.ticker) ? (
               <span className="border border-border/60 bg-secondary/40 px-2 py-0.5 font-mono text-xs">
@@ -97,6 +97,37 @@ export default function ResearchPage() {
               <span className="font-mono">{d.resolved?.ticker}</span> to the watchlist for full
               fundamentals + price history, then re-run for a richer dossier.
             </div>
+          ) : null}
+
+          {/* Key fundamentals grid */}
+          {d.fundamentals?.key_metrics && Object.keys(d.fundamentals.key_metrics).length ? (
+            <section className="border border-border/60 bg-card p-5">
+              <div className="eyebrow mb-3 flex items-center gap-2">
+                Key fundamentals
+                {d.fundamentals_are_live ? (
+                  <span className="border border-sky-500/30 bg-sky-500/5 px-1.5 py-0.5 font-label text-[9px] uppercase tracking-wider text-sky-700 dark:text-sky-400">
+                    Live · {d.fundamentals.source ?? "fetched"}
+                  </span>
+                ) : d.fundamentals.source ? (
+                  <span className="text-[10px] text-muted-foreground">
+                    {d.fundamentals.source}
+                    {d.fundamentals.as_of_date ? ` · ${d.fundamentals.as_of_date.slice(0, 10)}` : ""}
+                  </span>
+                ) : null}
+              </div>
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
+                {METRIC_ORDER.filter((k) => d.fundamentals?.key_metrics?.[k.key] != null).map((k) => (
+                  <div key={k.key} className="flex flex-col">
+                    <dt className="font-label text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {k.label}
+                    </dt>
+                    <dd className="font-mono text-sm tabular-nums">
+                      {k.fmt(d.fundamentals!.key_metrics![k.key] as number)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
           ) : null}
 
           {/* The dossier */}
@@ -134,6 +165,40 @@ export default function ResearchPage() {
     </div>
   );
 }
+
+/** Compact number (1.2B, 340M, 5.1K) for market cap. */
+function compact(n: number): string {
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return `${(n / 1e12).toFixed(2)}T`;
+  if (abs >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (abs >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+  return n.toFixed(0);
+}
+/** Margins/yields arrive either as fractions (0.18) or percents (18) by source. */
+const pct = (v: number) => `${(Math.abs(v) <= 1 ? v * 100 : v).toFixed(1)}%`;
+const ratio = (v: number) => v.toFixed(2);
+
+const METRIC_ORDER: { key: string; label: string; fmt: (v: number) => string }[] = [
+  { key: "market_cap", label: "Market cap", fmt: compact },
+  { key: "pe_ratio", label: "P/E", fmt: ratio },
+  { key: "pb_ratio", label: "P/B", fmt: ratio },
+  { key: "price_to_sales", label: "P/S", fmt: ratio },
+  { key: "eps", label: "EPS", fmt: ratio },
+  { key: "revenue_growth", label: "Rev growth", fmt: pct },
+  { key: "eps_growth", label: "EPS growth", fmt: pct },
+  { key: "net_margin", label: "Net margin", fmt: pct },
+  { key: "operating_margin", label: "Op margin", fmt: pct },
+  { key: "roe", label: "ROE", fmt: pct },
+  { key: "roa", label: "ROA", fmt: pct },
+  { key: "debt_to_equity", label: "Debt/Equity", fmt: ratio },
+  { key: "current_ratio", label: "Current ratio", fmt: ratio },
+  { key: "dividend_yield", label: "Div yield", fmt: pct },
+  { key: "beta", label: "Beta", fmt: ratio },
+  { key: "book_value", label: "Book value", fmt: ratio },
+  { key: "52w_high", label: "52w high", fmt: ratio },
+  { key: "52w_low", label: "52w low", fmt: ratio },
+];
 
 function Perf({ label, v }: { label: string; v: number | null | undefined }) {
   if (v == null) return <span className="text-muted-foreground">{label} —</span>;

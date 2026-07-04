@@ -35,9 +35,11 @@ _DOSSIER_SYS = (
     "You are a sober equity-research analyst writing a DECISION-SUPPORT dossier "
     "(never a buy/sell recommendation). Ground every financial figure and recent "
     "event in the EVIDENCE provided. Where evidence is thin or missing, say so "
-    "plainly — never fabricate financials, orders, or filings. You may use general "
-    "knowledge ONLY for the 'What they do' business overview, and should flag it as "
-    "general knowledge. Output these markdown sections:\n"
+    "plainly — never fabricate financials, orders, or filings. If EVIDENCE has a "
+    "'business_overview' (sourced company profile) use it for 'What they do'; "
+    "otherwise you may use general knowledge there and should flag it as such. "
+    "When 'fundamentals_are_live' is true the ratios are a fresh real-time pull "
+    "(state the as-of is today). Output these markdown sections:\n"
     "**What they do** · **Financial health** · **Recent developments** · "
     "**Bull case** · **Bear case** · **Key risks** · **Market sentiment** · "
     "**What to verify yourself**\n"
@@ -198,11 +200,41 @@ async def build_research_dossier(session: Any, query: str) -> dict[str, Any]:
     perf = await _price_performance(session, matched) if matched else None
     news = await _company_news(session, candidates or [query], query)
 
+    is_tracked = bool(diligence.get("found"))
+    fundamentals_section = diligence.get("fundamentals")
+    live: dict[str, Any] = {}
+
+    # Untracked (or tracked-but-no-fundamentals) → fetch fundamentals LIVE so the
+    # first search returns real numbers instead of an "add to watchlist" stub.
+    tracked_metrics = (fundamentals_section or {}).get("key_metrics") if is_tracked else None
+    if not tracked_metrics:
+        from pfip.research.fundamentals import fetch_live_fundamentals, fetch_live_performance
+
+        live = await fetch_live_fundamentals(candidates or [query], resolved)
+        if live.get("key_metrics"):
+            fundamentals_section = {
+                "as_of_date": None,
+                "source": live.get("source"),
+                "key_metrics": live["key_metrics"],
+                "values": live["key_metrics"],
+                "live": True,
+            }
+        # Live price performance only when the DB had none (untracked names).
+        if perf is None:
+            perf = await fetch_live_performance(candidates or [query])
+
     evidence = {
         "resolved": resolved,
-        "matched_symbol": matched,
-        "is_tracked": bool(diligence.get("found")),
-        "fundamentals": diligence.get("fundamentals"),
+        "matched_symbol": matched or live.get("matched_symbol"),
+        "is_tracked": is_tracked,
+        "business_overview": {
+            k: live.get(k)
+            for k in ("name", "description", "sector", "industry", "exchange", "currency")
+            if live.get(k)
+        }
+        or None,
+        "fundamentals": fundamentals_section,
+        "fundamentals_are_live": bool(live.get("key_metrics")),
         "filings": (diligence.get("filings") or [])[:6],
         "diligence_summary": diligence.get("summary"),
         "price_performance": perf,
@@ -239,14 +271,23 @@ async def build_research_dossier(session: Any, query: str) -> dict[str, Any]:
     return {
         "query": query,
         "resolved": resolved,
-        "matched_symbol": matched,
-        "is_tracked": bool(diligence.get("found")),
+        "matched_symbol": matched or live.get("matched_symbol"),
+        "is_tracked": is_tracked,
         "performance": perf,
-        "fundamentals": diligence.get("fundamentals"),
+        "fundamentals": fundamentals_section,
+        "fundamentals_are_live": bool(live.get("key_metrics")),
+        "business_overview": (
+            {
+                k: live.get(k)
+                for k in ("name", "sector", "industry", "exchange", "currency")
+                if live.get(k)
+            }
+            or None
+        ),
         "news": news,
         "dossier_markdown": dossier_md,
-        "suggest_add_to_watchlist": (
-            resolved.get("ticker") is not None and not diligence.get("found")
-        ),
+        # Still nudge to watchlist for ongoing tracking, even though the one-off
+        # dossier is now rich (live fundamentals don't get stored / charted).
+        "suggest_add_to_watchlist": (resolved.get("ticker") is not None and not is_tracked),
         "disclaimer": "Decision-support research only — not investment advice. Verify independently.",
     }

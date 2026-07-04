@@ -3010,6 +3010,20 @@ export interface ResearchDossier {
     ret_1y_pct: number | null;
     bars: number;
   } | null;
+  fundamentals?: {
+    as_of_date: string | null;
+    source: string | null;
+    key_metrics?: Record<string, number | null>;
+    live?: boolean;
+  } | null;
+  fundamentals_are_live?: boolean;
+  business_overview?: {
+    name?: string | null;
+    sector?: string | null;
+    industry?: string | null;
+    exchange?: string | null;
+    currency?: string | null;
+  } | null;
   news: { title: string; url: string; time: string; sentiment: number | null; source: string }[];
   dossier_markdown: string;
   suggest_add_to_watchlist: boolean;
