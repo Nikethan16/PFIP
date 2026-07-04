@@ -73,20 +73,108 @@ async def test_alphavantage_rate_limit_stops(monkeypatch):
     assert await F._alphavantage_overview(["AAPL"], {}) == {}
 
 
+def test_is_indian_detection():
+    assert F._is_indian(["RELIANCE.NS"], {}) is True
+    assert F._is_indian([], {"exchange": "BSE"}) is True
+    assert F._is_indian(["AAPL"], {"exchange": "NASDAQ"}) is False
+
+
 @pytest.mark.asyncio
-async def test_fetch_live_falls_back_to_yfinance(monkeypatch):
-    """AV returns nothing → yfinance overview is used."""
+async def test_screener_overview_normalizes_percent_and_crore(monkeypatch):
+    """ROE/ROCE/yield → fractions; market cap ₹cr → absolute ₹."""
+
+    async def fake_fetch_page(sym):
+        return "<html>waree</html>"
+
+    def fake_parse(_html):
+        return {
+            "stock_p_e": 21.0,
+            "book_value": 502.0,
+            "dividend_yield": 0.07,  # screener percent → 0.0007 fraction
+            "roce": 38.8,  # → 0.388
+            "roe": 32.8,  # → 0.328
+            "current_price": 2859.0,
+            "market_cap": 82245.0,  # ₹ crore → 8.2245e11
+        }
+
+    import pfip.ingest.indian_equities.screener_fundamentals as S
+
+    monkeypatch.setattr(S, "_fetch_page", fake_fetch_page)
+    monkeypatch.setattr(S, "_parse_ratios", fake_parse)
+
+    out = await F._screener_overview(["WAAREEENER.NS", "WAAREEENER"], {"company": "Waaree"})
+    km = out["key_metrics"]
+    assert out["source"] == "screener"
+    assert out["matched_symbol"] == "WAAREEENER.NS"
+    assert km["pe_ratio"] == 21.0
+    assert km["roce"] == pytest.approx(0.388)
+    assert km["roe"] == pytest.approx(0.328)
+    assert km["dividend_yield"] == pytest.approx(0.0007)
+    assert km["market_cap"] == pytest.approx(8.2245e11)
+
+
+@pytest.mark.asyncio
+async def test_fetch_live_indian_prefers_screener(monkeypatch):
+    """Indian symbol → screener is tried before AV/yfinance."""
+
+    async def fake_screener(symbols, resolved):
+        return {"source": "screener", "key_metrics": {"pe_ratio": 21.0}}
+
+    async def fail_av(symbols, resolved):  # must not be reached
+        raise AssertionError("AV should not be called for Indian when screener wins")
+
+    monkeypatch.setattr(F, "_screener_overview", fake_screener)
+    monkeypatch.setattr(F, "_alphavantage_overview", fail_av)
+    out = await F.fetch_live_fundamentals(["WAAREEENER.NS"], {"exchange": "NSE"})
+    assert out["source"] == "screener"
+
+
+@pytest.mark.asyncio
+async def test_persist_live_fundamentals_builds_rows(monkeypatch):
+    captured: dict[str, list] = {}
+
+    async def fake_upsert(session, rows):
+        captured["rows"] = list(rows)
+        return len(captured["rows"])
+
+    import pfip.ingest._common.upsert as U
+
+    monkeypatch.setattr(U, "upsert_fundamentals", fake_upsert)
+    live = {
+        "source": "screener",
+        "matched_symbol": "WAAREEENER.NS",
+        "key_metrics": {"pe_ratio": 21.0, "roe": 0.328, "market_cap": None},
+    }
+    n = await F.persist_live_fundamentals(object(), live)
+    assert n == 2  # None value dropped
+    fields = {r["field"]: r for r in captured["rows"]}
+    assert set(fields) == {"pe_ratio", "roe"}
+    assert fields["pe_ratio"]["symbol"] == "WAAREEENER.NS"
+    assert fields["pe_ratio"]["source"] == "screener"
+
+
+@pytest.mark.asyncio
+async def test_persist_live_fundamentals_skips_when_no_symbol():
+    assert await F.persist_live_fundamentals(object(), {"key_metrics": {"pe_ratio": 1}}) == 0
+    assert await F.persist_live_fundamentals(object(), {"matched_symbol": "X"}) == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_live_us_falls_back_to_yfinance(monkeypatch):
+    """US name, AV returns nothing → yfinance overview is used (no screener)."""
     monkeypatch.delenv("ALPHAVANTAGE_API_KEY", raising=False)
+    monkeypatch.delenv("ALPHA_VANTAGE_API_KEY", raising=False)
 
     def fake_yf(symbols):
         return {
             "source": "yfinance",
             "matched_symbol": symbols[0],
-            "name": "Waaree Energies",
+            "name": "Some US Co",
             "key_metrics": {"pe_ratio": 40.0, "roe": 0.22},
         }
 
     monkeypatch.setattr(F, "_yfinance_overview_sync", fake_yf)
-    out = await F.fetch_live_fundamentals(["WAAREEENER.NS"], {})
+    # US symbol → _is_indian False → screener never touched (no network).
+    out = await F.fetch_live_fundamentals(["SOMEUSCO"], {"exchange": "NASDAQ"})
     assert out["source"] == "yfinance"
     assert out["key_metrics"]["pe_ratio"] == 40.0

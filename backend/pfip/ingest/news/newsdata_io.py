@@ -45,7 +45,9 @@ async def _fetch(api_key: str, country: str) -> dict[str, Any]:
 
 
 async def fetch_newsdata(country: str = "in,us") -> list[dict[str, Any]]:
-    key = os.environ.get("NEWSDATA_API_KEY", "").strip()
+    # Tolerate the ``NEWS_DATA_API_KEY`` underscore variant a hand-edited .env
+    # can easily introduce, so a misspelled key never silently disables ingest.
+    key = (os.environ.get("NEWSDATA_API_KEY") or os.environ.get("NEWS_DATA_API_KEY") or "").strip()
     if not key:
         log.warning("NEWSDATA_API_KEY not set, newsdata_io no-op")
         return []

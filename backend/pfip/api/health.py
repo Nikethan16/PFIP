@@ -160,12 +160,16 @@ async def health_deep(db: DbSession, settings: SettingsDep) -> dict[str, Any]:
         checks["redis"] = {"ok": False, "error": str(exc)}
 
     # --- Qdrant ---
+    # Qdrant Cloud needs a real round-trip (2s was too tight and produced false
+    # ok=false) and sends the api-key header on authenticated deployments. We
+    # report the status code / error so a genuine failure is diagnosable.
     try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            resp = await client.get(f"{settings.qdrant_url}/readyz")
-            checks["qdrant"] = {"ok": resp.status_code == 200}
+        qdrant_headers = {"api-key": settings.qdrant_api_key} if settings.qdrant_api_key else {}
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            resp = await client.get(f"{settings.qdrant_url}/readyz", headers=qdrant_headers)
+            checks["qdrant"] = {"ok": resp.status_code == 200, "code": resp.status_code}
     except Exception as exc:  # noqa: BLE001
-        checks["qdrant"] = {"ok": False, "error": str(exc)}
+        checks["qdrant"] = {"ok": False, "error": str(exc)[:200]}
 
     # --- Ollama ---
     try:

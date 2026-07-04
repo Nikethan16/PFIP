@@ -98,4 +98,47 @@ test.describe("data freshness + presence (live monitor)", () => {
       "source_health is empty — pipeline isn't recording per-source health yet",
     ).toBeGreaterThan(0);
   });
+
+  test("keyed news sources are pulling once configured (AV / NewsData)", async ({ request }) => {
+    // Soft monitor: if an Alpha Vantage / NewsData row exists in source_health,
+    // it must not be stuck failing (which is exactly what the env-var name
+    // mismatch caused). Absent rows are tolerated (keys may be unset).
+    const token = await login(request);
+    const r = await request.get("/api/v1/health/sources", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(r.ok()).toBeTruthy();
+    const { sources = [] } = (await r.json()) as {
+      sources?: Array<{ source: string; consecutive_failures: number; last_error: string | null }>;
+    };
+    for (const name of ["alphavantage", "newsdata"]) {
+      const row = sources.find((s) => s.source === name);
+      if (row) {
+        expect(
+          row.consecutive_failures,
+          `${name} is failing repeatedly (${row.last_error}) — check the API key / env-var name`,
+        ).toBeLessThan(3);
+      }
+    }
+  });
+
+  test("Deep Research returns live fundamentals for an untracked company", async ({ request }) => {
+    // Exercises the on-demand fundamentals path end-to-end in prod: a name that
+    // isn't in the tracked universe must still come back with real key_metrics
+    // (screener for India / Alpha Vantage for US) and a synthesised dossier.
+    const token = await login(request);
+    const res = await request.post("/api/v1/research", {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { query: "Reliance Industries" },
+      timeout: 60_000,
+    });
+    expect(res.ok(), `research HTTP ${res.status()}`).toBeTruthy();
+    const d = (await res.json()) as {
+      dossier_markdown?: string;
+      fundamentals?: { key_metrics?: Record<string, number> } | null;
+    };
+    expect((d.dossier_markdown ?? "").length, "empty dossier").toBeGreaterThan(50);
+    const nMetrics = Object.keys(d.fundamentals?.key_metrics ?? {}).length;
+    expect(nMetrics, "no fundamentals resolved for a well-known company").toBeGreaterThan(0);
+  });
 });

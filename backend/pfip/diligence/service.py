@@ -274,25 +274,42 @@ def _extract_key_metrics(values: dict[str, Any]) -> dict[str, Any]:
     if not values:
         return {}
 
-    # canonical key -> ordered list of candidate (already prefix-stripped) names
+    # canonical key -> ordered list of candidate (already prefix-stripped) names.
+    # The canonical key itself is appended LAST to each tuple so that on-demand
+    # live fundamentals (persisted under canonical field names by the research
+    # agent) re-surface here, without changing precedence for existing sources.
     candidates: dict[str, tuple[str, ...]] = {
-        "pe_ratio": ("peTTM", "peAnnual", "peNormalizedAnnual", "stock_p_e", "forwardPE"),
-        "pb_ratio": ("pbAnnual", "pbQuarterly", "ptbvAnnual"),
-        "price_to_sales": ("psTTM", "psAnnual"),
-        "gross_margin": ("grossMarginTTM", "grossMarginAnnual"),
-        "operating_margin": ("operatingMarginTTM", "operatingMarginAnnual"),
-        "net_margin": ("netProfitMarginTTM", "netProfitMarginAnnual", "netMarginTTM"),
+        "pe_ratio": (
+            "peTTM",
+            "peAnnual",
+            "peNormalizedAnnual",
+            "stock_p_e",
+            "forwardPE",
+            "pe_ratio",
+        ),
+        "pb_ratio": ("pbAnnual", "pbQuarterly", "ptbvAnnual", "pb_ratio"),
+        "price_to_sales": ("psTTM", "psAnnual", "price_to_sales"),
+        "gross_margin": ("grossMarginTTM", "grossMarginAnnual", "gross_margin"),
+        "operating_margin": ("operatingMarginTTM", "operatingMarginAnnual", "operating_margin"),
+        "net_margin": ("netProfitMarginTTM", "netProfitMarginAnnual", "netMarginTTM", "net_margin"),
         "roe": ("roeTTM", "roeRfy", "roe"),
-        "roa": ("roaTTM", "roaRfy"),
+        "roa": ("roaTTM", "roaRfy", "roa"),
         "roce": ("roce", "roiAnnual"),
-        "revenue_growth": ("revenueGrowthTTMYoy", "revenueGrowth3Y", "revenueGrowth5Y"),
-        "eps_growth": ("epsGrowthTTMYoy", "epsGrowth3Y", "epsGrowth5Y"),
+        "revenue_growth": (
+            "revenueGrowthTTMYoy",
+            "revenueGrowth3Y",
+            "revenueGrowth5Y",
+            "revenue_growth",
+        ),
+        "eps_growth": ("epsGrowthTTMYoy", "epsGrowth3Y", "epsGrowth5Y", "eps_growth"),
+        "eps": ("eps",),
         "debt_to_equity": (
             "totalDebt/totalEquityAnnual",
             "longTermDebt/equityAnnual",
             "totalDebt/totalEquityQuarterly",
+            "debt_to_equity",
         ),
-        "current_ratio": ("currentRatioAnnual", "currentRatioQuarterly"),
+        "current_ratio": ("currentRatioAnnual", "currentRatioQuarterly", "current_ratio"),
         "market_cap": ("marketCapitalization", "market_cap", "market_cap_usd"),
         "dividend_yield": (
             "currentDividendYieldTTM",
@@ -302,8 +319,8 @@ def _extract_key_metrics(values: dict[str, Any]) -> dict[str, Any]:
         "beta": ("beta",),
         "book_value": ("bookValuePerShareAnnual", "book_value"),
         "current_price": ("current_price", "price_usd"),
-        "52w_high": ("52WeekHigh",),
-        "52w_low": ("52WeekLow",),
+        "52w_high": ("52WeekHigh", "52w_high"),
+        "52w_low": ("52WeekLow", "52w_low"),
     }
     out: dict[str, Any] = {}
     for key, names in candidates.items():

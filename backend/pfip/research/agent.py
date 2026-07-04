@@ -208,7 +208,11 @@ async def build_research_dossier(session: Any, query: str) -> dict[str, Any]:
     # first search returns real numbers instead of an "add to watchlist" stub.
     tracked_metrics = (fundamentals_section or {}).get("key_metrics") if is_tracked else None
     if not tracked_metrics:
-        from pfip.research.fundamentals import fetch_live_fundamentals, fetch_live_performance
+        from pfip.research.fundamentals import (
+            fetch_live_fundamentals,
+            fetch_live_performance,
+            persist_live_fundamentals,
+        )
 
         live = await fetch_live_fundamentals(candidates or [query], resolved)
         if live.get("key_metrics"):
@@ -219,6 +223,8 @@ async def build_research_dossier(session: Any, query: str) -> dict[str, Any]:
                 "values": live["key_metrics"],
                 "live": True,
             }
+            # Persist so repeat searches accumulate a light fundamentals history.
+            await persist_live_fundamentals(session, live)
         # Live price performance only when the DB had none (untracked names).
         if perf is None:
             perf = await fetch_live_performance(candidates or [query])

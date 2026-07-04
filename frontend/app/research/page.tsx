@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 import { Microscope, Search } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
@@ -13,9 +14,22 @@ import { cn } from "@/lib/utils";
 /**
  * Deep Research (Phase 6). Type any company → PFIP resolves the ticker, gathers
  * fundamentals/filings/price/news, and writes a cited decision-support dossier.
+ *
+ * Accepts a ``?q=<name>`` query param (used by the "Research this" one-click on
+ * the Events feed) — it pre-fills the box and auto-runs the dossier on load.
  */
 export default function ResearchPage() {
-  const [query, setQuery] = React.useState("");
+  return (
+    <React.Suspense fallback={null}>
+      <ResearchInner />
+    </React.Suspense>
+  );
+}
+
+function ResearchInner() {
+  const params = useSearchParams();
+  const initialQ = params.get("q")?.trim() ?? "";
+  const [query, setQuery] = React.useState(initialQ);
   const research = useResearch();
   const d = research.data;
 
@@ -24,6 +38,16 @@ export default function ResearchPage() {
     const q = query.trim();
     if (q) research.mutate({ query: q });
   };
+
+  // Auto-run once when arriving with a ?q= param (deep link from Events, etc.).
+  const autoRan = React.useRef(false);
+  React.useEffect(() => {
+    if (initialQ && !autoRan.current) {
+      autoRan.current = true;
+      research.mutate({ query: initialQ });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQ]);
 
   return (
     <div className="space-y-6">
@@ -190,6 +214,7 @@ const METRIC_ORDER: { key: string; label: string; fmt: (v: number) => string }[]
   { key: "net_margin", label: "Net margin", fmt: pct },
   { key: "operating_margin", label: "Op margin", fmt: pct },
   { key: "roe", label: "ROE", fmt: pct },
+  { key: "roce", label: "ROCE", fmt: pct },
   { key: "roa", label: "ROA", fmt: pct },
   { key: "debt_to_equity", label: "Debt/Equity", fmt: ratio },
   { key: "current_ratio", label: "Current ratio", fmt: ratio },

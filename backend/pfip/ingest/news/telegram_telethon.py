@@ -23,13 +23,24 @@ from pfip.ingest._common.upsert import upsert_news
 
 log = get_logger("pfip.ingest.news.telegram_telethon")
 
-# Curated list per plan §5.3 — edit in .env via TELEGRAM_CHANNELS (comma-sep).
+# Default public channels. Override entirely via the ``TELEGRAM_CHANNELS`` env
+# var (comma-separated usernames) — that's the intended way to point PFIP at the
+# finance/community channels YOU trust, without a code change.
 DEFAULT_CHANNELS: tuple[str, ...] = (
     "ZeroHedgeCryptoNews",
     "cryptocom",
     "binanceannouncements",
     "CoinDeskTelegram",
 )
+
+
+def _configured_channels() -> tuple[str, ...]:
+    """Channels from ``TELEGRAM_CHANNELS`` (comma-separated), else the defaults."""
+    raw = os.environ.get("TELEGRAM_CHANNELS", "").strip()
+    if not raw:
+        return DEFAULT_CHANNELS
+    chans = tuple(c.strip().lstrip("@") for c in raw.split(",") if c.strip())
+    return chans or DEFAULT_CHANNELS
 
 
 async def _read_channel(client: Any, username: str, limit: int = 50) -> list[dict[str, Any]]:
@@ -68,8 +79,9 @@ async def _read_channel(client: Any, username: str, limit: int = 50) -> list[dic
 
 
 async def fetch_telegram(
-    channels: Iterable[str] = DEFAULT_CHANNELS, limit: int = 50
+    channels: Iterable[str] | None = None, limit: int = 50
 ) -> list[dict[str, Any]]:
+    channels = channels if channels is not None else _configured_channels()
     api_id = os.environ.get("TELEGRAM_API_ID", "").strip()
     api_hash = os.environ.get("TELEGRAM_API_HASH", "").strip()
     session_path = os.environ.get("TELEGRAM_SESSION_PATH", "pfip_telegram")
@@ -94,7 +106,7 @@ async def fetch_telegram(
 
 
 async def ingest_telegram(
-    channels: Iterable[str] = DEFAULT_CHANNELS,
+    channels: Iterable[str] | None = None,
     limit: int = 50,
     session: AsyncSession | None = None,
 ) -> int:

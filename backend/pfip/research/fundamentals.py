@@ -35,6 +35,19 @@ log = get_logger("pfip.research.fundamentals")
 
 _AV_BASE = "https://www.alphavantage.co/query"
 
+
+def alphavantage_key() -> str:
+    """Alpha Vantage key, tolerating both env-var spellings.
+
+    The canonical name is ``ALPHAVANTAGE_API_KEY``, but ``ALPHA_VANTAGE_API_KEY``
+    (with the underscore) is an easy mistake to make in a hand-edited ``.env``;
+    accept either so a misspelled key never silently disables the source.
+    """
+    return (
+        os.environ.get("ALPHAVANTAGE_API_KEY") or os.environ.get("ALPHA_VANTAGE_API_KEY") or ""
+    ).strip()
+
+
 # Alpha Vantage OVERVIEW field -> our canonical key_metrics name.
 _AV_METRIC_MAP: dict[str, str] = {
     "PERatio": "pe_ratio",
@@ -98,7 +111,7 @@ async def _av_get(params: dict[str, str]) -> dict[str, Any]:
 
 async def _alphavantage_overview(symbols: list[str], resolved: dict[str, Any]) -> dict[str, Any]:
     """Fetch OVERVIEW for the first AV-candidate that returns a real company."""
-    key = os.environ.get("ALPHAVANTAGE_API_KEY", "").strip()
+    key = alphavantage_key()
     if not key:
         return {}
     for av_sym in _av_candidates(symbols, resolved):
@@ -127,6 +140,71 @@ async def _alphavantage_overview(symbols: list[str], resolved: dict[str, Any]) -
             "industry": data.get("Industry"),
             "exchange": data.get("Exchange"),
             "currency": data.get("Currency"),
+            "key_metrics": metrics,
+        }
+    return {}
+
+
+# Screener.in top-ratio card key -> our canonical key_metrics name. Screener is
+# the reliable INDIA source (reachable from the VM; AV/yfinance are not).
+_SCREENER_MAP: dict[str, str] = {
+    "stock_p_e": "pe_ratio",
+    "book_value": "book_value",
+    "dividend_yield": "dividend_yield",
+    "roce": "roce",
+    "roe": "roe",
+    "current_price": "current_price",
+}
+
+
+def _is_indian(symbols: list[str], resolved: dict[str, Any]) -> bool:
+    exch = (resolved.get("exchange") or "").upper()
+    if "NSE" in exch or "BSE" in exch:
+        return True
+    return any(s.upper().endswith((".NS", ".BO")) for s in symbols)
+
+
+async def _screener_overview(symbols: list[str], resolved: dict[str, Any]) -> dict[str, Any]:
+    """Live fundamentals for an Indian name via screener.in (VM-reachable)."""
+    from pfip.ingest.indian_equities.screener_fundamentals import _fetch_page, _parse_ratios
+
+    seen: set[str] = set()
+    for s in symbols:
+        base = s.split(".")[0].strip().upper()
+        if not base or base in seen:
+            continue
+        seen.add(base)
+        try:
+            html = await _fetch_page(base)
+        except Exception as e:  # noqa: BLE001
+            log.warning(f"screener {base} failed: {type(e).__name__}: {e}")
+            continue
+        ratios = _parse_ratios(html)
+        if not ratios:
+            continue
+        metrics: dict[str, Any] = {}
+        for sk, canon in _SCREENER_MAP.items():
+            if sk in ratios:
+                # Screener reports ROE/ROCE/yield as PERCENTAGES (38.8), but our
+                # canonical convention (matching AV/finnhub) is FRACTIONS (0.388)
+                # so the UI/formatter treat every source identically.
+                metrics[canon] = (
+                    ratios[sk] / 100.0 if canon in ("roe", "roce", "dividend_yield") else ratios[sk]
+                )
+        # Screener market cap is in ₹ crore → absolute ₹ for consistent formatting.
+        if "market_cap" in ratios:
+            metrics["market_cap"] = ratios["market_cap"] * 1e7
+        if not metrics:
+            continue
+        return {
+            "source": "screener",
+            "matched_symbol": f"{base}.NS",
+            "name": resolved.get("company"),
+            "description": None,
+            "sector": None,
+            "industry": None,
+            "exchange": "NSE",
+            "currency": "INR",
             "key_metrics": metrics,
         }
     return {}
@@ -228,6 +306,13 @@ async def fetch_live_fundamentals(symbols: list[str], resolved: dict[str, Any]) 
     exchange, currency, key_metrics}`` — ``key_metrics`` keyed exactly like
     ``diligence._extract_key_metrics``.
     """
+    # India: screener.in first — it's the only fundamentals source reachable from
+    # the VM for Indian names (AV barely covers them; Yahoo 429s the datacenter IP).
+    if _is_indian(symbols, resolved):
+        sc = await _screener_overview(symbols, resolved)
+        if sc.get("key_metrics"):
+            return sc
+
     av = await _alphavantage_overview(symbols, resolved)
     if av.get("key_metrics"):
         return av
@@ -246,6 +331,39 @@ async def fetch_live_fundamentals(symbols: list[str], resolved: dict[str, Any]) 
             yfo["description"] = av.get("description")
         return yfo
     return av or yfo
+
+
+async def persist_live_fundamentals(session: Any, live: dict[str, Any]) -> int:
+    """Best-effort upsert of a live-fetched fundamentals dict so repeat searches
+    accumulate history. Stores each canonical metric under its own field name
+    keyed by the matched symbol. Never raises; returns rows written (0 on skip).
+    """
+    sym = (live or {}).get("matched_symbol")
+    metrics = (live or {}).get("key_metrics") or {}
+    if not sym or not metrics:
+        return 0
+    from datetime import date
+
+    from pfip.ingest._common.upsert import upsert_fundamentals
+
+    today = date.today()
+    rows = [
+        {
+            "as_of_date": today,
+            "report_date": today,
+            "symbol": str(sym).upper(),
+            "field": k,
+            "value": v,
+            "source": live.get("source") or "live",
+        }
+        for k, v in metrics.items()
+        if v is not None
+    ]
+    try:
+        return await upsert_fundamentals(session, rows)
+    except Exception as e:  # noqa: BLE001 — persistence is a bonus, never blocks
+        log.warning(f"persist_live_fundamentals failed: {type(e).__name__}: {e}")
+        return 0
 
 
 async def fetch_live_performance(symbols: list[str]) -> dict[str, Any] | None:

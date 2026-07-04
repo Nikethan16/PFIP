@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
+import { Microscope } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -110,6 +112,16 @@ export default function EventsPage() {
                   <span className="font-mono">materiality {e.materiality.toFixed(2)}</span>
                 </div>
               </div>
+              {e.ticker ? (
+                <Link
+                  href={`/research?q=${encodeURIComponent(e.ticker)}`}
+                  className="inline-flex shrink-0 items-center gap-1 border border-border/60 px-2 py-1 font-label text-[10px] uppercase tracking-wider text-muted-foreground transition-colors hover:border-foreground/50 hover:text-foreground"
+                  title={`Deep-research ${e.ticker}`}
+                >
+                  <Microscope className="h-3 w-3" />
+                  Research
+                </Link>
+              ) : null}
             </div>
           ))}
         </div>

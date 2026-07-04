@@ -410,20 +410,63 @@ async def node_retrieve_diligence(db: AsyncSession, state: AgentState) -> AgentS
     if not is_diligence_query(state.user_query):
         return state
     symbol = await extract_symbol(db, state.user_query)
-    if not symbol:
-        logger.debug("[agent] diligence query but no symbol resolved; skipping")
-        return state
-    try:
-        from pfip.diligence.service import build_diligence
+    aggregate: dict[str, Any] | None = None
+    if symbol:
+        try:
+            from pfip.diligence.service import build_diligence
 
-        aggregate = await build_diligence(db, symbol)
-    except Exception as exc:  # noqa: BLE001 — never break the stream on aggregation
-        logger.warning(f"[agent] diligence aggregation failed for {symbol}: {exc}")
+            aggregate = await build_diligence(db, symbol)
+        except Exception as exc:  # noqa: BLE001 — never break the stream on aggregation
+            logger.warning(f"[agent] diligence aggregation failed for {symbol}: {exc}")
+            aggregate = None
+
+    if aggregate and aggregate.get("found"):
+        state.retrieved_db.append({"kind": "diligence", **_summarize_diligence(aggregate)})
+        state.db_citations.append(f"db://diligence/{symbol}")
+        logger.debug(f"[agent] attached diligence aggregate for {symbol}")
         return state
-    state.retrieved_db.append({"kind": "diligence", **_summarize_diligence(aggregate)})
-    state.db_citations.append(f"db://diligence/{symbol}")
-    logger.debug(f"[agent] attached diligence aggregate for {symbol}")
+
+    # Untracked or unresolved name → on-demand live research so chat can cover
+    # ANY company ("research Waree Energies"), not just tracked tickers.
+    try:
+        await _attach_live_research(db, state)
+    except Exception as exc:  # noqa: BLE001 — enrichment is best-effort
+        logger.warning(f"[agent] live research enrichment failed: {exc}")
     return state
+
+
+async def _attach_live_research(db: AsyncSession, state: AgentState) -> None:
+    """Resolve the query to a ticker and fetch live fundamentals for a company
+    that isn't in the tracked universe, attaching a compact ``diligence`` row so
+    synthesis grounds a research summary in real numbers (and persisting them)."""
+    from pfip.research.agent import _candidate_symbols, _resolve_ticker
+    from pfip.research.fundamentals import fetch_live_fundamentals, persist_live_fundamentals
+
+    resolved = await _resolve_ticker(state.user_query)
+    candidates = _candidate_symbols(resolved, state.user_query)
+    live = await fetch_live_fundamentals(candidates or [state.user_query], resolved)
+    if not live.get("key_metrics"):
+        logger.debug("[agent] live research: no fundamentals resolved; skipping")
+        return
+    await persist_live_fundamentals(db, live)
+    sym = live.get("matched_symbol") or resolved.get("ticker") or state.user_query
+    state.retrieved_db.append(
+        {
+            "kind": "diligence",
+            "symbol": sym,
+            "company": live.get("name") or resolved.get("company"),
+            "source": live.get("source"),
+            "is_tracked": False,
+            "fundamentals_live": True,
+            "key_metrics": live.get("key_metrics"),
+            "sector": live.get("sector"),
+            "industry": live.get("industry"),
+            "currency": live.get("currency"),
+            "note": "on-demand live fundamentals — not in tracked universe; verify independently",
+        }
+    )
+    state.db_citations.append(f"db://research/{sym}")
+    logger.debug(f"[agent] attached live research for {sym} ({live.get('source')})")
 
 
 # ---------------------------------------------------------------------------

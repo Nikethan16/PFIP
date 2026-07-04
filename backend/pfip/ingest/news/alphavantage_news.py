@@ -48,7 +48,9 @@ async def _fetch(api_key: str, topics: str) -> dict[str, Any]:
 
 
 async def fetch_alphavantage_news(topics: str = "financial_markets") -> list[dict[str, Any]]:
-    key = os.environ.get("ALPHAVANTAGE_API_KEY", "").strip()
+    from pfip.research.fundamentals import alphavantage_key
+
+    key = alphavantage_key()
     if not key:
         log.warning("ALPHAVANTAGE_API_KEY not set, alphavantage_news no-op")
         return []
