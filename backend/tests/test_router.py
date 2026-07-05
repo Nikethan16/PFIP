@@ -76,16 +76,48 @@ def _settings(**kwargs) -> Settings:  # type: ignore[no-untyped-def]
     ],
 )
 def test_sensitive_strict_forces_local(task: TaskType) -> None:
-    """Any non-chat task + Sensitive + strict → ollama, no fallbacks.
+    """Any task + Sensitive + strict + cloud fallback OFF → ollama, no fallbacks
+    (the hard privacy boundary).
 
     Chat is the deliberate exception (see test_chat_sensitive_cloud_fallback):
     it may cloud-fall-back so the assistant still works where no local LLM runs.
     """
-    s = _settings(groq_api_key="key", gemini_api_key="key", llm_privacy_strict=True)
+    s = _settings(
+        groq_api_key="key",
+        gemini_api_key="key",
+        llm_privacy_strict=True,
+        allow_cloud_fallback=False,
+    )
     decision = route(task, Sensitivity.SENSITIVE, settings=s)
     assert decision.provider == "ollama"
     assert decision.model == MODELS["ollama_default"]
     assert decision.fallback_chain == []
+
+
+@pytest.mark.parametrize(
+    "task",
+    [TaskType.MORNING_BRIEF, TaskType.POST_MORTEM, TaskType.REASONING, TaskType.QUICK_SUMMARY],
+)
+def test_sensitive_strict_cloud_fallback_when_enabled(task: TaskType) -> None:
+    """Sensitive + strict + cloud fallback ON (default) → local PRIMARY but a
+    non-empty cloud fallback chain, so briefs/post-mortems degrade to Groq on a
+    GPU-less host instead of dying with "LLM unavailable". Embeddings stay pure.
+    """
+    s = _settings(groq_api_key="key", llm_privacy_strict=True, allow_cloud_fallback=True)
+    decision = route(task, Sensitivity.SENSITIVE, settings=s)
+    assert decision.provider == "ollama"
+    assert decision.model == MODELS["ollama_default"]
+    assert MODELS["groq_70b"] in decision.fallback_chain
+
+
+def test_sensitive_embedding_never_gets_cloud_fallback() -> None:
+    """Embeddings must never mix vector spaces — no cloud chat fallback, even
+    with cloud fallback enabled."""
+    s = _settings(nvidia_nim_api_key="key", llm_privacy_strict=True, allow_cloud_fallback=True)
+    decision = route(TaskType.EMBEDDING, Sensitivity.SENSITIVE, settings=s)
+    assert decision.provider == "ollama"
+    assert decision.model == MODELS["ollama_embed"]
+    assert MODELS["groq_70b"] not in decision.fallback_chain
 
 
 def test_chat_sensitive_strict_local_when_cloud_disabled() -> None:

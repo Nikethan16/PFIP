@@ -67,11 +67,18 @@ class _PricePoint:
 
 async def _latest_two(db: AsyncSession, symbol: str, timeframe: str = "1d") -> _PricePoint | None:
     try:
+        # Pin to the source with the freshest bar: a symbol ingested from two
+        # sources otherwise yields duplicate timestamps and a bogus 0% change.
         stmt = sql_text(
             """
             SELECT time, close
             FROM ohlcv
             WHERE symbol = :symbol AND timeframe = :tf
+              AND source = (
+                  SELECT source FROM ohlcv
+                  WHERE symbol = :symbol AND timeframe = :tf
+                  ORDER BY time DESC LIMIT 1
+              )
             ORDER BY time DESC
             LIMIT 2
             """
@@ -92,14 +99,33 @@ async def _latest_two(db: AsyncSession, symbol: str, timeframe: str = "1d") -> _
     )
 
 
+# Bar older than this (vs. now) gets a staleness flag in the rendered brief —
+# presenting a week-old close as an "overnight move" breaks trust silently.
+_STALE_AFTER_DAYS = 3
+
+
+def _staleness(bar_time: datetime | None) -> tuple[str, bool]:
+    """(human as-of string, is_stale) for a bar timestamp."""
+    if bar_time is None:
+        return "n/a", True
+    age_days = (datetime.now(tz=timezone.utc) - bar_time).days
+    return bar_time.strftime("%Y-%m-%d"), age_days > _STALE_AFTER_DAYS
+
+
 async def _overnight_moves(db: AsyncSession) -> list[dict[str, Any]]:
+    """Market-pulse proxies that actually exist in the OHLCV table.
+
+    The original hardcoded list (BTC/USD, ^GSPC, ^NSEI, USDINR=X) matched ZERO
+    ingested symbols, so this section was permanently — and misleadingly —
+    empty. These are the tracked proxies the pipeline really fills.
+    """
     symbols = [
-        ("BTC/USD", "Bitcoin"),
-        ("ETH/USD", "Ether"),
-        ("SOL/USD", "Solana"),
-        ("^GSPC", "S&P 500"),
-        ("^NSEI", "Nifty 50"),
-        ("USDINR=X", "USDINR"),
+        ("BTC-USD", "Bitcoin"),
+        ("ETH-USD", "Ether"),
+        ("SOL-USD", "Solana"),
+        ("SPY", "S&P 500 (SPY)"),
+        ("QQQ", "Nasdaq 100 (QQQ)"),
+        ("NIFTYBEES.NS", "NIFTY 50 (NIFTYBEES)"),
     ]
     out: list[dict[str, Any]] = []
     for sym, label in symbols:
@@ -115,6 +141,41 @@ async def _overnight_moves(db: AsyncSession) -> list[dict[str, Any]]:
                 "pct_change": pt.pct_change,
             }
         )
+    # USD/INR comes from the fx_rates table, not OHLCV.
+    try:
+        fx_rows = list(
+            (
+                await db.execute(
+                    sql_text(
+                        "SELECT rate_date, rate FROM fx_rates "
+                        "WHERE base = 'USD' AND quote = 'INR' "
+                        "ORDER BY rate_date DESC LIMIT 2"
+                    )
+                )
+            ).mappings()
+        )
+        if fx_rows:
+            latest_fx = fx_rows[0]
+            prev_fx = fx_rows[1] if len(fx_rows) > 1 else None
+            rate = float(latest_fx["rate"])
+            prev_rate = float(prev_fx["rate"]) if prev_fx else None
+            rd = latest_fx["rate_date"]
+            fx_time = (
+                rd
+                if isinstance(rd, datetime)
+                else datetime(rd.year, rd.month, rd.day, tzinfo=timezone.utc)
+            )
+            out.append(
+                {
+                    "symbol": "USD/INR",
+                    "label": "USDINR",
+                    "time": fx_time,
+                    "close": rate,
+                    "pct_change": ((rate - prev_rate) / prev_rate * 100.0 if prev_rate else None),
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"usdinr fetch failed: {exc}")
     return out
 
 
@@ -153,7 +214,9 @@ async def _top_news_per_watchlist(
         return {}
     if not watchlist:
         return {}
-    cutoff = datetime.now(tz=timezone.utc) - timedelta(days=1)
+    # 48h window: the nightly cadence means a strict 24h cutoff misses most
+    # stories on weekends/Mondays and left this section permanently empty.
+    cutoff = datetime.now(tz=timezone.utc) - timedelta(days=2)
     out: dict[str, list[dict[str, Any]]] = {}
     for sym in watchlist:
         try:
@@ -232,6 +295,7 @@ async def _watchlist_deltas(db: AsyncSession) -> list[dict[str, Any]]:
                 "pct_change": pt.pct_change,
                 "close": float(pt.close),
                 "unusual_volume": unusual,
+                "time": pt.time,
             }
         )
     # biggest movers: sorted by abs pct change
@@ -355,12 +419,18 @@ def _fmt_pct(p: float | None) -> str:
 
 def _section1(overnight: list[dict[str, Any]]) -> str:
     if not overnight:
-        return "## 1. Overnight moves\n\n_No OHLCV rows — run ingest flows._\n"
+        return (
+            "## 1. Overnight moves\n\n"
+            "_No recent bars for the market proxies (BTC-USD, SPY, NIFTYBEES.NS) — "
+            "check /ops/sources for the price ingest status._\n"
+        )
     lines = ["## 1. Overnight moves", ""]
     for row in overnight:
+        as_of, stale = _staleness(row.get("time"))
+        stale_tag = f" · ⚠️ stale ({as_of})" if stale else f" · as of {as_of}"
         lines.append(
             f"- **{row['label']}** ({row['symbol']}): `{row['close']:,.4f}` "
-            f"({_fmt_pct(row['pct_change'])}) "
+            f"({_fmt_pct(row['pct_change'])}){stale_tag} "
             f"[`db://ohlcv/{row['symbol']}@{row['time'].isoformat()}`]"
         )
     return "\n".join(lines) + "\n"
@@ -413,8 +483,11 @@ def _section5(deltas: list[dict[str, Any]]) -> str:
     lines = ["## 5. Watchlist deltas (biggest movers · unusual volume flagged)", ""]
     for r in deltas:
         flag = " · ⚡ unusual vol" if r["unusual_volume"] else ""
+        as_of, stale = _staleness(r.get("time"))
+        # A week-old bar must never masquerade as today's move.
+        stale_tag = f" · ⚠️ stale ({as_of})" if stale else ""
         lines.append(
-            f"- **{r['symbol']}**: `{r['close']:,.4f}` ({_fmt_pct(r['pct_change'])}){flag}"
+            f"- **{r['symbol']}**: `{r['close']:,.4f}` ({_fmt_pct(r['pct_change'])}){flag}{stale_tag}"
         )
     return "\n".join(lines) + "\n"
 

@@ -27,6 +27,13 @@ Do NOT re-compute percentages or currencies; use them as given. If a percent
 or price looks absurd (e.g., BTC at $1.00) flag it as "stale data suspected"
 rather than incorporating it.
 
+**Freshness honesty.** The data block may mark a bar as stale (an `as of
+<date>` older than the run, or an explicit `stale` flag). When it does, the
+overnight/mover line MUST say "as of <date>" — never present a multi-day-old
+close as an overnight move. If every price proxy is stale, lead the topline
+with that fact ("prices are N days stale — see /ops/sources") instead of a
+market take built on old bars.
+
 ## Forbidden
 
 - Recommendations to buy, sell, or hold. This is a brief, not a trade

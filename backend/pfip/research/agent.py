@@ -33,17 +33,28 @@ _RESOLVE_SYS = (
 
 _DOSSIER_SYS = (
     "You are a sober equity-research analyst writing a DECISION-SUPPORT dossier "
-    "(never a buy/sell recommendation). Ground every financial figure and recent "
-    "event in the EVIDENCE provided. Where evidence is thin or missing, say so "
-    "plainly — never fabricate financials, orders, or filings. If EVIDENCE has a "
-    "'business_overview' (sourced company profile) use it for 'What they do'; "
-    "otherwise you may use general knowledge there and should flag it as such. "
-    "When 'fundamentals_are_live' is true the ratios are a fresh real-time pull "
-    "(state the as-of is today). Output these markdown sections:\n"
-    "**What they do** · **Financial health** · **Recent developments** · "
-    "**Bull case** · **Bear case** · **Key risks** · **Market sentiment** · "
-    "**What to verify yourself**\n"
-    "Be concise and concrete. End with exactly: "
+    "(never a buy/sell recommendation).\n\n"
+    "GROUNDING RULES (non-negotiable):\n"
+    "- Ground every financial figure and event in the EVIDENCE JSON. Never "
+    "fabricate financials, orders, filings, or price levels.\n"
+    "- Quote each metric with its UNIT and scale exactly as given: ratios like "
+    "P/E as '22.7x'; percentages (ROCE, ROE, margins, growth, dividend yield) "
+    "as e.g. '38.8%'; market cap and prices in their stated currency (₹ for "
+    "INR, $ for USD) with thousands separators. Do NOT invent a currency.\n"
+    "- When 'fundamentals_are_live' is true, say the ratios are a live pull as "
+    "of today; otherwise cite the fundamentals 'as_of_date' if present.\n"
+    "- If a section has no supporting evidence, write one honest line saying so "
+    "(e.g. 'No recent filings in the evidence set') — do NOT pad with generic "
+    "advice like 'analyse the annual report' or 'revenue growth is important'.\n"
+    "- For 'What they do': use EVIDENCE 'business_overview' if present; else you "
+    "may use general knowledge but must prefix it with 'From general knowledge "
+    "(unverified):'.\n\n"
+    "OUTPUT — these markdown sections, in order, each 1-4 tight sentences or "
+    "bullets:\n"
+    "**What they do** · **Financial health** (lead with the actual ratios) · "
+    "**Recent developments** · **Bull case** · **Bear case** · **Key risks** · "
+    "**Market sentiment** · **What to verify yourself**\n\n"
+    "Concrete over verbose. No hedging filler. End with exactly: "
     "'Decision-support only — not investment advice; verify independently.'"
 )
 
@@ -66,9 +77,16 @@ async def _resolve_ticker(query: str) -> dict[str, Any]:
         )
         blob = raw[raw.find("{") : raw.rfind("}") + 1]
         d = json.loads(blob)
+        # LLMs frequently emit the STRING "null" for an unknown ticker, which
+        # is truthy — normalise it (and "none"/"n/a") to a real None so
+        # downstream "did we resolve?" checks don't treat failure as success.
+        ticker_raw = d.get("ticker")
+        ticker = str(ticker_raw).strip() if ticker_raw is not None else ""
+        if ticker.lower() in ("", "null", "none", "n/a"):
+            ticker = None  # type: ignore[assignment]
         return {
             "company": d.get("company") or query,
-            "ticker": (d.get("ticker") or None),
+            "ticker": ticker,
             "exchange": d.get("exchange"),
             "confident": bool(d.get("confident")),
         }
@@ -201,6 +219,9 @@ async def build_research_dossier(session: Any, query: str) -> dict[str, Any]:
     news = await _company_news(session, candidates or [query], query)
 
     is_tracked = bool(diligence.get("found"))
+    is_india = any((s or "").upper().endswith((".NS", ".BO")) for s in (candidates or [])) or (
+        (resolved.get("exchange") or "").upper() in ("NSE", "BSE")
+    )
     fundamentals_section = diligence.get("fundamentals")
     live: dict[str, Any] = {}
 
@@ -249,6 +270,52 @@ async def build_research_dossier(session: Any, query: str) -> dict[str, Any]:
         ],
     }
 
+    # Rich fundamentals: multi-year statements (US via AV, on-demand) + a peer
+    # comparison over whatever metrics we have stored. Both best-effort.
+    statements: dict[str, Any] = {}
+    if not is_india and matched:
+        try:
+            from pfip.research.statements import fetch_us_statements
+
+            statements = await fetch_us_statements(matched)
+        except Exception as e:  # noqa: BLE001
+            log.warning(f"statements fetch failed: {type(e).__name__}: {e}")
+
+    peers_block: dict[str, Any] = {}
+    try:
+        from pfip.diligence.peers import compare, load_key_metrics, peers_for
+
+        target_sym = matched or (candidates[0] if candidates else query)
+        peer_syms = peers_for(target_sym)
+        if peer_syms:
+            metrics_by = await load_key_metrics(session, [target_sym, *peer_syms])
+            # Seed the target's own metrics from the fundamentals we just built.
+            tgt_metrics = (fundamentals_section or {}).get("key_metrics") or {}
+            if tgt_metrics:
+                metrics_by.setdefault(target_sym, {}).update(
+                    {k: float(v) for k, v in tgt_metrics.items() if isinstance(v, (int, float))}
+                )
+            if len(metrics_by) >= 2:
+                peers_block = compare(target_sym, metrics_by)
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"peer comparison failed: {type(e).__name__}: {e}")
+
+    # Feed the multi-year trend + peer standing into the LLM evidence so the
+    # dossier can reason about trajectory and relative valuation, not just a
+    # point-in-time snapshot.
+    if statements.get("trend"):
+        evidence["statements_trend"] = statements["trend"]
+    if peers_block.get("fields"):
+        evidence["peer_comparison"] = {
+            f: {
+                "target": d["target"],
+                "peer_median": d["peer_median"],
+                "rank": d["rank"],
+                "n_peers": d["n_peers"],
+            }
+            for f, d in peers_block["fields"].items()
+        }
+
     dossier_md = "Dossier synthesis unavailable."
     try:
         from pfip.agent.llm_client import ChatMessage, get_llm_client
@@ -291,9 +358,17 @@ async def build_research_dossier(session: Any, query: str) -> dict[str, Any]:
             or None
         ),
         "news": news,
+        "statements": statements or None,
+        "peers": peers_block or None,
         "dossier_markdown": dossier_md,
         # Still nudge to watchlist for ongoing tracking, even though the one-off
         # dossier is now rich (live fundamentals don't get stored / charted).
-        "suggest_add_to_watchlist": (resolved.get("ticker") is not None and not is_tracked),
+        # Only when something actually resolved: suggesting "add to watchlist"
+        # for a company we couldn't identify (and found zero data for) is noise.
+        "suggest_add_to_watchlist": (
+            resolved.get("ticker") is not None
+            and not is_tracked
+            and (bool(resolved.get("confident")) or bool(live.get("key_metrics")))
+        ),
         "disclaimer": "Decision-support research only — not investment advice. Verify independently.",
     }

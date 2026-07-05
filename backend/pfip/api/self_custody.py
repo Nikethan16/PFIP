@@ -22,10 +22,11 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 
@@ -162,8 +163,18 @@ async def list_wallets(db: DbSession, user: CurrentUser) -> list[WalletOut]:
 
 
 @router.post("/wallets", response_model=WalletOut, status_code=status.HTTP_201_CREATED)
-async def add_wallet(body: WalletCreate, db: DbSession, user: CurrentUser) -> WalletOut:
-    """Add a wallet. Validates the address format and rejects duplicates."""
+async def add_wallet(
+    body: WalletCreate,
+    db: DbSession,
+    user: CurrentUser,
+    background_tasks: BackgroundTasks,
+) -> WalletOut:
+    """Add a wallet. Validates the address format and rejects duplicates.
+
+    Kicks off a background balance fetch so the wallet's on-chain balance shows
+    up within seconds (no waiting for the nightly self-custody flow). The
+    fetch runs after the response is sent and manages its own DB session.
+    """
     try:
         _validate_address(body.chain, body.address)
     except ValueError as exc:
@@ -201,6 +212,13 @@ async def add_wallet(body: WalletCreate, db: DbSession, user: CurrentUser) -> Wa
     db.add(row)
     await db.commit()
     await db.refresh(row)
+
+    # Fire-and-forget balance fetch (own session) so the wallet is priced within
+    # seconds instead of at the next nightly run. Snapshot the plain fields the
+    # task needs — the ORM row is bound to this soon-to-close request session.
+    added = SimpleNamespace(chain=row.chain, address=row.address)
+    background_tasks.add_task(_sync_wallets_now, [added], session=None)
+
     return WalletOut(
         id=row.id,
         chain=row.chain,
@@ -232,13 +250,46 @@ async def delete_wallet(wallet_id: UUID, db: DbSession, user: CurrentUser) -> di
     return {"deleted": str(wallet_id)}
 
 
-@router.get("/wallets/balances", response_model=list[WalletBalanceOut])
-async def wallet_balances(db: DbSession, user: CurrentUser) -> list[WalletBalanceOut]:
-    """Latest synced balance per wallet.
+async def _sync_wallets_now(
+    wallets: list[SelfCustodyAddressRow], *, session: DbSession | None = None
+) -> None:
+    """Fetch live balances for the given wallets and persist the snapshots.
 
-    Joins each of the caller's wallets to the most recent ``fundamentals`` row
-    (``symbol = address``, ``field = <chain balance field>``). Wallets the ingest
-    flow hasn't synced yet come back with ``synced=False`` and null balances.
+    Bounded best-effort: each chain adapter is keyless/free (mempool.space,
+    etherscan, solscan) and every failure is swallowed — a slow explorer must
+    never break the caller. ``session=None`` (background use) lets each adapter
+    open + own its session; an in-request refresh passes the request session.
+    """
+    by_chain: dict[str, list[str]] = {}
+    for w in wallets:
+        by_chain.setdefault(w.chain, []).append(w.address)
+    try:
+        if by_chain.get("btc"):
+            from pfip.ingest.self_custody.mempool_btc import ingest_mempool_btc
+
+            await ingest_mempool_btc(by_chain["btc"], session=session)
+        if by_chain.get("eth"):
+            from pfip.ingest.self_custody.etherscan import ingest_etherscan
+
+            await ingest_etherscan(by_chain["eth"], session=session)
+        if by_chain.get("sol"):
+            from pfip.ingest.self_custody.solscan import ingest_solscan
+
+            await ingest_solscan(by_chain["sol"], session=session)
+    except Exception:  # noqa: BLE001 — on-demand sync is best-effort
+        pass
+
+
+@router.get("/wallets/balances", response_model=list[WalletBalanceOut])
+async def wallet_balances(
+    db: DbSession, user: CurrentUser, sync: bool = False
+) -> list[WalletBalanceOut]:
+    """Latest balance per wallet.
+
+    Read-only by default (fast, no network): joins each wallet to the most
+    recent ``fundamentals`` snapshot. A freshly-added wallet is synced in the
+    background by the POST handler, so its balance appears within seconds. Pass
+    ``?sync=true`` to force a live refresh of all wallets in-request.
     """
     stmt = (
         select(SelfCustodyAddressRow)
@@ -246,6 +297,9 @@ async def wallet_balances(db: DbSession, user: CurrentUser) -> list[WalletBalanc
         .order_by(SelfCustodyAddressRow.added_at.desc())
     )
     wallets = (await db.execute(stmt)).scalars().all()
+
+    if wallets and sync:
+        await _sync_wallets_now(list(wallets), session=db)
 
     out: list[WalletBalanceOut] = []
     for w in wallets:

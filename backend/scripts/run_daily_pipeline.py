@@ -45,7 +45,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Iterable
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from pfip.core.logging import get_logger
 from pfip.db.session import get_sessionmaker
@@ -205,6 +205,9 @@ async def _us_watchlist_symbols() -> list[str]:
                     """
                     SELECT symbol FROM watchlist
                     WHERE upper(market) IN ('US', 'US_EQUITY', 'US_ETF', 'SPY', 'QQQ', 'DIA', 'VTI')
+                       -- US-listed metal ETFs (GLD/SLV) belong in the US fetch;
+                       -- keep them explicit, not regex-accidental.
+                       OR (upper(market) = 'METAL' AND symbol NOT LIKE '%.%')
                        OR (symbol ~ '^[A-Z]{1,5}$' AND symbol NOT LIKE '%.%')
                     """
                 )
@@ -214,6 +217,48 @@ async def _us_watchlist_symbols() -> list[str]:
     except Exception as e:  # noqa: BLE001
         log.warning(f"us watchlist read failed: {type(e).__name__}: {e}")
         return list(US_SYMBOLS)
+
+
+async def _stale_us_symbols(*, max_age_days: int = 2, cap: int = 8) -> list[str]:
+    """US watchlist symbols whose latest daily bar is older than ``max_age_days``
+    (or missing entirely), oldest-first, capped at ``cap`` to respect the shared
+    Alpha Vantage free-tier budget. This is what makes the AV gap-fill cheap:
+    on a normal day when Tiingo is within quota, nothing is stale → 0 AV calls.
+    """
+    from datetime import datetime as _dt, timezone as _tz
+
+    us = await _us_watchlist_symbols()
+    if not us:
+        return []
+    factory = get_sessionmaker()
+    latest_by: dict[str, Any] = {}
+    try:
+        async with factory() as s:
+            rows = (
+                await s.execute(
+                    text(
+                        "SELECT symbol, MAX(time) AS latest FROM ohlcv "
+                        "WHERE symbol IN :syms AND timeframe = '1d' GROUP BY symbol"
+                    ).bindparams(bindparam("syms", expanding=True)),
+                    {"syms": us},
+                )
+            ).all()
+            latest_by = {sym: latest for sym, latest in rows}
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"stale US scan failed: {type(e).__name__}: {e}")
+        return []
+
+    cutoff = _dt.now(tz=_tz.utc).timestamp() - max_age_days * 86400
+    scored: list[tuple[str, float]] = []
+    for sym in us:
+        latest = latest_by.get(sym)
+        # Never-seen symbols sort first (age = +inf); otherwise by bar age.
+        if latest is None:
+            scored.append((sym, float("inf")))
+        elif latest.timestamp() < cutoff:
+            scored.append((sym, cutoff - latest.timestamp()))
+    scored.sort(key=lambda t: t[1], reverse=True)  # stalest first
+    return [sym for sym, _ in scored[:cap]]
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +325,22 @@ async def stage_ingest(
         return await ingest_stooq(symbols=await _us_watchlist_symbols())
 
     await _guarded(summary, "us_stooq", _us_stooq, timeout=TIMEOUT_US)
+
+    # --- US EOD fallback #3 (Alpha Vantage, keyed) — the ONE US source proven
+    # reachable from the VM. Tiingo silently 0-rows once its monthly quota is
+    # spent and yfinance/stooq are IP-throttled, which left AAPL/NVDA days stale.
+    # AV's free tier is ~25 calls/day, so we only spend it on symbols that are
+    # actually stale, capped to a small budget. ---
+    async def _us_av_gapfill() -> int:
+        from pfip.ingest.us_equities.alphavantage_ohlcv import ingest_alphavantage_daily
+
+        stale = await _stale_us_symbols(max_age_days=2, cap=8)
+        if not stale:
+            return 0
+        log.info(f"[ingest] us_alphavantage gap-fill for stale: {stale}")
+        return await ingest_alphavantage_daily(symbols=stale)
+
+    await _guarded(summary, "us_alphavantage", _us_av_gapfill, timeout=TIMEOUT_US)
 
     # --- India EOD (jugaad) ---
     async def _india() -> int:
@@ -385,17 +446,33 @@ async def _ingest_news() -> dict[str, Any]:
         ("newsdata", ingest_newsdata, 45.0),
     ]
 
+    # Record each sub-source's health individually so keyed news feeds
+    # (alphavantage, newsdata, marketaux, newsapi...) are visible on /ops/sources
+    # instead of being rolled into a single opaque "news" row. A no-op keyed
+    # source (0 rows, no error) then reads as "wrote 0 rows" and pairs with the
+    # keyed_sources block that flags a missing key.
+    from pfip.ingest._common.source_health import record_run as _record_news
+
     per_source: dict[str, Any] = {}
     total = 0
     for name, factory_fn, src_timeout in sources:
+        n_rows = 0
+        src_err: str | None = None
         try:
             n = int(await asyncio.wait_for(factory_fn(), timeout=src_timeout))
             per_source[name] = n
+            n_rows = n
             total += n
         except asyncio.TimeoutError:
             per_source[name] = "timeout"
+            src_err = f"timeout>{src_timeout:.0f}s"
         except Exception as e:  # noqa: BLE001
             per_source[name] = f"error: {type(e).__name__}"
+            src_err = f"{type(e).__name__}: {e}"
+        try:
+            await _record_news(f"news:{name}", rows=n_rows, error=src_err)
+        except Exception:  # noqa: BLE001 — health recording is best-effort
+            pass
 
     # Post-ingest pipeline: dedupe → entity-link → classify → PRUNE → embed.
     pipeline: Any = "skipped"
@@ -904,6 +981,32 @@ async def run_pipeline(
         "results": results,
     }
     log.info("daily pipeline summary:\n" + json.dumps(summary, indent=2, default=str))
+
+    # Top-level run marker so /ops/sources carries a single "did the nightly job
+    # finish, and did anything fail" line above the per-source rows.
+    def _count_failures(obj: Any) -> int:
+        n = 0
+        if isinstance(obj, dict):
+            for v in obj.values():
+                n += _count_failures(v)
+        elif isinstance(obj, list):
+            for v in obj:
+                n += _count_failures(v)
+        elif isinstance(obj, str) and (obj.startswith("error") or obj == "timeout"):
+            n += 1
+        return n
+
+    try:
+        from pfip.ingest._common.source_health import record_run
+
+        failed = _count_failures(results)
+        await record_run(
+            "pipeline:daily",
+            rows=1,
+            error=(f"{failed} sub-source(s) failed/timed out" if failed else None),
+        )
+    except Exception as e:  # noqa: BLE001 — marker is best-effort
+        log.debug(f"pipeline run marker skipped: {e}")
     return summary
 
 

@@ -38,7 +38,11 @@ export default function StressTestPage() {
         <Kpi
           label="Current value"
           value={data ? formatINR(data.current_value_inr) : "—"}
-          hint="marked to market"
+          hint={
+            data?.marking?.usdinr
+              ? `marked to market · USD/INR ${data.marking.usdinr.toFixed(2)}`
+              : "marked to market"
+          }
           loading={isLoading}
         />
         <Kpi

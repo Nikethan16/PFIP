@@ -186,11 +186,12 @@ class ShadowPortfolio:
         """
         as_of = as_of or datetime.now(tz=timezone.utc)
         rows = await self._open_holdings()
+        marks = await self._mark_prices_inr(rows)
         holdings_value = Decimal(0)
         invested = Decimal(0)
         lines: list[dict[str, Any]] = []
         for h in rows:
-            price = await self._latest_close(h.symbol)
+            price = marks.get(h.symbol or "")
             if price is None:
                 price = (h.cost_basis_inr / h.qty) if h.qty > 0 else Decimal(0)
             value = h.qty * Decimal(str(price))
@@ -265,10 +266,15 @@ class ShadowPortfolio:
         actual_symbols = {r.symbol for r in actual_rows if r.symbol}
         shadow_symbols = {r.symbol for r in shadow_rows if r.symbol}
         return {
+            # Cost-basis (invested capital). Kept under the legacy *_value_inr
+            # keys for backward compatibility, duplicated under explicit names
+            # so no consumer ever mistakes invested capital for market value.
             "actual_value_inr": float(actual_value),
             "shadow_value_inr": float(shadow_value),
+            "actual_cost_basis_inr": float(actual_value),
+            "shadow_cost_basis_inr": float(shadow_value),
             "diff_inr": float(shadow_value - actual_value),
-            # Marked-to-market value + performance comparison.
+            # Marked-to-market value (FX-converted) + performance comparison.
             "actual_marked_inr": actual_perf["marked_value_inr"],
             "shadow_marked_inr": shadow_perf["marked_value_inr"],
             "actual_return_pct": actual_perf["return_pct"],
@@ -295,13 +301,14 @@ class ShadowPortfolio:
         marked_value = Decimal(0)
         cost_basis = Decimal(0)
         weighted: list[tuple[str, Decimal, pd.Series]] = []
+        marks = await self._mark_prices_inr(rows)
         for h in rows:
             qty = Decimal(str(h.qty)) if h.qty is not None else Decimal(0)
             basis = Decimal(str(h.cost_basis_inr or 0))
             cost_basis += basis
-            price = await self._latest_close(h.symbol)
+            price = marks.get(h.symbol or "")
             if price is None or price <= 0:
-                marked_value += basis  # no live quote → don't fabricate a move
+                marked_value += basis  # no live INR mark → don't fabricate a move
             else:
                 marked_value += qty * price
             if h.symbol and basis > 0:
@@ -373,12 +380,12 @@ class ShadowPortfolio:
         """
         rows = await self._open_holdings()
         invested = sum((h.cost_basis_inr for h in rows), Decimal(0))
+        marks = await self._mark_prices_inr(rows)
         market_value = Decimal(0)
         for h in rows:
-            price = await self._latest_close(h.symbol)
-            price_d = Decimal(str(price if price is not None else 0))
+            price_d = marks.get(h.symbol or "") or Decimal(0)
             if price_d <= 0:
-                # No live price → fall back to cost basis so a missing quote
+                # No live INR mark → fall back to cost basis so a missing quote
                 # doesn't fabricate a loss.
                 market_value += h.cost_basis_inr
             else:
@@ -449,7 +456,37 @@ class ShadowPortfolio:
         res = await self.session.execute(stmt)
         return list(res.scalars().all())
 
+    async def _mark_prices_inr(self, rows: list[Any]) -> dict[str, Decimal]:
+        """Current INR mark per symbol via the canonical marking service.
+
+        ``build_marking`` resolves each close's native currency and converts
+        USD-priced names (US equities, crypto pairs) through the ``fx_rates``
+        table. The previous raw-close approach valued AAPL's $283 as ₹283.
+
+        Falls back to a per-symbol native latest close only if ``build_marking``
+        can't run against the injected session (e.g. the in-memory unit-test
+        stub that doesn't support Postgres ``DISTINCT ON``). Production always
+        takes the FX-correct path.
+        """
+        from pfip.portfolio.marking import build_marking
+
+        try:
+            marking = await build_marking(self.session, rows)
+            return marking.mark_prices
+        except Exception as exc:  # noqa: BLE001 — degraded path for stub sessions
+            log.debug("shadow marking fell back to native close: %s", exc)
+            out: dict[str, Decimal] = {}
+            for h in rows:
+                sym = getattr(h, "symbol", None)
+                if not sym:
+                    continue
+                price = await self._latest_close(sym)
+                if price is not None:
+                    out[sym] = price
+            return out
+
     async def _latest_close(self, symbol: str | None) -> Decimal | None:
+        """Latest native-currency close for one symbol (stub-session friendly)."""
         if not symbol:
             return None
         stmt = (

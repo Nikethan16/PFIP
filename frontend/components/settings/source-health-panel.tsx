@@ -12,6 +12,7 @@
 
 import { Loader2, AlertTriangle, CheckCircle2, Clock, Circle } from "lucide-react";
 import { useSourceHealth } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 type Status = "healthy" | "stale" | "failing" | "never_run";
 
@@ -96,6 +97,70 @@ export function SourceHealthPanel() {
           </div>
         </div>
       )}
+
+      {/* Data freshness per market — the ground-truth "is the data current?"
+          signal, independent of per-adapter run bookkeeping. */}
+      {data.data_freshness?.length ? (
+        <div className="rounded-lg border border-border p-3">
+          <div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Data freshness (latest bar per market)
+          </div>
+          <div className="flex flex-wrap gap-4">
+            {data.data_freshness.map((f) => (
+              <div key={f.market} className="flex items-center gap-2 text-sm">
+                <span
+                  className={cn(
+                    "h-2 w-2 rounded-full",
+                    f.stale ? "bg-red-500" : "bg-green-500",
+                  )}
+                />
+                <span className="font-medium">{f.market}</span>
+                <span className="font-num tabular-nums text-muted-foreground">
+                  {f.age_days != null ? `${f.age_days.toFixed(1)}d old` : "no data"}
+                  {f.latest_bar ? ` · ${f.latest_bar.slice(0, 10)}` : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Keyed sources — a missing API key is otherwise invisible (a source
+          with no key never writes a health row at all). */}
+      {data.keyed_sources?.length ? (
+        <div className="rounded-lg border border-border p-3">
+          <div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Keyed sources
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {data.keyed_sources.map((k) => (
+              <span
+                key={k.source}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs",
+                  k.key_configured
+                    ? "border-green-500/30 bg-green-500/5 text-green-700 dark:text-green-400"
+                    : "border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-400",
+                )}
+              >
+                {k.source}
+                <span className="opacity-70">
+                  {k.key_configured ? "key set" : "no key"}
+                </span>
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Zero-row honesty note — "healthy" adapters that wrote nothing. */}
+      {summary && summary.zero_row_sources && summary.zero_row_sources.length ? (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
+          Ran clean but wrote <strong>0 rows</strong> last run:{" "}
+          {summary.zero_row_sources.join(", ")} — "healthy" here means the job
+          didn&apos;t error, not that data arrived.
+        </div>
+      ) : null}
 
       <div className="rounded-lg border border-border overflow-hidden">
         <table className="w-full text-sm">

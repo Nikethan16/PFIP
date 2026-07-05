@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from typing import Any
 
@@ -275,9 +276,11 @@ async def health_sources(db: DbSession) -> dict[str, Any]:
 
     sources: list[dict[str, Any]] = []
     n_healthy = n_stale = n_failing = 0
+    zero_row_sources: list[str] = []
     for r in rows:
         last_success = r["last_success_at"]
         consec = int(r["consecutive_failures"] or 0)
+        last_rows = r["last_rows"]
         if last_success is None:
             stale_seconds: float | None = None
             status = "never_run" if consec == 0 else "failing"
@@ -290,6 +293,14 @@ async def health_sources(db: DbSession) -> dict[str, Any]:
                 status = "stale"
             else:
                 status = "healthy"
+        # "The job didn't throw" is not the same as "data arrived". A source
+        # that succeeds with 0 rows must be visibly distinguishable from one
+        # that actually ingested something — that gap let a broken US price
+        # feed read as 16/17-healthy while AAPL sat 8 days stale.
+        note = None
+        if status == "healthy" and (last_rows or 0) == 0:
+            note = "succeeded but wrote 0 rows on the last run"
+            zero_row_sources.append(r["source"])
         if status == "healthy":
             n_healthy += 1
         elif status == "stale":
@@ -301,20 +312,89 @@ async def health_sources(db: DbSession) -> dict[str, Any]:
                 "source": r["source"],
                 "last_run_at": r["last_run_at"].isoformat() if r["last_run_at"] else None,
                 "last_success_at": last_success.isoformat() if last_success else None,
-                "last_rows": r["last_rows"],
+                "last_rows": last_rows,
                 "last_error": r["last_error"],
                 "consecutive_failures": consec,
                 "stale_seconds": stale_seconds,
                 "status": status,
+                "note": note,
             }
         )
+
+    # Keyed sources that silently no-op without their env key never write a
+    # source_health row at all — the one failure mode the table can't show.
+    # Surface them explicitly so a missing key is a visible fact, not an
+    # invisible absence.
+    keyed = {
+        "alphavantage": bool(
+            (
+                os.environ.get("ALPHAVANTAGE_API_KEY")
+                or os.environ.get("ALPHA_VANTAGE_API_KEY")
+                or ""
+            ).strip()
+        ),
+        "newsdata": bool(
+            (
+                os.environ.get("NEWSDATA_API_KEY") or os.environ.get("NEWS_DATA_API_KEY") or ""
+            ).strip()
+        ),
+        "tiingo": bool((os.environ.get("TIINGO_API_KEY") or "").strip()),
+        "finnhub": bool((os.environ.get("FINNHUB_API_KEY") or "").strip()),
+    }
+    source_names = [s["source"] for s in sources]
+    keyed_sources = [
+        {
+            "source": name,
+            "key_configured": configured,
+            "reporting": any(name in sn for sn in source_names),
+        }
+        for name, configured in keyed.items()
+    ]
+
+    # Per-market bar freshness — the ground truth "is the data current?"
+    # signal, independent of per-source run bookkeeping.
+    freshness: list[dict[str, Any]] = []
+    try:
+        fr = (
+            await db.execute(
+                text(
+                    """
+                    SELECT
+                        CASE
+                            WHEN upper(market) IN ('NSE', 'BSE', 'INDIA_EQUITY') THEN 'india_equity'
+                            WHEN upper(market) IN ('US_EQUITY', 'NASDAQ', 'NYSE') THEN 'us_equity'
+                            ELSE 'crypto_other'
+                        END AS bucket,
+                        MAX(time) AS latest_bar
+                    FROM ohlcv
+                    GROUP BY 1
+                    """
+                )
+            )
+        ).all()
+        for bucket, latest_bar in fr:
+            age_days = (now - latest_bar).total_seconds() / 86400 if latest_bar else None
+            freshness.append(
+                {
+                    "market": bucket,
+                    "latest_bar": latest_bar.isoformat() if latest_bar else None,
+                    "age_days": round(age_days, 1) if age_days is not None else None,
+                    "stale": bool(age_days is not None and age_days > 4),
+                }
+            )
+    except Exception:  # noqa: BLE001 — freshness is enrichment, never a 500
+        pass
+
     return {
         "time": now.isoformat(),
         "sources": sources,
+        "keyed_sources": keyed_sources,
+        "data_freshness": freshness,
         "summary": {
             "total": len(sources),
             "healthy": n_healthy,
             "stale": n_stale,
             "failing": n_failing,
+            "zero_row_sources": zero_row_sources,
         },
     }

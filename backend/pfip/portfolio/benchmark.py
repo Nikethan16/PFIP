@@ -137,32 +137,107 @@ async def _load_closes(session: Any, symbol: str) -> list[tuple[date, float]]:
     return out
 
 
-async def _portfolio_value_series(session: Any, holdings: list[Any]) -> list[tuple[date, float]]:
-    """Build a marked-to-market portfolio value series across all holdings.
+async def _load_closes_with_market(
+    session: Any, symbol: str
+) -> tuple[list[tuple[date, float]], str | None]:
+    """Like :func:`_load_closes` but also returns the symbol's OHLCV ``market``
+    label, which :func:`resolve_price_ccy` needs to decide INR vs USD."""
+    try:
+        from sqlalchemy import select
 
-    For each holding we load its close series and value qty*close per date, then
-    sum across holdings on the union of dates (forward-filling each holding's
-    last known price). This is a market-value path — it ignores intra-window
-    cash flows, which is acceptable for a relative-vs-benchmark read.
+        from pfip.models.ohlcv import OHLCVRow
+
+        stmt = (
+            select(OHLCVRow.time, OHLCVRow.close, OHLCVRow.market)
+            .where(OHLCVRow.symbol == symbol)
+            .order_by(OHLCVRow.time.asc())
+        )
+        rows = (await session.execute(stmt)).all()
+    except Exception as exc:  # pragma: no cover - defensive
+        log.debug("benchmark close load failed for %s: %s", symbol, exc)
+        return [], None
+    out: list[tuple[date, float]] = []
+    market: str | None = None
+    for t, close, mkt in rows:
+        d = t.date() if hasattr(t, "date") else t
+        out.append((d, float(close)))
+        if market is None:
+            market = mkt
+    return out, market
+
+
+async def _portfolio_value_series(session: Any, holdings: list[Any]) -> list[tuple[date, float]]:
+    """Build a marked-to-market INR portfolio value series across all holdings.
+
+    For each holding we load its close series (FX-converted to INR per bar date
+    for USD-priced names), value qty*close per date, and sum across holdings on
+    the unified date axis. Two correctness rules learned the hard way:
+
+    * **Currency** — summing a raw USD close into an INR total understates the
+      position ~95×, which silently skews the weights of every window return.
+    * **Window start** — the series starts only once EVERY symbol has a price
+      (and not before the first acquisition). Starting at the earliest bar of
+      *any* symbol made the first "portfolio value" a single cheap position, so
+      the "Max" window reported a nonsense +9,646% return.
     """
+    import bisect
+
+    from pfip.portfolio.marking import resolve_price_ccy
+    from pfip.portfolio.networth import _usd_inr_series
+
     per_symbol: dict[str, list[tuple[date, float]]] = {}
+    market_by: dict[str, str | None] = {}
     qty_by_symbol: dict[str, float] = {}
+    first_acquired: date | None = None
     for h in holdings:
         sym = getattr(h, "symbol", None)
         if not sym:
             continue
         qty_by_symbol[sym] = qty_by_symbol.get(sym, 0.0) + float(h.qty)
+        acq = getattr(h, "acquired_at", None)
+        acq_d = acq.date() if hasattr(acq, "date") else acq
+        if acq_d is not None and (first_acquired is None or acq_d < first_acquired):
+            first_acquired = acq_d
         if sym not in per_symbol:
-            per_symbol[sym] = await _load_closes(session, sym)
+            per_symbol[sym], market_by[sym] = await _load_closes_with_market(session, sym)
+    per_symbol = {s: v for s, v in per_symbol.items() if v}
+    if not per_symbol:
+        return []
 
-    all_dates = sorted({d for series in per_symbol.values() for d, _ in series})
+    # FX-convert USD-priced names to INR at the rate in effect on each bar date.
+    usd_syms = [s for s in per_symbol if resolve_price_ccy(market_by.get(s), s) == "USD"]
+    if usd_syms:
+        fx = await _usd_inr_series(session)
+        if not fx:
+            # No FX history → abstain from mixing currencies rather than emit
+            # a wrong INR figure; drop the USD legs and let the note explain.
+            for s in usd_syms:
+                per_symbol.pop(s, None)
+            if not per_symbol:
+                return []
+        else:
+            fx_dates = [d for d, _ in fx]
+            fx_rates = [r for _, r in fx]
+
+            def _rate_on(d: date) -> float:
+                i = bisect.bisect_right(fx_dates, d)
+                return fx_rates[i - 1] if i > 0 else fx_rates[0]
+
+            for s in usd_syms:
+                per_symbol[s] = [(d, px * _rate_on(d)) for d, px in per_symbol[s]]
+
+    # Start where every symbol is priced, and never before the book existed.
+    start = max(series[0][0] for series in per_symbol.values())
+    if first_acquired is not None and first_acquired > start:
+        start = first_acquired
+    all_dates = sorted({d for series in per_symbol.values() for d, _ in series if d >= start})
     if not all_dates:
         return []
 
     # Forward-fill each symbol's price onto the unified date axis.
     series_out: list[tuple[date, float]] = []
     cursors = {s: 0 for s in per_symbol}
-    last_price = {s: None for s in per_symbol}
+    last_price: dict[str, float | None] = {s: None for s in per_symbol}
     for d in all_dates:
         total = 0.0
         for s, closes in per_symbol.items():
@@ -196,6 +271,13 @@ async def run_benchmark(
     holdings = await service.list_holdings(active=True)
     portfolio = await _portfolio_value_series(session, holdings)
 
+    # Compare like-for-like: the benchmark side of every window (especially
+    # "Max") must cover the same period as the portfolio series, or "Max"
+    # compares your ~2-year book against the ETF's full multi-year history.
+    if portfolio and bench:
+        p_start = portfolio[0][0]
+        bench = [(d, v) for d, v in bench if d >= p_start]
+
     result = compare_series(portfolio, bench, windows=windows)
     note = None
     if not bench:
@@ -204,12 +286,16 @@ async def run_benchmark(
         note = "no priced holdings — portfolio returns are null"
     elif resolved in PROXY_NOTES:
         note = PROXY_NOTES[resolved]
-    return {
+    out: dict[str, Any] = {
         "benchmark": symbol,
         "benchmark_symbol_resolved": resolved,
         "windows": result,
         "note": note,
     }
+    if portfolio:
+        out["series_start"] = portfolio[0][0].isoformat()
+        out["series_end"] = portfolio[-1][0].isoformat()
+    return out
 
 
 __all__ = ["compare_series", "run_benchmark", "BENCHMARK_ALIASES", "DEFAULT_BENCHMARK"]

@@ -21,12 +21,54 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import desc, select
 
 from pfip.api.deps import CurrentUser, DbSession
 from pfip.models.backtest import BacktestRunRow
 
 router = APIRouter(prefix="/backtest", tags=["backtest"])
+
+
+class BacktestRunRequest(BaseModel):
+    """Body for ``POST /backtest/run``."""
+
+    market: str  # symbol to backtest, e.g. "BTC-USDT", "RELIANCE.NS", "SPY"
+    strategy: str = "ma_50_200"  # one of AVAILABLE_STRATEGIES
+    days: int = 365 * 3
+
+
+@router.get("/strategies")
+async def strategies(_user: CurrentUser) -> dict[str, Any]:
+    """List the strategies a user can backtest (populates the run form)."""
+    from pfip.backtest.service import AVAILABLE_STRATEGIES, DEFAULT_STRATEGY
+
+    return {"strategies": list(AVAILABLE_STRATEGIES), "default": DEFAULT_STRATEGY}
+
+
+@router.post("/run")
+async def run_backtest(
+    body: BacktestRunRequest, db: DbSession, _user: CurrentUser
+) -> dict[str, Any]:
+    """Run + persist a walk-forward backtest for one symbol, then return its
+    headline metrics. The persisted run is then readable via ``GET /runs``.
+
+    Rigorous by construction: out-of-sample walk-forward + CPCV + embargo +
+    a lookahead guard (``lookahead_ok``). Returns 422 on an unknown strategy
+    and a structured ``error`` (200) when a symbol lacks enough history.
+    """
+    from pfip.backtest.service import AVAILABLE_STRATEGIES, run_and_persist_backtest
+
+    if body.strategy not in AVAILABLE_STRATEGIES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"strategy must be one of {', '.join(AVAILABLE_STRATEGIES)}",
+        )
+    if body.days < 180:
+        raise HTTPException(status_code=422, detail="days must be >= 180")
+    return await run_and_persist_backtest(
+        db, market=body.market.strip(), strategy=body.strategy, days=body.days
+    )
 
 
 def _summary(row: BacktestRunRow) -> dict[str, Any]:

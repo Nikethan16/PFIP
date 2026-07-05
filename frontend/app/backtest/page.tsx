@@ -33,11 +33,16 @@ import {
 } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/shared/empty-state";
 import { FreshnessBadge } from "@/components/shared/freshness-badge";
+import { SectionCard } from "@/components/shared/section-card";
 import {
   useBacktestRun,
   useBacktestRuns,
+  useBacktestStrategies,
+  useRunBacktest,
   type BacktestBenchmarkLeg,
   type BacktestFoldMetric,
   type BacktestRunSummary,
@@ -62,6 +67,116 @@ function sharpeTone(v: number | null | undefined): string {
   return v > 0
     ? "text-emerald-700 dark:text-emerald-400"
     : "text-red-700 dark:text-red-400";
+}
+
+// --- Run form ----------------------------------------------------------------
+
+/**
+ * Trigger a new walk-forward backtest (POST /backtest/run). Previously the page
+ * was read-only with nothing to run; this is the missing entry point. On success
+ * the runs list auto-refreshes via query invalidation.
+ */
+function RunBacktestCard() {
+  const strategies = useBacktestStrategies();
+  const run = useRunBacktest();
+  const [symbol, setSymbol] = React.useState("");
+  const [strategy, setStrategy] = React.useState("");
+  const opts = strategies.data?.strategies ?? [];
+  const chosen = strategy || strategies.data?.default || opts[0] || "ma_50_200";
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const s = symbol.trim();
+    if (s) run.mutate({ market: s, strategy: chosen });
+  };
+
+  const res = run.data;
+  return (
+    <SectionCard title="Run a backtest">
+      <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
+        <div className="flex min-w-[200px] flex-1 flex-col gap-1">
+          <label className="font-label text-[10px] uppercase tracking-wider text-muted-foreground">
+            Symbol
+          </label>
+          <Input
+            value={symbol}
+            onChange={(e) => setSymbol(e.target.value)}
+            placeholder="e.g. BTC-USDT · RELIANCE.NS · SPY"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="font-label text-[10px] uppercase tracking-wider text-muted-foreground">
+            Strategy
+          </label>
+          <select
+            value={chosen}
+            onChange={(e) => setStrategy(e.target.value)}
+            className="h-9 rounded-md border border-border/60 bg-card px-2 text-sm"
+          >
+            {(opts.length ? opts : ["ma_50_200", "rsi_meanrev", "buy_hold"]).map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+        </div>
+        <Button type="submit" disabled={run.isPending || !symbol.trim()} className="gap-2">
+          <FlaskConical className="h-4 w-4" />
+          {run.isPending ? "Running…" : "Run backtest"}
+        </Button>
+      </form>
+
+      {run.isError ? (
+        <p className="mt-3 text-sm text-destructive">{(run.error as Error).message}</p>
+      ) : null}
+      {res?.error ? (
+        <p className="mt-3 text-sm text-amber-600 dark:text-amber-400">{res.error}</p>
+      ) : res?.id ? (
+        <div className="mt-3 flex flex-wrap items-center gap-4 border-t border-border/60 pt-3 text-sm">
+          <span className="font-medium">
+            {res.market} · {res.strategy}
+          </span>
+          <RunMetric label="Sharpe" v={res.sharpe} d={2} />
+          <RunMetric label="Max DD" v={res.max_drawdown} d={2} pct />
+          <RunMetric label="Hit rate" v={res.hit_rate} d={2} pct />
+          <RunMetric label="Return" v={res.total_return} d={2} pct />
+          <span className="text-xs text-muted-foreground">{res.n_folds} folds</span>
+          {res.lookahead_ok === false ? (
+            <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="h-3.5 w-3.5" /> failed look-ahead guard
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+              <ShieldCheck className="h-3.5 w-3.5" /> look-ahead OK
+            </span>
+          )}
+        </div>
+      ) : null}
+    </SectionCard>
+  );
+}
+
+function RunMetric({
+  label,
+  v,
+  d = 2,
+  pct,
+}: {
+  label: string;
+  v: number | null | undefined;
+  d?: number;
+  pct?: boolean;
+}) {
+  const txt =
+    v == null || Number.isNaN(v) ? "—" : pct ? `${(v * 100).toFixed(1)}%` : v.toFixed(d);
+  return (
+    <span className="flex flex-col">
+      <span className="font-label text-[10px] uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
+      <span className="font-mono text-sm tabular-nums">{txt}</span>
+    </span>
+  );
 }
 
 // --- Page --------------------------------------------------------------------
@@ -89,6 +204,8 @@ export default function BacktestPage() {
           </p>
         </div>
       </div>
+
+      <RunBacktestCard />
 
       {isLoading ? (
         <div className="space-y-3">

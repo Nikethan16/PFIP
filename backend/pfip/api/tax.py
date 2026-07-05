@@ -698,41 +698,63 @@ async def harvest(
         OpenLot,
         suggest_harvest,
     )
-    from pfip.models.ohlcv import OHLCVRow
+    from pfip.portfolio.marking import build_marking
 
     fy_start, fy_end = fy_bounds(body.fy)
     today = date.today()
 
-    # Pull open holdings.
-    rows = (await db.execute(select(HoldingRow).where(HoldingRow.qty > 0))).scalars().all()
+    # Pull open holdings (qty > 0 AND not soft-closed).
+    rows = (
+        (
+            await db.execute(
+                select(HoldingRow).where(HoldingRow.qty > 0, HoldingRow.closed_at.is_(None))
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # One canonical INR mark per symbol (currency-resolved + FX-converted) —
+    # the same valuation path as /portfolio/summary. A raw close would value
+    # US names in dollars-as-rupees and fabricate huge phantom losses.
+    marking = await build_marking(db, rows)
+
+    # HoldingRow has no ``asset_class`` column — ``category`` is the source of
+    # truth. Map it to the harvest enum; unmapped categories (PPF/FD/bonds/
+    # cash...) have no harvestable market loss and are skipped with a reason.
+    def _harvest_class(category: str | None, symbol: str | None) -> HarvestAssetClass | None:
+        cat = (category or "").lower()
+        sym = (symbol or "").upper()
+        if cat in ("equity", "etf"):
+            if cat == "etf" and ("GOLD" in sym or "SILVER" in sym):
+                return HarvestAssetClass.GOLD
+            if sym.endswith((".NS", ".BO")):
+                return HarvestAssetClass.EQUITY
+            return HarvestAssetClass.US_STOCK
+        if cat == "mutual_fund":
+            return HarvestAssetClass.EQUITY_MF
+        return None
 
     lots: list[OpenLot] = []
+    skipped: list[dict[str, str]] = []
     for r in rows:
-        # Skip VDAs — no harvesting permitted.
-        if is_vda(r.symbol) or getattr(r, "asset_class", "").lower() == "vda":
+        # VDA/crypto: Section 115BBH allows no loss set-off — never a candidate.
+        if is_vda(r.symbol) or (r.category or "").lower() in (
+            "crypto_exchange",
+            "crypto_self_custody",
+        ):
+            skipped.append({"symbol": r.symbol or "?", "reason": "vda_no_setoff"})
             continue
-        # Map asset_class enum string to the harvest enum.
-        ac_str = (getattr(r, "asset_class", "") or "").lower()
-        try:
-            ac = HarvestAssetClass(ac_str)
-        except ValueError:
-            # Unknown / unsupported class → skip rather than guess.
+        ac = _harvest_class(r.category, r.symbol)
+        if ac is None:
+            skipped.append({"symbol": r.symbol or "?", "reason": f"category:{r.category}"})
             continue
-
-        # Pull the latest close price.
-        last_price_q = (
-            await db.execute(
-                select(OHLCVRow.close)
-                .where(OHLCVRow.symbol == r.symbol)
-                .order_by(OHLCVRow.ts.desc())
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-        if last_price_q is None:
+        current_price = marking.mark_prices.get(r.symbol or "")
+        if current_price is None:
+            skipped.append({"symbol": r.symbol or "?", "reason": "no_price"})
             continue
-        try:
-            current_price = Decimal(str(last_price_q))
-        except Exception:
+        qty = Decimal(str(r.qty))
+        if qty <= 0:
             continue
 
         lots.append(
@@ -740,9 +762,12 @@ async def harvest(
                 lot_id=str(r.id),
                 symbol=r.symbol,
                 asset_class=ac,
-                qty=Decimal(str(r.qty)),
-                cost_basis_inr_per_unit=Decimal(str(getattr(r, "avg_cost_inr", 0))),
-                acquired_on=getattr(r, "first_acquired_on", today) or today,
+                qty=qty,
+                # cost_basis_inr is the lot's TOTAL basis → per-unit for OpenLot.
+                cost_basis_inr_per_unit=(Decimal(str(r.cost_basis_inr)) / qty).quantize(
+                    Decimal("0.0001")
+                ),
+                acquired_on=r.acquired_at.date() if r.acquired_at else today,
                 current_price_inr=current_price,
             )
         )
@@ -779,4 +804,8 @@ async def harvest(
             for s in plan.suggestions
         ],
         "n_lots_evaluated": len(lots),
+        # Transparency: why a holding was NOT considered (vda_no_setoff /
+        # unsupported category / no price) — so 0 candidates is explainable.
+        "skipped": skipped,
+        "marking_as_of": marking.as_of.isoformat() if marking.as_of else None,
     }

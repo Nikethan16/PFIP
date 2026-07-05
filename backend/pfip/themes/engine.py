@@ -39,6 +39,9 @@ async def score_theme(
     now = datetime.now(tz=UTC)
 
     try:
+        # Scan ALL recent news, not just entity-linked rows: the entity linker
+        # tags only a small fraction of stories, and requiring it up front made
+        # every theme score 0 despite thousands of matching headlines.
         rows = (
             await session.execute(
                 text(
@@ -46,7 +49,6 @@ async def score_theme(
                     SELECT title, summary, url, time, entity_tickers
                     FROM news
                     WHERE time >= :since
-                      AND (entity_tickers IS NOT NULL AND entity_tickers <> '[]'::jsonb)
                     ORDER BY time DESC
                     LIMIT 4000
                     """
@@ -58,18 +60,46 @@ async def score_theme(
         log.warning(f"score_theme: news scan failed: {type(e).__name__}: {e}")
         rows = []
 
+    # Watchlist name-roots for fallback attribution when a story carries no
+    # entity link: "RELIANCE" in a headline → RELIANCE.NS. Root = symbol before
+    # any market suffix, dashes as spaces; only roots >= 4 chars to avoid false
+    # hits from short tickers (GLD, TCS would match too loosely in prose).
+    name_root_to_symbol: dict[str, str] = {}
+    try:
+        wl_rows = (await session.execute(text("SELECT symbol FROM watchlist"))).all()
+        for (sym,) in wl_rows:
+            if not sym:
+                continue
+            root = sym.split(".")[0].replace("-", " ").upper()
+            if len(root) >= 4:
+                name_root_to_symbol[root] = sym
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"score_theme: watchlist read failed: {type(e).__name__}: {e}")
+
     by_ticker: dict[str, dict[str, Any]] = {}
     matched_stories = 0
+    theme_evidence: list[dict[str, Any]] = []
     for title, summary, url, ts, tickers in rows:
         hay = f"{title or ''} {summary or ''}".lower()
         if not any(k in hay for k in kws):
             continue
         matched_stories += 1
+        if len(theme_evidence) < 6:
+            theme_evidence.append(
+                {
+                    "title": title,
+                    "url": url,
+                    "published_at": ts.isoformat() if ts else None,
+                }
+            )
         age_days = max(0.0, (now - ts).total_seconds() / 86400.0) if ts else days
         recency = max(0.1, 1.0 - age_days / days)
-        for tk in tickers or []:
-            if not tk:
-                continue
+        # Attribution: entity links first; fall back to watchlist-name matching.
+        attributed = [tk for tk in (tickers or []) if tk]
+        if not attributed and name_root_to_symbol:
+            hay_upper = hay.upper()
+            attributed = [sym for root, sym in name_root_to_symbol.items() if root in hay_upper]
+        for tk in attributed:
             d = by_ticker.setdefault(tk, {"ticker": tk, "score": 0.0, "n": 0, "evidence": []})
             d["score"] += recency
             d["n"] += 1
@@ -92,6 +122,9 @@ async def score_theme(
         "window_days": days,
         "matched_stories": matched_stories,
         "beneficiaries": ranked,
+        # Theme-level headlines so the page is informative even when no
+        # tracked company could be attributed (better than a blank panel).
+        "theme_evidence": theme_evidence,
         "universe": "watchlist",
         "disclaimer": (
             "Research aid only — ranks tracked companies by recent NEWS EXPOSURE to "

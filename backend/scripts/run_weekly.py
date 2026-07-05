@@ -134,6 +134,29 @@ async def stage_training(*, symbol: str = TRAIN_SYMBOL) -> StageSummary:
     return summary
 
 
+async def stage_calibration() -> StageSummary:
+    """Score the signal models' calibration (Brier/ECE/reliability) over the
+    trailing 3 months and persist to ``calibration_reports``.
+
+    This is what fills the Calibration page — previously the runner existed but
+    nothing invoked it, so the table (and the page) stayed empty.
+    """
+    summary = StageSummary(name="calibration")
+
+    async def _calib() -> int:
+        from pfip.calibration.runner import run_monthly_calibration
+        from pfip.db.session import get_sessionmaker
+
+        factory = get_sessionmaker()
+        async with factory() as s:
+            reports = await run_monthly_calibration(s)
+            return len(reports)
+
+    await _guarded(summary, "run_monthly_calibration", _calib, timeout=600.0)
+    summary.finish()
+    return summary
+
+
 async def run_weekly(*, training: bool = True) -> dict[str, Any]:
     log.info(f"weekly maintenance starting: training={training}")
     started = time.monotonic()
@@ -141,6 +164,9 @@ async def run_weekly(*, training: bool = True) -> dict[str, Any]:
 
     fd = await stage_fundamentals_and_diligence()
     results["fundamentals_diligence"] = fd.as_dict()
+
+    cal = await stage_calibration()
+    results["calibration"] = cal.as_dict()
 
     if training:
         tr = await stage_training()

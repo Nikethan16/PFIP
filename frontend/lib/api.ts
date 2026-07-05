@@ -877,6 +877,9 @@ export interface HarvestPlan {
   total_tax_saved_inr: string;
   suggestions: HarvestSuggestion[];
   n_lots_evaluated: number;
+  /** Why a holding was NOT considered (vda_no_setoff / unsupported / no_price). */
+  skipped?: { symbol: string; reason: string }[];
+  marking_as_of?: string | null;
 }
 
 export interface HarvestRequest {
@@ -907,6 +910,10 @@ const HarvestPlanSchema = z.object({
   total_tax_saved_inr: z.string(),
   suggestions: z.array(HarvestSuggestionSchema),
   n_lots_evaluated: z.number(),
+  skipped: z
+    .array(z.object({ symbol: z.string(), reason: z.string() }))
+    .optional(),
+  marking_as_of: z.string().nullable().optional(),
 });
 
 /** One Prefect deployment row from `GET /api/v1/schedules`. */
@@ -1740,14 +1747,40 @@ export interface SourceHealth {
   consecutive_failures: number;
   stale_seconds: number | null;
   status: "healthy" | "stale" | "failing" | "never_run";
+  /** "succeeded but wrote 0 rows" and similar honesty notes. */
+  note?: string | null;
+}
+
+/** A keyed source's configured/reporting state (a missing key is invisible in
+ * the source_health table otherwise). */
+export interface KeyedSourceState {
+  source: string;
+  key_configured: boolean;
+  reporting: boolean;
+}
+
+/** Per-market bar freshness — the ground-truth "is the data current?" signal. */
+export interface DataFreshness {
+  market: string;
+  latest_bar: string | null;
+  age_days: number | null;
+  stale: boolean;
 }
 
 /** Envelope returned by `GET /api/v1/health/sources`. */
 export interface SourceHealthPayload {
   time: string;
   sources: SourceHealth[];
+  keyed_sources?: KeyedSourceState[];
+  data_freshness?: DataFreshness[];
   summary:
-    | { total: number; healthy: number; stale: number; failing: number }
+    | {
+        total: number;
+        healthy: number;
+        stale: number;
+        failing: number;
+        zero_row_sources?: string[];
+      }
     | { error: string };
 }
 
@@ -1763,17 +1796,38 @@ const SourceHealthRowSchema = z.object({
   consecutive_failures: z.number(),
   stale_seconds: z.number().nullable(),
   status: z.enum(["healthy", "stale", "failing", "never_run"]),
+  note: z.string().nullable().optional(),
 });
 
 const SourceHealthPayloadSchema = z.object({
   time: z.string(),
   sources: z.array(SourceHealthRowSchema),
+  keyed_sources: z
+    .array(
+      z.object({
+        source: z.string(),
+        key_configured: z.boolean(),
+        reporting: z.boolean(),
+      }),
+    )
+    .optional(),
+  data_freshness: z
+    .array(
+      z.object({
+        market: z.string(),
+        latest_bar: z.string().nullable(),
+        age_days: z.number().nullable(),
+        stale: z.boolean(),
+      }),
+    )
+    .optional(),
   summary: z.union([
     z.object({
       total: z.number(),
       healthy: z.number(),
       stale: z.number(),
       failing: z.number(),
+      zero_row_sources: z.array(z.string()).optional(),
     }),
     z.object({ error: z.string() }),
   ]),
@@ -2053,6 +2107,58 @@ export function useBacktestRun(
         { token },
       ),
     staleTime: 5 * 60_000,
+  });
+}
+
+/** GET /backtest/strategies — the strategies a user can run. */
+export function useBacktestStrategies(): UseQueryResult<{ strategies: string[]; default: string }> {
+  const token = useAuthToken();
+  return useQuery({
+    queryKey: ["backtest", "strategies"],
+    queryFn: () =>
+      apiFetch<{ strategies: string[]; default: string }>(
+        `/backtest/strategies`,
+        z.object({ strategies: z.array(z.string()).default([]), default: z.string().default("") }),
+        { token },
+      ),
+    staleTime: 60 * 60_000,
+  });
+}
+
+/** Result of POST /backtest/run — id + headline metrics, or a structured error. */
+export interface BacktestRunResult {
+  id?: string;
+  market?: string;
+  strategy?: string;
+  sharpe?: number | null;
+  max_drawdown?: number | null;
+  hit_rate?: number | null;
+  total_return?: number | null;
+  lookahead_ok?: boolean;
+  n_folds?: number;
+  equity_points?: number;
+  error?: string;
+  bars?: number;
+}
+
+/** POST /backtest/run — run + persist a walk-forward backtest, then refresh list. */
+export function useRunBacktest(): UseMutationResult<
+  BacktestRunResult,
+  unknown,
+  { market: string; strategy?: string; days?: number }
+> {
+  const token = useAuthToken();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body) =>
+      apiFetch<BacktestRunResult>(`/backtest/run`, z.object({}).passthrough(), {
+        method: "POST",
+        token,
+        body,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["backtest", "runs"] });
+    },
   });
 }
 
@@ -2356,6 +2462,44 @@ export function useDiligence(
         { token },
       ),
     staleTime: 5 * 60_000,
+  });
+}
+
+/** One metric row in a peer comparison. */
+export interface PeerField {
+  target: number;
+  better: "higher" | "lower";
+  peer_median: number | null;
+  rank: number | null;
+  n_peers: number;
+  better_than_pct: number | null;
+}
+export interface PeerComparison {
+  target: string;
+  peers: string[];
+  n_peers: number;
+  fields: Record<string, PeerField>;
+  disclaimer?: string;
+  note?: string;
+}
+
+/** GET /diligence/{symbol}/peers — curated peer comparison over ratios. */
+export function usePeers(
+  symbol: string | null | undefined,
+): UseQueryResult<PeerComparison, ApiError> {
+  const token = useAuthToken();
+  const sym = symbol?.trim() ?? "";
+  return useQuery<PeerComparison, ApiError>({
+    queryKey: ["diligence", "peers", sym],
+    enabled: sym.length > 0,
+    retry: false,
+    queryFn: () =>
+      apiFetch<PeerComparison>(
+        `/diligence/${encodeURIComponent(sym)}/peers`,
+        z.object({}).passthrough(),
+        { token },
+      ),
+    staleTime: 10 * 60_000,
   });
 }
 
@@ -2664,6 +2808,8 @@ const WhatIfResultSchema = z.object({
     n_positions: z.number(),
   }),
   tax_impact: z.record(z.string(), z.unknown()),
+  /** How the before/after book was valued (mark-to-market + FX, or cost basis). */
+  valuation_note: z.string().optional(),
   disclaimer: z.string().optional(),
 });
 export type WhatIfResult = z.infer<typeof WhatIfResultSchema>;
@@ -2751,6 +2897,15 @@ const StressScenarioSchema = z.object({
 const StressTestSchema = z.object({
   current_value_inr: z.number(),
   scenarios: z.array(StressScenarioSchema),
+  /** Valuation provenance — same canonical marking as /portfolio/summary. */
+  marking: z
+    .object({
+      as_of: z.string().nullable().optional(),
+      usdinr: z.number().nullable().optional(),
+      marked: z.number().optional(),
+      unmarked: z.array(z.string()).optional(),
+    })
+    .optional(),
   disclaimer: z.string().optional(),
 });
 export type StressTest = z.infer<typeof StressTestSchema>;
@@ -2909,6 +3064,8 @@ export interface ThemeDetail {
   window_days: number;
   matched_stories: number;
   beneficiaries: ThemeBeneficiary[];
+  /** Theme-level headlines shown when no tracked company could be attributed. */
+  theme_evidence?: { title: string; url: string | null; published_at: string | null }[];
   universe: string;
   disclaimer: string;
 }
@@ -2939,6 +3096,15 @@ const ThemeDetailSchema = z
           .passthrough(),
       )
       .default([]),
+    theme_evidence: z
+      .array(
+        z.object({
+          title: z.string(),
+          url: z.string().nullable().default(null),
+          published_at: z.string().nullable().default(null),
+        }),
+      )
+      .optional(),
     universe: z.string().default("watchlist"),
     disclaimer: z.string().default(""),
   })
@@ -3031,6 +3197,39 @@ export interface ResearchDossier {
     currency?: string | null;
   } | null;
   news: { title: string; url: string; time: string; sentiment: number | null; source: string }[];
+  /** Multi-year statements + derived trend (US via Alpha Vantage). */
+  statements?: {
+    source: string | null;
+    currency: string | null;
+    income: Array<{ period: string } & Record<string, number | null>>;
+    balance_sheet: Array<{ period: string } & Record<string, number | null>>;
+    cash_flow: Array<{ period: string } & Record<string, number | null>>;
+    trend: Array<{
+      period: string;
+      revenue: number | null;
+      net_income: number | null;
+      net_margin_pct: number | null;
+      free_cash_flow: number | null;
+    }>;
+  } | null;
+  /** Curated peer comparison over available ratios. */
+  peers?: {
+    target: string;
+    peers: string[];
+    n_peers: number;
+    fields: Record<
+      string,
+      {
+        target: number;
+        better: "higher" | "lower";
+        peer_median: number | null;
+        rank: number | null;
+        n_peers: number;
+        better_than_pct: number | null;
+      }
+    >;
+    disclaimer?: string;
+  } | null;
   dossier_markdown: string;
   suggest_add_to_watchlist: boolean;
   disclaimer: string;

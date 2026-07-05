@@ -23,6 +23,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
+
+/** Human label for a harvest-skip reason code from the backend. */
+function reasonLabel(reason: string): string {
+  if (reason === "vda_no_setoff") return "crypto/VDA — no loss set-off allowed (§115BBH)";
+  if (reason === "no_price") return "no current price to mark against";
+  if (reason.startsWith("category:")) return `unsupported category (${reason.slice(9)})`;
+  return reason;
+}
 import { PageHeader } from "@/components/shared/page-header";
 import { useHarvestPlan, type HarvestSuggestion } from "@/lib/api";
 import { cn, formatINR } from "@/lib/utils";
@@ -131,10 +139,26 @@ export default function TaxHarvestPage() {
         <>
           <SummaryStrip plan={plan} />
           {plan.suggestions.length === 0 ? (
-            <EmptyState
-              title="No worthwhile harvest this FY"
-              description="Either no open lots are at a loss, or harvesting them wouldn't offset enough realized gains to be worth it. Re-run after the next loss-making close."
-            />
+            <div className="space-y-2">
+              <EmptyState
+                title="No worthwhile harvest this FY"
+                description="Either no open lots are at a loss, or harvesting them wouldn't offset enough realized gains to be worth it. Re-run after the next loss-making close."
+              />
+              {plan.skipped && plan.skipped.length ? (
+                <div className="border border-border/60 bg-card p-4 text-xs text-muted-foreground">
+                  <div className="mb-1 font-medium text-foreground">
+                    Holdings not considered ({plan.skipped.length})
+                  </div>
+                  <ul className="space-y-0.5">
+                    {plan.skipped.map((s, i) => (
+                      <li key={i}>
+                        <span className="font-mono">{s.symbol}</span> — {reasonLabel(s.reason)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
           ) : (
             <SuggestionsTable suggestions={plan.suggestions} />
           )}

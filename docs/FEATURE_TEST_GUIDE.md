@@ -82,11 +82,29 @@ and all 7B cross-cutting features). Do NOT skip any. For EACH feature:
 
 PART B — Judge real-world reliability (this is the whole point).
 - Is the DATA real and fresh? Cross-check /ops/sources — are sources healthy or
-  stale/failing? Would you trust the numbers with your own money?
+  stale/failing? A "healthy" source with last_rows=0 is NOT healthy: check the
+  `zero_row_sources` list, the `keyed_sources` block (is alphavantage/newsdata
+  actually configured?), and `data_freshness` (age_days per market). Then
+  independently confirm with real bars: pull the latest candle for one India
+  name, one US name, and one crypto name and read the bar date. Would you trust
+  these numbers with your own money?
+- VALUATION CONSISTENCY (critical): the SAME portfolio must report the SAME
+  value everywhere. Cross-check the total across /portfolio/summary,
+  /portfolio/marking, /portfolio/stress-test (current_value_inr),
+  /portfolio/what-if (before.total_value_inr) and /shadow/vs-actual
+  (actual_marked_inr). If they disagree by more than rounding, the P&L is not
+  trustworthy — call it out with the exact numbers.
 - Does it handle failure gracefully (a source down, a name that doesn't resolve,
-  a slow model) without breaking or lying?
+  a slow model) without breaking or LYING? Specifically: (a) search a fake
+  company and confirm it invents nothing; (b) trigger a sensitive AI feature
+  (morning brief, weekly review, post-mortem) and confirm it still produces a
+  narrative (cloud fallback) rather than "LLM unavailable" — and that no raw
+  stack trace leaks into the response.
 - Does the AI (Chat, Deep Research, Morning brief) give GROUNDED, cited answers,
-  or does it hallucinate? Try to catch it inventing a financial figure.
+  or does it hallucinate? Two catches to attempt: (1) ask chat for a tracked
+  name's latest price and confirm it QUOTES the number (with as-of date) instead
+  of claiming "no real-time access"; (2) try to catch any feature inventing a
+  financial figure that isn't in the underlying data.
 - Rate overall real-world readiness: PRODUCTION-READY / USABLE-WITH-GAPS /
   NOT-READY, and say exactly why.
 
@@ -181,16 +199,28 @@ Be specific and evidence-based. Quote real numbers/errors you saw. No vague prai
 - [ ] **Ideal goal:** type **any** company by name — tracked or not — and get a
   cited decision-support dossier: what they do, financial health, recent
   developments, bull case, bear case, risks, sentiment, what to verify.
-- **Powered by:** LLM name→ticker → **live fundamentals** (screener.in for India,
-  Alpha Vantage for US, yfinance fallback) → news → LLM synthesis. Fundamentals
-  are persisted so repeat searches accumulate history.
+- **Powered by:** LLM name→ticker → **live fundamentals** → news → LLM synthesis.
+  Source depends on tracked-vs-untracked and market:
+  - **Tracked** name (in your watchlist/holdings) → the diligence aggregate:
+    **screener.in** for India, **Finnhub** for US.
+  - **Untracked** name → on-demand live pull: **screener.in** (India) →
+    **Alpha Vantage** (US) → yfinance fallback.
+  Fundamentals are persisted so repeat searches accumulate history. Ratios are
+  normalised to one convention (percent for ROE/ROCE/margins/yield), so the
+  same company reads identically on `/research` and `/diligence`.
 - **Test A (India, untracked):** search **`Waree Energies`** → "Not tracked"
-  badge; **Key fundamentals** grid via **screener** (P/E, ROCE, ROE, mkt cap,
-  book value); a full dossier; recent news.
-- **Test B (US):** search **`NVIDIA`** → metrics grid with a blue **Live ·
-  alphavantage** tag; dossier.
+  badge; **Key fundamentals** via **screener** (P/E ~21x, ROCE ~38.8%, ROE
+  ~32.8%, mkt cap ~₹82,000 cr, book value); dossier; recent news.
+- **Test B (US, tracked):** search **`NVIDIA`** → metrics grid tagged
+  **finnhub** (P/E, margins, ROE, market cap in $-trillions) + a performance
+  block; dossier. (An **untracked** US name shows a blue **Live · alphavantage**
+  tag instead.)
 - **Test C (deep link):** from `/events` click **Research** → lands here
   pre-filled and auto-runs.
+- **Test D (hallucination guard):** search a made-up name like
+  **`Zynbrix Hyperdyne Robotics`** → it must resolve to *no ticker*, show
+  **empty** metrics, and say it can't find data — it must **never** invent a
+  P/E, price, or "add to watchlist" nudge for a company it couldn't identify.
 - **Caveat:** a truly obscure name may not resolve → it says so honestly rather
   than inventing numbers.
 
@@ -416,11 +446,20 @@ its health, so a broken source shows up on `/ops/sources` the day it breaks.
 ## 9. Known limitations (be honest while testing)
 
 - **Signals have no proven edge** — experimental, labelled as such.
-- **No intraday data** — daily bars only, by design.
+- **No intraday data** — daily bars only, by design. Every price is a *last
+  close* with an as-of date; stale bars are flagged, never shown as "live".
 - **yfinance rate-limited** from the datacenter IP — Deep Research uses screener
   (India) / Alpha Vantage (US) as the reliable paths.
-- **Local LLM (Ollama) is down on the VM** (no GPU) — chat/research use Groq.
+- **Local LLM (Ollama) is down on the VM** (no GPU). With `ALLOW_CLOUD_FALLBACK`
+  (default on) even *sensitive* AI (morning brief, weekly review, post-mortem)
+  now falls back to Groq instead of failing with "LLM unavailable". Set it off
+  to hard-pin local for a strict privacy boundary.
 - **Alpha Vantage free tier = 25 calls/day** — US Deep Research + AV news share it.
+- **Portfolio value has one source of truth** — every surface (summary, stress,
+  what-if, shadow, net-worth) marks through the same currency-resolved,
+  FX-converted path, so the total agrees everywhere. USD assets are converted at
+  the `fx_rates` USD/INR rate; a name that can't be priced falls back to cost
+  basis and is listed as `unmarked` rather than silently mis-valued.
 - **Not investment advice** — every AI output is decision-support with a
   disclaimer; verify independently.
 

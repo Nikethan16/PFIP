@@ -126,41 +126,33 @@ def stress_book(values_by_category: dict[str, float]) -> dict[str, Any]:
 
 
 async def run_stress_test(session: Any) -> dict[str, Any]:
-    """Run the stress scenarios against the live, marked-to-market book."""
-    from decimal import Decimal
+    """Run the stress scenarios against the live, marked-to-market book.
 
+    Marks via :func:`pfip.portfolio.marking.build_marking` — the ONE canonical
+    valuation path (currency-resolved, FX-converted) shared with
+    ``/portfolio/summary``. A hand-rolled raw-close query here previously valued
+    USD assets (AAPL, BTC-USD) at their dollar number as if it were rupees,
+    understating the book ~95× on those positions.
+    """
+    from pfip.portfolio.marking import build_marking
     from pfip.portfolio.service import PortfolioService
 
     service = PortfolioService(session)
-    # Mark to latest close where available; exposure_by_category already handles
-    # the cost-basis fallback for unpriced names.
     holdings = await service.list_holdings(active=True)
-    symbols = sorted({h.symbol for h in holdings if h.symbol})
-    mark_prices: dict[str, Decimal] = {}
-    if symbols:
-        try:
-            from sqlalchemy import select
+    marking = await build_marking(session, holdings)
 
-            from pfip.models.ohlcv import OHLCVRow
-
-            # Latest close per symbol in one query (Postgres DISTINCT ON), instead
-            # of a separate round-trip per holding.
-            stmt = (
-                select(OHLCVRow.symbol, OHLCVRow.close)
-                .where(OHLCVRow.symbol.in_(symbols))
-                .order_by(OHLCVRow.symbol.asc(), OHLCVRow.time.desc())
-                .distinct(OHLCVRow.symbol)
-            )
-            res = await session.execute(stmt)
-            for sym, close in res.all():
-                if close is not None:
-                    mark_prices[sym] = Decimal(str(close))
-        except Exception as exc:  # pragma: no cover - defensive
-            log.debug("stress mark batch load failed: %s", exc)
-
-    exposure = await service.exposure_by_category(mark_prices=mark_prices)
+    exposure = await service.exposure_by_category(mark_prices=marking.mark_prices)
     values = {cat: float(v) for cat, v in exposure.items()}
-    return stress_book(values)
+    out = stress_book(values)
+    # Valuation provenance so the UI (and a skeptical user) can see what the
+    # "current value" is actually built from.
+    out["marking"] = {
+        "as_of": marking.as_of.isoformat() if marking.as_of else None,
+        "usdinr": float(marking.usdinr) if marking.usdinr is not None else None,
+        "marked": len(marking.marked),
+        "unmarked": [u["symbol"] for u in marking.unmarked],
+    }
+    return out
 
 
 __all__ = ["stress_book", "run_stress_test", "SCENARIOS"]

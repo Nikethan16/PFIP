@@ -32,8 +32,9 @@ def test_priced_holding_marks_to_close():
 
 def test_lot_not_counted_before_acquisition():
     # A position acquired part-way through the price history must not contribute
-    # to net worth on dates before it was held (regression: build_networth used
-    # to add current holdings across the full history behind them).
+    # to net worth on dates before it was held. The timeline now STARTS at the
+    # first acquisition (no leading zero-run for dates before any holding
+    # existed), so the pre-acquisition bar is omitted rather than shown as 0.
     h = Holding(
         category=HoldingCategory.CRYPTO_EXCHANGE,
         symbol="BTC/USD",
@@ -44,7 +45,7 @@ def test_lot_not_counted_before_acquisition():
     closes = {"BTC/USD": [(date(2025, 1, 1), 60000.0), (date(2025, 1, 2), 70000.0)]}
     out = build_networth([h], closes)
     tl = {row["date"]: row["net_worth_inr"] for row in out["timeline"]}
-    assert tl["2025-01-01"] == 0.0  # not held yet
+    assert "2025-01-01" not in tl  # before acquisition → not in the series at all
     assert tl["2025-01-02"] == 70000.0  # held now, marked to close
 
 

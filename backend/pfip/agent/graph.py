@@ -305,16 +305,76 @@ async def node_retrieve_db(db: AsyncSession, state: AgentState) -> AgentState:
     citations: list[str] = []
     try:
         if state.intent == "market_question":
-            # Latest regime snapshots.
+            # Symbol-aware grounding first: when the question names an asset we
+            # track, give the LLM its ACTUAL latest close + change + regime +
+            # headlines. Without this the agent answered "what's happening with
+            # Reliance?" with "I don't have real-time access" while ₹1,304 sat
+            # in the very DB it was reading regime rows from.
+            symbol = await extract_symbol(db, state.user_query)
+            if symbol:
+                price_stmt = sql_text(
+                    """
+                    SELECT time, close, volume
+                    FROM ohlcv
+                    WHERE symbol = :sym AND timeframe = '1d'
+                      AND source = (
+                          SELECT source FROM ohlcv
+                          WHERE symbol = :sym AND timeframe = '1d'
+                          ORDER BY time DESC LIMIT 1
+                      )
+                    ORDER BY time DESC
+                    LIMIT 2
+                    """
+                )
+                price_rows = list((await db.execute(price_stmt, {"sym": symbol})).mappings())
+                if price_rows:
+                    latest = price_rows[0]
+                    prev = price_rows[1] if len(price_rows) > 1 else None
+                    close = float(latest["close"])
+                    prev_close = float(prev["close"]) if prev else None
+                    out.append(
+                        {
+                            "kind": "price",
+                            "symbol": symbol,
+                            "last_close": close,
+                            "as_of": latest["time"],
+                            "change_pct_vs_prev_bar": (
+                                round((close - prev_close) / prev_close * 100, 2)
+                                if prev_close
+                                else None
+                            ),
+                            "note": "latest daily close in DB — quote it with its as-of date",
+                        }
+                    )
+                    citations.append(f"db://ohlcv/{symbol}")
+
+                news_stmt = sql_text(
+                    """
+                    SELECT id, time, title, url, source, sentiment
+                    FROM news
+                    WHERE (symbol = :sym OR title ILIKE :pat)
+                    ORDER BY time DESC
+                    LIMIT 5
+                    """
+                )
+                pat = f"%{symbol.split('.')[0].replace('-', ' ')}%"
+                for row in (await db.execute(news_stmt, {"sym": symbol, "pat": pat})).mappings():
+                    out.append({"kind": "news", **dict(row)})
+                    citations.append(f"db://news/{row['id']}")
+
+            # Regime snapshots: the queried symbol's when known, else the latest
+            # per symbol (DISTINCT ON avoids duplicate rows for one symbol).
             stmt = sql_text(
                 """
-                SELECT id, symbol, regime, since, confidence
+                SELECT DISTINCT ON (symbol) id, symbol, regime, since, confidence
                 FROM regime
-                ORDER BY since DESC
-                LIMIT 10
+                ORDER BY symbol, since DESC
                 """
             )
-            for row in (await db.execute(stmt)).mappings():
+            regime_rows = list((await db.execute(stmt)).mappings())
+            if symbol:
+                regime_rows = [r for r in regime_rows if r["symbol"] == symbol] or regime_rows
+            for row in regime_rows[:10]:
                 out.append({"kind": "regime", **dict(row)})
                 citations.append(f"db://regime/{row['id']}")
 
@@ -345,6 +405,31 @@ async def node_retrieve_db(db: AsyncSession, state: AgentState) -> AgentState:
             for row in (await db.execute(stmt2, {"cutoff": cutoff})).mappings():
                 out.append({"kind": "signal", **dict(row)})
                 citations.append(f"db://signals/{row['id']}")
+
+            # Marked-to-market snapshot via the canonical valuation path, so a
+            # "how is my portfolio doing?" answer quotes the SAME total as
+            # /portfolio/summary (cost basis alone can't answer it).
+            try:
+                from pfip.portfolio.marking import build_marking
+                from pfip.portfolio.service import PortfolioService
+
+                _svc = PortfolioService(db)
+                _holdings = await _svc.list_holdings(active=True)
+                _marking = await build_marking(db, _holdings)
+                _summary = await _svc.portfolio_summary(mark_prices=_marking.mark_prices)
+                out.append(
+                    {
+                        "kind": "portfolio_summary",
+                        "total_value_inr": str(_summary.total_inr),
+                        "unrealised_pnl_inr": str(_summary.pnl_inr),
+                        "pnl_pct": round(float(_summary.pnl_pct or 0), 4),
+                        "marked_as_of": _marking.as_of.isoformat() if _marking.as_of else None,
+                        "unmarked_symbols": [u["symbol"] for u in _marking.unmarked],
+                    }
+                )
+                citations.append("db://portfolio/summary")
+            except Exception as exc:  # noqa: BLE001 — summary is enrichment, not critical
+                logger.debug(f"[agent] portfolio summary enrichment failed: {exc}")
     except Exception as exc:  # noqa: BLE001 — tables may be empty or missing in test env
         logger.warning(f"retrieve_db failed: {exc}")
 

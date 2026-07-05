@@ -179,9 +179,14 @@ async def run_monthly_calibration(
     period_end = datetime.now(tz=timezone.utc)
     period_start = period_end - timedelta(days=months * 31)
 
-    for (model_name, model_version, market), group in df.groupby(
-        ["model_name", "model_version", "market"]
-    ):
+    # Pool across model_version, not per-version. The universe retrains every
+    # few days, so grouping by (name, version, market) fragmented the samples so
+    # finely that almost no group reached the n>=10 floor and the table stayed
+    # empty. We calibrate per (model_name, market) over the window and label the
+    # report with the LATEST version seen — calibration of the live model family
+    # is what the user actually needs.
+    for (model_name, market), group in df.groupby(["model_name", "market"]):
+        model_version = str(group.sort_values("generated_at")["model_version"].iloc[-1])
         price_df = await _load_prices(session, str(market))
         y_true: list[float] = []
         y_prob: list[float] = []

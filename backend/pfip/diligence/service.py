@@ -354,14 +354,27 @@ async def _news_by_category(session: Any, symbol: str) -> dict[str, list[dict[st
     """
     out: dict[str, list[dict[str, Any]]] = {"filings": [], "insider": [], "news": []}
     try:
+        from sqlalchemy import or_
+
         from pfip.models.news import NewsRow
+
+        # Match the symbol column OR the entity-linked tickers array (news is
+        # frequently linked only via entity_tickers, with symbol null). Try both
+        # the suffixed and bare forms so RELIANCE.NS and RELIANCE both resolve —
+        # an exact symbol== match alone left the sections empty.
+        bare = symbol.split(".")[0]
+        variants = {symbol, bare}
+        symbol_match = or_(
+            NewsRow.symbol.in_(list(variants)),
+            *[NewsRow.entity_tickers.contains([v]) for v in variants],
+        )
 
         async def _fetch(where_clause, limit: int):
             return (
                 (
                     await session.execute(
                         select(NewsRow)
-                        .where(NewsRow.symbol == symbol)
+                        .where(symbol_match)
                         .where(where_clause)
                         .order_by(NewsRow.time.desc())
                         .limit(limit)

@@ -178,12 +178,19 @@ def route(
     """
     s = settings or get_settings()
 
-    # Hard rule: sensitive + strict → local. Chat is the ONE exception — when
-    # cloud fallback is allowed it may use cloud so the assistant still works on a
-    # host with no reachable local LLM. Embeddings/reasoning stay strictly local.
-    _chat_cloud_exempt = task == TaskType.CHAT_SENSITIVE and getattr(
-        s, "allow_cloud_fallback", True
-    )
+    # Sensitive + strict → prefer local. ALLOW_CLOUD_FALLBACK (default true,
+    # documented in config as overriding strict for routing) decides what
+    # happens when local is down:
+    #   * fallback allowed  → chat goes cloud-primary (latency matters mid-
+    #     conversation); every other LLM task stays LOCAL-primary but gets a
+    #     cloud fallback chain, so briefs/post-mortems degrade to Groq instead
+    #     of dying with "LLM unavailable" on a GPU-less host.
+    #   * fallback disabled → hard-pin local, empty chain (the strict privacy
+    #     boundary for users who explicitly opt out of cloud).
+    # Embeddings are always exempt from the cloud chain here: mixing embedding
+    # models silently corrupts the vector space.
+    _cloud_ok = getattr(s, "allow_cloud_fallback", True)
+    _chat_cloud_exempt = task == TaskType.CHAT_SENSITIVE and _cloud_ok
     if sensitivity == Sensitivity.SENSITIVE and s.llm_privacy_strict and not _chat_cloud_exempt:
         # Embeddings still need an embedding model, not chat.
         if task == TaskType.EMBEDDING:
@@ -192,6 +199,19 @@ def route(
                 model=MODELS["ollama_embed"],
                 fallback_chain=[],
                 rationale="sensitive + strict → local embed",
+            )
+        if _cloud_ok:
+            chain = _filter_chain_by_keys(
+                [MODELS["groq_70b"], MODELS["nim_70b"], MODELS["gemini_flash"]], s
+            )
+            return RouteDecision(
+                provider="ollama",
+                model=MODELS["ollama_default"],
+                fallback_chain=chain,
+                rationale=(
+                    "sensitive + strict → local primary; cloud fallback allowed "
+                    "(ALLOW_CLOUD_FALLBACK=true)"
+                ),
             )
         return RouteDecision(
             provider="ollama",

@@ -52,6 +52,12 @@ from pfip.portfolio.whatif import run_what_if
 from pfip.tax.indian_rules import DISCLAIMER
 from pfip.vol.cone import forecast_vol_cone
 
+# The tax DISCLAIMER ("consult a CA before filing") is only right where a tax
+# figure is actually computed (what-if SELL, CSV import). Analytics endpoints
+# (benchmark, stress, net-worth, goals, SIP, marking) carry this one instead —
+# a benchmark comparison has nothing to do with filing taxes.
+ADVISORY_DISCLAIMER = "Decision-support analytics — not investment advice. Verify independently."
+
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
 
@@ -248,7 +254,7 @@ async def rebuild_holdings(
     return {
         "rebuilt": len(holdings),
         "holdings": [h.model_dump(mode="json") for h in holdings],
-        "disclaimer": DISCLAIMER,
+        "disclaimer": ADVISORY_DISCLAIMER,
     }
 
 
@@ -294,7 +300,7 @@ async def marking(db: DbSession, _user: CurrentUser) -> dict:
             "marked": len(result.marked),
             "total": len(result.marked) + len(result.unmarked),
         },
-        "disclaimer": DISCLAIMER,
+        "disclaimer": ADVISORY_DISCLAIMER,
     }
 
 
@@ -309,7 +315,7 @@ async def exposure(db: DbSession, _user: CurrentUser) -> dict:
         "total_inr": str(total),
         "exposure_inr": {k: str(v) for k, v in exp.items()},
         "exposure_pct": {k: (float(v / total) if total else 0.0) for k, v in exp.items()},
-        "disclaimer": DISCLAIMER,
+        "disclaimer": ADVISORY_DISCLAIMER,
     }
 
 
@@ -319,7 +325,7 @@ async def concentration(db: DbSession, _user: CurrentUser) -> dict:
     holdings = await svc.list_holdings(active=True)
     mark_prices = (await build_marking(db, holdings)).mark_prices
     result = await svc.concentration_score(mark_prices=mark_prices)
-    result["disclaimer"] = DISCLAIMER
+    result["disclaimer"] = ADVISORY_DISCLAIMER
     return result
 
 
@@ -355,7 +361,7 @@ async def correlations(
         "symbols": ordered,
         "matrix": matrix_2d,
         "note": note,
-        "disclaimer": DISCLAIMER,
+        "disclaimer": ADVISORY_DISCLAIMER,
     }
 
 
@@ -507,7 +513,7 @@ async def pre_trade(body: PreTradeRequest, db: DbSession, _user: CurrentUser) ->
         "per_item": verdict.per_item,
         "sizing": sizing,
         "daily_positions_remaining": rm.daily_new_positions_remaining(body.positions_added_today),
-        "disclaimer": DISCLAIMER,
+        "disclaimer": ADVISORY_DISCLAIMER,
     }
 
 
@@ -595,7 +601,7 @@ async def goals_project(body: GoalProjectRequest, db: DbSession, _user: CurrentU
     out["vol_source"] = vol_source
     if vol_cone_meta is not None:
         out["vol_cone"] = vol_cone_meta
-    out["disclaimer"] = DISCLAIMER
+    out["disclaimer"] = ADVISORY_DISCLAIMER
     return out
 
 
@@ -612,15 +618,30 @@ async def what_if(body: WhatIfRequest, db: DbSession, _user: CurrentUser) -> dic
     if body.qty <= 0:
         raise HTTPException(status_code=422, detail="qty must be > 0")
     service = PortfolioService(db)
+    # Default to live FX-converted marks so before/after are MARKET values —
+    # without this the "before" total silently showed cost basis, disagreeing
+    # with /portfolio/summary on the same book.
+    mark_prices = body.mark_prices
+    valuation = "caller-supplied marks"
+    if mark_prices is None:
+        holdings = await service.list_holdings(active=True)
+        marking = await build_marking(db, holdings)
+        mark_prices = marking.mark_prices
+        unmarked = [u["symbol"] for u in marking.unmarked]
+        valuation = "mark-to-market (latest close, FX-converted)" + (
+            f"; cost-basis fallback for: {', '.join(unmarked)}" if unmarked else ""
+        )
     result = await run_what_if(
         service,
         action=action,
         symbol=body.symbol,
         qty=body.qty,
         price=body.price,
-        mark_prices=body.mark_prices,
+        mark_prices=mark_prices,
     )
-    return result.as_dict()
+    out = result.as_dict()
+    out["valuation_note"] = valuation
+    return out
 
 
 @router.get("/benchmark")
@@ -636,7 +657,7 @@ async def benchmark(
     where history is missing.
     """
     out = await run_benchmark(db, symbol=symbol)
-    out["disclaimer"] = DISCLAIMER
+    out["disclaimer"] = ADVISORY_DISCLAIMER
     return out
 
 
@@ -648,7 +669,7 @@ async def net_worth(db: DbSession, _user: CurrentUser) -> dict:
     assets (PPF/EPF/NPS/FD/SGB/G-Sec/bonds/cash) are held at cost basis.
     """
     out = await run_networth(db)
-    out["disclaimer"] = DISCLAIMER
+    out["disclaimer"] = ADVISORY_DISCLAIMER
     return out
 
 
@@ -660,7 +681,7 @@ async def stress_test(db: DbSession, _user: CurrentUser) -> dict:
     rate-shock, INR depreciation) and reports the projected portfolio loss.
     """
     out = await run_stress_test(db)
-    out["disclaimer"] = DISCLAIMER
+    out["disclaimer"] = ADVISORY_DISCLAIMER
     return out
 
 
@@ -674,7 +695,7 @@ async def sip_xirr(body: SipXirrRequest, _user: CurrentUser) -> dict:
     """Total invested + annualised XIRR for a SIP given its dated instalments."""
     flows = [CashFlow(when=i.date, amount=i.amount) for i in body.instalments]
     out = sip_summary(flows, current_value=body.current_value_inr)
-    out["disclaimer"] = DISCLAIMER
+    out["disclaimer"] = ADVISORY_DISCLAIMER
     return out
 
 
@@ -689,7 +710,7 @@ async def sip_project(body: SipProjectRequest, _user: CurrentUser) -> dict:
         annual_return=body.annual_return,
         current_corpus=body.current_corpus_inr,
     )
-    out["disclaimer"] = DISCLAIMER
+    out["disclaimer"] = ADVISORY_DISCLAIMER
     return out
 
 
@@ -701,7 +722,7 @@ async def sip_project(body: SipProjectRequest, _user: CurrentUser) -> dict:
 @router.get("/import/supported")
 async def import_supported(_user: CurrentUser) -> dict:
     """List supported broker adapters + pinned schema versions."""
-    return {"brokers": list_supported(), "disclaimer": DISCLAIMER}
+    return {"brokers": list_supported(), "disclaimer": ADVISORY_DISCLAIMER}
 
 
 @router.post("/import")

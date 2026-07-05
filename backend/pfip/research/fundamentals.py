@@ -79,6 +79,19 @@ def _f(v: Any) -> float | None:
         return None
 
 
+# Canonical metrics the app expresses as PERCENT (finnhub + screener emit
+# percent natively); sources that report fractions get ×100 on the way in.
+_FRACTION_TO_PCT = {
+    "operating_margin",
+    "net_margin",
+    "roe",
+    "roa",
+    "revenue_growth",
+    "eps_growth",
+    "dividend_yield",
+}
+
+
 def _av_candidates(symbols: list[str], resolved: dict[str, Any]) -> list[str]:
     """Map our DB-style symbols to Alpha Vantage tickers.
 
@@ -130,6 +143,11 @@ async def _alphavantage_overview(symbols: list[str], resolved: dict[str, Any]) -
         for av_field, canon in _AV_METRIC_MAP.items():
             val = _f(data.get(av_field))
             if val is not None:
+                # AV reports margins/returns/growth/yield as FRACTIONS (0.2431)
+                # — normalise to percent, the app-wide convention (finnhub and
+                # screener both emit percent for these fields).
+                if canon in _FRACTION_TO_PCT:
+                    val = round(val * 100.0, 4)
                 metrics[canon] = val
         return {
             "source": "alphavantage",
@@ -185,12 +203,12 @@ async def _screener_overview(symbols: list[str], resolved: dict[str, Any]) -> di
         metrics: dict[str, Any] = {}
         for sk, canon in _SCREENER_MAP.items():
             if sk in ratios:
-                # Screener reports ROE/ROCE/yield as PERCENTAGES (38.8), but our
-                # canonical convention (matching AV/finnhub) is FRACTIONS (0.388)
-                # so the UI/formatter treat every source identically.
-                metrics[canon] = (
-                    ratios[sk] / 100.0 if canon in ("roe", "roce", "dividend_yield") else ratios[sk]
-                )
+                # Screener reports ROE/ROCE/yield as PERCENTAGES (38.8) — keep
+                # them that way. Percent is the app-wide convention: finnhub
+                # (ROE 146.69) and the nightly screener ingest (ROCE 10.3) both
+                # emit percent, and a /100 here made the SAME company show
+                # roce 0.388 on /research but 38.8 on /diligence.
+                metrics[canon] = ratios[sk]
         # Screener market cap is in ₹ crore → absolute ₹ for consistent formatting.
         if "market_cap" in ratios:
             metrics["market_cap"] = ratios["market_cap"] * 1e7
@@ -245,7 +263,9 @@ def _yfinance_overview_sync(symbols: list[str]) -> dict[str, Any]:
             for n in names:
                 v = info.get(n)
                 if isinstance(v, (int, float)):
-                    m[canon] = float(v)
+                    # yfinance .info reports margins/returns/growth/yield as
+                    # fractions — normalise to the app-wide percent convention.
+                    m[canon] = round(float(v) * 100.0, 4) if canon in _FRACTION_TO_PCT else float(v)
                     break
         return {
             "source": "yfinance",

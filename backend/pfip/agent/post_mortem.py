@@ -259,7 +259,14 @@ async def draft_post_mortem(db: AsyncSession, holding_id: UUID) -> PostMortemDra
         md = md_raw.strip()
         return PostMortemDraft(holding_id=holding_id, markdown=md, used_llm=True, warnings=warnings)
     except (LLMUnavailable, LLMAllProvidersFailed) as exc:
-        warnings.append(f"LLM unavailable: {exc}")
+        # Full exception (provider chain + traceback text) goes to the log ONLY.
+        # The user-facing warning must never leak stack traces or internal
+        # hostnames into the UI.
+        logger.warning(f"post-mortem LLM unavailable for {holding_id}: {exc}")
+        warnings.append(
+            f"LLM narrative unavailable ({type(exc).__name__}) — "
+            "data sections below are complete; fill in the lessons manually."
+        )
         md = _fallback_markdown(holding, warnings)
         return PostMortemDraft(
             holding_id=holding_id, markdown=md, used_llm=False, warnings=warnings

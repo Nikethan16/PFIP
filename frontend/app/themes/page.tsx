@@ -53,10 +53,36 @@ export default function ThemesPage() {
             news exposure over {detail.data.window_days} days.
           </p>
           {detail.data.beneficiaries.length === 0 ? (
-            <EmptyState
-              title="No exposure found"
-              description="None of your tracked symbols have recent news matching this theme. Try a longer window or add more symbols to the watchlist."
-            />
+            detail.data.theme_evidence && detail.data.theme_evidence.length ? (
+              <div className="space-y-2">
+                <EmptyState
+                  title="No tracked-symbol exposure"
+                  description="None of your tracked symbols were attributed to this theme, but here are recent headlines driving it — add a relevant name to the watchlist to track exposure."
+                />
+                <ul className="space-y-1 border border-border/60 bg-card p-4 text-xs text-muted-foreground">
+                  {detail.data.theme_evidence.map((ev, i) => (
+                    <li key={i} className="truncate">
+                      •{" "}
+                      {ev.url ? (
+                        <a href={ev.url} target="_blank" rel="noreferrer" className="hover:text-primary">
+                          {ev.title}
+                        </a>
+                      ) : (
+                        ev.title
+                      )}
+                      {ev.published_at ? (
+                        <span className="ml-1 opacity-70">· {ev.published_at.slice(0, 10)}</span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <EmptyState
+                title="No exposure found"
+                description="None of your tracked symbols have recent news matching this theme. Try a longer window or add more symbols to the watchlist."
+              />
+            )
           ) : (
             <div className="space-y-3">
               {detail.data.beneficiaries.map((b, idx) => (

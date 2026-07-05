@@ -72,32 +72,104 @@ async def recent_notifications(
     items: list[NotificationItem] = []
 
     # --- New ML signals ---------------------------------------------------
+    # Only actionable signals get their own line: a nightly batch of sixteen
+    # "HOLD · 1% confidence" items buried the one alert worth reading. HOLDs
+    # and low-confidence rows collapse into a single digest entry.
     sig_rows = (
         (
             await db.execute(
                 select(SignalRow)
                 .where(SignalRow.generated_at >= cutoff)
                 .order_by(SignalRow.generated_at.desc())
-                .limit(limit)
+                .limit(50)
             )
         )
         .scalars()
         .all()
     )
+    quiet_signals: list[SignalRow] = []
     for s in sig_rows:
         direction = str(s.direction).upper()
         conf = int(getattr(s, "confidence", 0) or 0)
-        # A high-confidence BUY/SELL is WARN-worthy; HOLD/low-conf is INFO.
-        severity = "WARN" if direction in {"BUY", "SELL"} and conf >= 60 else "INFO"
+        if direction in {"BUY", "SELL"} and conf >= 40:
+            severity = "WARN" if conf >= 60 else "INFO"
+            items.append(
+                NotificationItem(
+                    kind="signal",
+                    severity=severity,
+                    title=f"{direction} signal · {s.asset}",
+                    body=(
+                        f"{conf}% confidence ({s.regime}) — {s.model_name} "
+                        f"{s.model_version} · experimental, not a trade instruction"
+                    ),
+                    at=s.generated_at,
+                )
+            )
+        else:
+            quiet_signals.append(s)
+    if quiet_signals:
+        max_conf = max(int(getattr(s, "confidence", 0) or 0) for s in quiet_signals)
         items.append(
             NotificationItem(
-                kind="signal",
-                severity=severity,
-                title=f"{direction} signal · {s.asset}",
-                body=f"{conf}% confidence ({s.regime}) — {s.model_name} {s.model_version}",
-                at=s.generated_at,
+                kind="signal_digest",
+                severity="INFO",
+                title=f"{len(quiet_signals)} quiet signals (HOLD / low confidence)",
+                body=f"Nightly batch — max confidence {max_conf}%. Nothing actionable.",
+                at=max(s.generated_at for s in quiet_signals),
             )
         )
+
+    # --- Data-source health -----------------------------------------------
+    # A failing or stale source is exactly the kind of thing the bell exists
+    # for — it silently degrades every number in the app. (The mf_amfi feed
+    # once failed for four days without a single notification.)
+    try:
+        from sqlalchemy import text as sql_text
+
+        src_rows = (
+            await db.execute(
+                sql_text(
+                    """
+                    SELECT source, last_success_at, last_error, consecutive_failures
+                    FROM source_health
+                    WHERE consecutive_failures > 0
+                       OR last_success_at < :stale_cutoff
+                    """
+                ),
+                {"stale_cutoff": datetime.now(tz=timezone.utc) - timedelta(days=2)},
+            )
+        ).all()
+        for source, last_success_at, last_error, consec in src_rows:
+            consec = int(consec or 0)
+            if consec > 0:
+                items.append(
+                    NotificationItem(
+                        kind="source_health",
+                        severity="CRITICAL" if consec >= 3 else "WARN",
+                        title=f"Data source failing · {source}",
+                        body=(
+                            f"{consec} consecutive failures — {(last_error or 'unknown error')[:160]}"
+                        ),
+                        at=datetime.now(tz=timezone.utc),
+                    )
+                )
+            else:
+                age_days = (
+                    (datetime.now(tz=timezone.utc) - last_success_at).days
+                    if last_success_at
+                    else None
+                )
+                items.append(
+                    NotificationItem(
+                        kind="source_health",
+                        severity="WARN",
+                        title=f"Data source stale · {source}",
+                        body=f"No successful run in {age_days} days.",
+                        at=datetime.now(tz=timezone.utc),
+                    )
+                )
+    except Exception:  # noqa: BLE001 — source_health may not exist on fresh installs
+        pass
 
     # --- Regime transitions ----------------------------------------------
     regime_rows = (
@@ -154,4 +226,8 @@ async def recent_notifications(
     items.sort(key=lambda it: it.at, reverse=True)
     items = items[:limit]
 
-    return RecentNotifications(unread=len(items), window_hours=hours, items=items)
+    # The badge counts things worth acting on (WARN/CRITICAL), not every INFO
+    # row — a bell stuck at 19 because the model ran overnight teaches the
+    # user to ignore it.
+    unread = sum(1 for it in items if it.severity in ("WARN", "CRITICAL"))
+    return RecentNotifications(unread=unread, window_hours=hours, items=items)

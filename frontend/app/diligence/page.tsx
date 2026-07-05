@@ -49,6 +49,7 @@ import {
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
+import { PeerTable } from "@/components/shared/peer-table";
 import { openAgentChat } from "@/components/chat/chat-widget";
 import {
   useDiligence,
@@ -293,6 +294,9 @@ function Dossier({ dossier: d }: { dossier: DiligenceDossier }) {
 
       {/* Key metrics — only the curated key_metrics that exist for this source. */}
       <KeyMetrics dossier={d} />
+
+      {/* Peer comparison — renders only when a curated peer group + metrics exist. */}
+      <PeerTable symbol={d.symbol} />
 
       {/* Model read — regime + experimental signal. */}
       {d.model_read ? <ModelRead read={d.model_read} /> : null}

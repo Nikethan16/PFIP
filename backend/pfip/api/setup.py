@@ -42,23 +42,28 @@ async def setup_status(db: DbSession, _user: CurrentUser) -> dict[str, Any]:
     Each field is a boolean signal the UI uses to decide what to prompt for.
     ``needs_setup`` is True if any P0 source has zero rows.
     """
+    # Logical counter → the query that actually reflects where that data lands.
+    # (MF NAVs live in ohlcv as market='MF_INDIA'; macro lives in fundamentals
+    # under source='fred' — NOT in the legacy mf_nav / macro_series tables the
+    # old code counted, which made the onboarding checklist lie.)
+    counters: dict[str, str] = {
+        "watchlist": "SELECT COUNT(*) AS n FROM watchlist",
+        "ohlcv": "SELECT COUNT(*) AS n FROM ohlcv",
+        "mf_nav": "SELECT COUNT(*) AS n FROM ohlcv WHERE market = 'MF_INDIA'",
+        "fx_rates": "SELECT COUNT(*) AS n FROM fx_rates",
+        "macro_series": "SELECT COUNT(*) AS n FROM fundamentals WHERE source = 'fred'",
+        "news": "SELECT COUNT(*) AS n FROM news",
+        "holdings": "SELECT COUNT(*) AS n FROM holdings WHERE closed_at IS NULL",
+        "source_health": "SELECT COUNT(*) AS n FROM source_health",
+    }
     counts: dict[str, int] = {}
-    for table in (
-        "watchlist",
-        "ohlcv",
-        "mf_nav",
-        "fx_rates",
-        "macro_series",
-        "news",
-        "holdings",
-        "source_health",
-    ):
+    for name, query in counters.items():
         try:
-            row = (await db.execute(text(f"SELECT COUNT(*) AS n FROM {table}"))).mappings().first()
-            counts[table] = int(row["n"]) if row else 0
+            row = (await db.execute(text(query))).mappings().first()
+            counts[name] = int(row["n"]) if row else 0
         except Exception as exc:
-            logger.debug(f"setup_status: table {table} count failed: {exc}")
-            counts[table] = -1  # table missing or query failed
+            logger.debug(f"setup_status: counter {name} failed: {exc}")
+            counts[name] = -1  # table missing or query failed
 
     needs_setup = counts.get("watchlist", 0) <= 0 or counts.get("ohlcv", 0) < 100
     return {

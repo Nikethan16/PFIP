@@ -51,14 +51,20 @@ async def test_alphavantage_overview_maps_metrics(monkeypatch):
     km = out["key_metrics"]
     assert km["pe_ratio"] == 30.5
     assert km["pb_ratio"] == 45.1
-    assert km["net_margin"] == 0.25
+    # AV reports ProfitMargin as a FRACTION (0.25); normalised to percent to
+    # match the app-wide convention (finnhub/screener emit percent).
+    assert km["net_margin"] == 25.0
     assert km["market_cap"] == 3_000_000_000_000
     assert "revenue_growth" not in km  # "None" dropped
 
 
 @pytest.mark.asyncio
 async def test_alphavantage_overview_no_key_returns_empty(monkeypatch):
+    # alphavantage_key() accepts BOTH spellings, so "no key" must clear both —
+    # otherwise a real ALPHA_VANTAGE_API_KEY in the loaded .env leaks in and the
+    # function tries a live fetch instead of the intended no-op.
     monkeypatch.delenv("ALPHAVANTAGE_API_KEY", raising=False)
+    monkeypatch.delenv("ALPHA_VANTAGE_API_KEY", raising=False)
     assert await F._alphavantage_overview(["AAPL"], {}) == {}
 
 
@@ -81,7 +87,9 @@ def test_is_indian_detection():
 
 @pytest.mark.asyncio
 async def test_screener_overview_normalizes_percent_and_crore(monkeypatch):
-    """ROE/ROCE/yield → fractions; market cap ₹cr → absolute ₹."""
+    """ROE/ROCE/yield kept as PERCENT (app-wide convention); market cap ₹cr →
+    absolute ₹. Screener already reports these as percent, so /research and
+    /diligence now read the SAME number for the same company."""
 
     async def fake_fetch_page(sym):
         return "<html>waree</html>"
@@ -90,9 +98,9 @@ async def test_screener_overview_normalizes_percent_and_crore(monkeypatch):
         return {
             "stock_p_e": 21.0,
             "book_value": 502.0,
-            "dividend_yield": 0.07,  # screener percent → 0.0007 fraction
-            "roce": 38.8,  # → 0.388
-            "roe": 32.8,  # → 0.328
+            "dividend_yield": 0.07,  # percent, kept as-is
+            "roce": 38.8,  # percent, kept as-is
+            "roe": 32.8,  # percent, kept as-is
             "current_price": 2859.0,
             "market_cap": 82245.0,  # ₹ crore → 8.2245e11
         }
@@ -107,9 +115,9 @@ async def test_screener_overview_normalizes_percent_and_crore(monkeypatch):
     assert out["source"] == "screener"
     assert out["matched_symbol"] == "WAAREEENER.NS"
     assert km["pe_ratio"] == 21.0
-    assert km["roce"] == pytest.approx(0.388)
-    assert km["roe"] == pytest.approx(0.328)
-    assert km["dividend_yield"] == pytest.approx(0.0007)
+    assert km["roce"] == pytest.approx(38.8)
+    assert km["roe"] == pytest.approx(32.8)
+    assert km["dividend_yield"] == pytest.approx(0.07)
     assert km["market_cap"] == pytest.approx(8.2245e11)
 
 

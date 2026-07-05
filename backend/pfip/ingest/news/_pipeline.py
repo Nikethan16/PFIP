@@ -122,7 +122,9 @@ _NAME_ALIASES: dict[str, list[str]] = {
     "TSLA": ["tesla"],
     "META": ["meta platforms", "facebook"],
     "SPY": ["s&p 500", "s&p500", "sp 500"],
-    "QQQ": ["nasdaq 100", "nasdaq"],
+    # NOTE: bare exchange words ("nasdaq", "nyse", "bse") are NOT aliases — they
+    # matched unrelated prose like "(Nasdaq: RKLB)" and mis-tagged the ETF.
+    "QQQ": ["nasdaq 100", "nasdaq-100", "invesco qqq"],
     "RELIANCE.NS": ["reliance", "reliance industries", "ril"],
     "TCS.NS": ["tata consultancy", "tcs"],
     "INFY.NS": ["infosys"],
@@ -133,15 +135,41 @@ _NAME_ALIASES: dict[str, list[str]] = {
 }
 
 
+# Generic exchange/index/market words that are never specific enough to be an
+# alias — they match unrelated prose ("Nasdaq: RKLB", "on the NYSE today") and
+# mis-tag ETFs. A base token equal to one of these is dropped.
+_ALIAS_STOPWORDS = frozenset(
+    {"NASDAQ", "NYSE", "BSE", "NSE", "DOW", "AMEX", "SPX", "SPACE", "META", "GAS", "OIL"}
+)
+
+# Explicit ticker mentions we can trust: "(NASDAQ: RKLB)", "NYSE: X", cashtag
+# "$RKLB". These link precisely — and ONLY to a tracked symbol — so an explicit
+# mention of an UNtracked ticker (RKLB) never fuzzy-bleeds onto an index ETF.
+_EXPLICIT_TICKER_RE = re.compile(r"(?:\b(?:NASDAQ|NYSE|BSE|NSE|AMEX)\s*:\s*|\$)([A-Z]{1,6})\b")
+
+
 def _aliases_for(symbol: str) -> set[str]:
     """Search aliases for a watchlist symbol: itself, its base token, and names."""
     up = symbol.upper()
     base = re.split(r"[.\-/]", up)[0]
     aliases = {up}
-    if len(base) >= 3:
+    if len(base) >= 3 and base not in _ALIAS_STOPWORDS:
         aliases.add(base)
-    aliases.update(a.upper() for a in _NAME_ALIASES.get(up, []))
+    aliases.update(
+        a.upper() for a in _NAME_ALIASES.get(up, []) if a.upper() not in _ALIAS_STOPWORDS
+    )
     return aliases
+
+
+def _explicit_tracked_tickers(text_blob: str, tracked_bases: dict[str, str]) -> set[str]:
+    """Canonical symbols for explicit ``(EXCH: TICKER)`` / ``$TICKER`` mentions
+    that resolve to a TRACKED symbol. ``tracked_bases`` maps base token → symbol."""
+    out: set[str] = set()
+    for m in _EXPLICIT_TICKER_RE.finditer(text_blob or ""):
+        canon = tracked_bases.get(m.group(1).upper())
+        if canon:
+            out.add(canon)
+    return out
 
 
 async def link_entities(session: AsyncSession) -> int:
@@ -183,6 +211,9 @@ async def link_entities(session: AsyncSession) -> int:
         for alias in _aliases_for(tk):
             pats.append((tk, re.compile(rf"\b{re.escape(alias)}\b", re.IGNORECASE)))
 
+    # base-token → canonical symbol, for precise explicit-ticker resolution.
+    tracked_bases = {re.split(r"[.\-/]", tk.upper())[0]: tk for tk in tickers}
+
     updated = 0
     import json
 
@@ -190,7 +221,10 @@ async def link_entities(session: AsyncSession) -> int:
         haystack = " ".join(s for s in (title, summary) if s) or ""
         if not haystack:
             continue
-        matches = sorted({sym for sym, pat in pats if pat.search(haystack)})
+        matched = {sym for sym, pat in pats if pat.search(haystack)}
+        # Precise explicit "(NASDAQ: RKLB)" / "$RKLB" mentions of tracked names.
+        matched |= _explicit_tracked_tickers(haystack, tracked_bases)
+        matches = sorted(matched)
         if not matches:
             continue
         try:

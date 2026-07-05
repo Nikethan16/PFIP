@@ -78,6 +78,16 @@ def build_networth(
 
     all_dates = sorted({d for s in priced_symbols for d, _ in closes_by_symbol[s]})
 
+    # Start the timeline at the first acquisition, not at the oldest OHLCV bar
+    # of any symbol — otherwise years of pre-ownership dates render as a flat
+    # zero line (and a ~130 KB payload of `net_worth_inr: 0` rows).
+    known_acq = [a for _, _, a in priced_lots if a is not None] + [
+        a for _, a in flat_lots if a is not None
+    ]
+    if known_acq:
+        first_acq = min(known_acq)
+        all_dates = [d for d in all_dates if d >= first_acq]
+
     timeline: list[dict[str, Any]] = []
     cursors = {s: 0 for s in priced_symbols}
     last_price: dict[str, float | None] = {s: None for s in priced_symbols}
@@ -113,6 +123,16 @@ def build_networth(
         breakdown[cat] = breakdown.get(cat, 0.0) + val
 
     current = timeline[-1]["net_worth_inr"] if timeline else round(flat_total, 2)
+
+    # Keep the payload chart-sized: beyond ~500 points, stride-sample the
+    # middle but always keep the first and the final point (the current value).
+    if len(timeline) > 500:
+        stride = max(len(timeline) // 400, 1)
+        sampled = timeline[::stride]
+        if sampled[-1] is not timeline[-1]:
+            sampled.append(timeline[-1])
+        timeline = sampled
+
     return {
         "timeline": timeline,
         "current_inr": current,

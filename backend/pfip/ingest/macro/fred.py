@@ -9,7 +9,7 @@ All rows stored in ``fundamentals`` (single scalar per date), with:
 from __future__ import annotations
 
 import os
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Iterable
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,13 +39,22 @@ DEFAULT_SERIES: tuple[str, ...] = (
 )
 
 
+# Rolling window (days) of macro history to keep fresh each run. A macro
+# backbone only needs the recent path for regime/brief context, and a bounded
+# window keeps the nightly upsert light on free-tier Neon (the unbounded
+# 2010→today pull was ~48k rows re-attempted every night).
+_LOOKBACK_DAYS = 1100  # ~3 years
+
+
 @retry_http(max_attempts=3)
-async def _fetch_series(series_id: str, api_key: str) -> list[dict[str, Any]]:
+async def _fetch_series(
+    series_id: str, api_key: str, observation_start: str
+) -> list[dict[str, Any]]:
     params = {
         "series_id": series_id,
         "api_key": api_key,
         "file_type": "json",
-        "observation_start": "2010-01-01",
+        "observation_start": observation_start,
     }
     async with get_async_client() as client:
         r = await client.get(BASE, params=params)
@@ -58,11 +67,11 @@ async def fetch_fred_macro(series: Iterable[str] = DEFAULT_SERIES) -> list[dict[
     if not key:
         log.warning("FRED_API_KEY not set, fred macro no-op")
         return []
-    today = date.today()
+    observation_start = (date.today() - timedelta(days=_LOOKBACK_DAYS)).isoformat()
     rows: list[dict[str, Any]] = []
     for sid in series:
         try:
-            obs = await _fetch_series(sid, key)
+            obs = await _fetch_series(sid, key, observation_start)
         except Exception as e:  # noqa: BLE001
             log.warning(f"fred: {sid} failed: {type(e).__name__}: {e}")
             continue
@@ -75,9 +84,13 @@ async def fetch_fred_macro(series: Iterable[str] = DEFAULT_SERIES) -> list[dict[
                 d = date.fromisoformat(o["date"])
             except Exception:
                 continue
+            # as_of_date = the OBSERVATION date so each dated point is a distinct
+            # row. Stamping today() (the old behaviour) collided every dated
+            # observation of a series onto one conflict key → the whole macro
+            # series persisted as a single latest value.
             rows.append(
                 {
-                    "as_of_date": today,
+                    "as_of_date": d,
                     "report_date": d,
                     "symbol": sid,
                     "field": "value",

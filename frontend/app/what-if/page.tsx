@@ -157,8 +157,13 @@ function WhatIfResultView({ res }: { res: WhatIfResult }) {
             <Delta label="Tax realised" value={formatINR(taxInr)} positive={false} />
           ) : null}
         </div>
+        {res.valuation_note ? (
+          <p className="mt-3 text-[11px] text-muted-foreground">
+            Valued via {res.valuation_note}.
+          </p>
+        ) : null}
         {res.disclaimer ? (
-          <p className="mt-4 text-[11px] text-muted-foreground">{res.disclaimer}</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">{res.disclaimer}</p>
         ) : null}
       </section>
     </div>
