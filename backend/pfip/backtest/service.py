@@ -11,6 +11,7 @@ walk-forward + CPCV + lookahead engine, build an equity curve, and persist a
 from __future__ import annotations
 
 import logging
+import math
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -28,6 +29,28 @@ from pfip.db.sources import resolve_ohlcv_source
 from pfip.models.backtest import BacktestRunRow
 
 log = logging.getLogger(__name__)
+
+
+def _json_safe(obj: Any) -> Any:
+    """Make a metrics blob JSONB-safe: recurse dicts/lists, coerce numpy scalars
+    to Python numbers, and turn NaN/±Inf into None.
+
+    Real price data routinely produces NaN Sharpe (flat returns) or numpy
+    float64 values, both of which make the ``metrics`` JSONB insert raise — the
+    500 the Backtest run endpoint returned.
+    """
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    # numpy scalar → Python scalar
+    item = getattr(obj, "item", None)
+    if callable(item) and obj.__class__.__module__ == "numpy":
+        obj = obj.item()
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    return obj
+
 
 # Strategies a user can pick. Keyed to the engine's built-in benchmark set so
 # there's a single source of truth for what each name does.
@@ -168,6 +191,10 @@ async def run_and_persist_backtest(
             "the equity curve is the full-sample net-of-cost path for visualization."
         ),
     }
+    # NaN Sharpe / numpy floats from real price data would make the JSONB insert
+    # raise (the 500). Coerce to JSON-safe before persisting + returning.
+    metrics = _json_safe(metrics)
+    wf = metrics["walkforward"]
 
     start_date = df.index[0].date() if hasattr(df.index[0], "date") else datetime.now(tz=UTC).date()
     end_date = df.index[-1].date() if hasattr(df.index[-1], "date") else datetime.now(tz=UTC).date()

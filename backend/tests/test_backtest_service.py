@@ -43,3 +43,26 @@ def test_equity_curve_is_bounded_and_ends_on_last_bar():
 
 def test_equity_curve_empty_on_empty_df():
     assert S._equity_curve(pd.DataFrame({"close": []}), _BENCHMARKS["buy_hold"], 5.0) == []
+
+
+def test_json_safe_handles_nan_inf_and_numpy():
+    # Real price data produces NaN Sharpe / numpy floats — these must serialize
+    # to valid JSON (None for NaN/Inf), or the metrics JSONB insert 500s.
+    import json
+
+    import numpy as np
+
+    blob = {
+        "sharpe": float("nan"),
+        "dd": float("-inf"),
+        "np": np.float64(1.25),
+        "i": np.int64(7),
+        "nested": {"vals": [np.float32(2.0), float("nan")]},
+        "ok": 3.14,
+    }
+    out = S._json_safe(blob)
+    assert out["sharpe"] is None and out["dd"] is None
+    assert out["np"] == 1.25 and out["i"] == 7
+    assert out["nested"]["vals"] == [2.0, None]
+    assert out["ok"] == 3.14
+    json.dumps(out)  # must not raise

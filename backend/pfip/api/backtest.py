@@ -66,9 +66,21 @@ async def run_backtest(
         )
     if body.days < 180:
         raise HTTPException(status_code=422, detail="days must be >= 180")
-    return await run_and_persist_backtest(
-        db, market=body.market.strip(), strategy=body.strategy, days=body.days
-    )
+    try:
+        return await run_and_persist_backtest(
+            db, market=body.market.strip(), strategy=body.strategy, days=body.days
+        )
+    except Exception as exc:  # noqa: BLE001 — never 500 the page; return a clean error
+        import logging
+
+        logging.getLogger(__name__).warning(
+            f"backtest run failed for {body.market}/{body.strategy}: {type(exc).__name__}: {exc}"
+        )
+        return {
+            "error": f"backtest failed ({type(exc).__name__})",
+            "market": body.market,
+            "strategy": body.strategy,
+        }
 
 
 def _summary(row: BacktestRunRow) -> dict[str, Any]:
