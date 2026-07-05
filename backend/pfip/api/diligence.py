@@ -32,7 +32,7 @@ async def get_peers(symbol: str, db: DbSession, _user: CurrentUser) -> dict[str,
     """Compare ``symbol`` to its curated sector peers on valuation + quality
     ratios. Returns an empty comparison (never 404) when the symbol is ungrouped
     or peers lack stored metrics."""
-    from pfip.diligence.peers import compare, load_key_metrics, peers_for
+    from pfip.diligence.peers import compare, ensure_peer_metrics, peers_for
 
     peer_syms = peers_for(symbol)
     if not peer_syms:
@@ -43,7 +43,8 @@ async def get_peers(symbol: str, db: DbSession, _user: CurrentUser) -> dict[str,
             "fields": {},
             "note": "no curated peer group for this symbol",
         }
-    metrics_by = await load_key_metrics(db, [symbol, *peer_syms])
+    # Load stored metrics + fetch any missing peers live (untracked peers).
+    metrics_by = await ensure_peer_metrics(db, [symbol, *peer_syms])
     # Ensure the target has metrics even if only finnhub-prefixed ones exist.
     if symbol not in metrics_by and symbol.upper() not in {k.upper() for k in metrics_by}:
         agg = await build_diligence(db, symbol)

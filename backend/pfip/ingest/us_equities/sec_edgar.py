@@ -29,8 +29,24 @@ log = get_logger("pfip.ingest.us_equities.sec_edgar")
 BASE = "https://data.sec.gov"
 
 
+_ua_warned = False
+
+
 def _ua_headers() -> dict[str, str]:
-    ua = os.environ.get("SEC_EDGAR_USER_AGENT", USER_AGENT).strip() or USER_AGENT
+    # SEC hard-403s any request whose User-Agent doesn't identify you with a
+    # contact email. When SEC_EDGAR_USER_AGENT is unset we fall back to the
+    # generic UA (which SEC rejects) — warn ONCE so the fix is discoverable
+    # instead of a wall of silent 403s.
+    global _ua_warned
+    configured = os.environ.get("SEC_EDGAR_USER_AGENT", "").strip()
+    if not configured and not _ua_warned:
+        _ua_warned = True
+        log.warning(
+            "SEC_EDGAR_USER_AGENT not set — SEC will 403 every request. Set it to "
+            "'Your Name your@email' in the env (and the GitHub secret) to enable "
+            "US filings ingestion."
+        )
+    ua = configured or USER_AGENT
     return {"User-Agent": ua, "Accept": "application/json"}
 
 

@@ -29,6 +29,16 @@ _FINNHUB_ALIAS: dict[str, str] = {
     "finnhub_currentDividendYieldTTM": "dividend_yield",
 }
 
+# The nightly screener ingest stores India ratios under ``screener_<rawkey>``
+# (from the page's top-ratio labels). Map the ones we compare on to canonical
+# names so tracked India names (screener-sourced) participate in peer ranking.
+_SCREENER_ALIAS: dict[str, str] = {
+    "screener_stock_p_e": "pe_ratio",
+    "screener_roce": "roce",
+    "screener_roe": "roe",
+    "screener_dividend_yield": "dividend_yield",
+}
+
 # Curated sector peer groups. Symbols use the app's canonical form (``.NS`` for
 # NSE, bare for US). A company is compared against the others in its group.
 PEER_GROUPS: dict[str, list[str]] = {
@@ -128,7 +138,8 @@ async def load_key_metrics(session, symbols: list[str]) -> dict[str, dict[str, A
     from sqlalchemy import bindparam, text
 
     wanted_canon = set(COMPARE_FIELDS)
-    wanted_fields = wanted_canon | set(_FINNHUB_ALIAS)
+    alias = {**_FINNHUB_ALIAS, **_SCREENER_ALIAS}
+    wanted_fields = wanted_canon | set(alias)
     out: dict[str, dict[str, Any]] = {}
     try:
         rows = (
@@ -156,11 +167,51 @@ async def load_key_metrics(session, symbols: list[str]) -> dict[str, dict[str, A
         target = full_upper.get(sym.upper()) or base_to_full.get(sym.upper())
         if not target or value is None:
             continue
-        canon = field if field in wanted_canon else _FINNHUB_ALIAS.get(field)
+        canon = field if field in wanted_canon else alias.get(field)
         if not canon:
             continue
         out.setdefault(target, {}).setdefault(canon, float(value))
     return out
 
 
-__all__ = ["PEER_GROUPS", "COMPARE_FIELDS", "peers_for", "compare", "load_key_metrics"]
+async def ensure_peer_metrics(
+    session, symbols: list[str], *, cap: int = 6
+) -> dict[str, dict[str, Any]]:
+    """Load stored metrics, and for symbols still missing them, fetch live
+    fundamentals on-demand (screener for India, AV for US) and persist so peer
+    comparison works even when a peer isn't in the tracked universe.
+
+    Bounded by ``cap`` live fetches to respect the shared AV budget; best-effort.
+    """
+    metrics = await load_key_metrics(session, symbols)
+    missing = [s for s in symbols if not metrics.get(s)][:cap]
+    if not missing:
+        return metrics
+    try:
+        from pfip.research.fundamentals import fetch_live_fundamentals, persist_live_fundamentals
+
+        for sym in missing:
+            resolved = {"exchange": "NSE" if sym.upper().endswith((".NS", ".BO")) else ""}
+            live = await fetch_live_fundamentals([sym], resolved)
+            if live.get("key_metrics"):
+                live.setdefault("matched_symbol", sym)
+                await persist_live_fundamentals(session, live)
+                # Merge canonical metrics straight in (already percent-normalised).
+                metrics[sym] = {
+                    k: float(v)
+                    for k, v in live["key_metrics"].items()
+                    if k in COMPARE_FIELDS and isinstance(v, (int, float))
+                }
+    except Exception:  # noqa: BLE001 — on-demand enrichment is best-effort
+        pass
+    return metrics
+
+
+__all__ = [
+    "PEER_GROUPS",
+    "COMPARE_FIELDS",
+    "peers_for",
+    "compare",
+    "load_key_metrics",
+    "ensure_peer_metrics",
+]

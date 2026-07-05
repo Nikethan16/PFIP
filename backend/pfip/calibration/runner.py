@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import pandas as pd
 from sqlalchemy import select
@@ -179,116 +180,152 @@ async def run_monthly_calibration(
     period_end = datetime.now(tz=timezone.utc)
     period_start = period_end - timedelta(days=months * 31)
 
-    # Pool across model_version, not per-version. The universe retrains every
-    # few days, so grouping by (name, version, market) fragmented the samples so
-    # finely that almost no group reached the n>=10 floor and the table stayed
-    # empty. We calibrate per (model_name, market) over the window and label the
-    # report with the LATEST version seen — calibration of the live model family
-    # is what the user actually needs.
-    for (model_name, market), group in df.groupby(["model_name", "market"]):
-        model_version = str(group.sort_values("generated_at")["model_version"].iloc[-1])
-        price_df = await _load_prices(session, str(market))
-        y_true: list[float] = []
-        y_prob: list[float] = []
-        for _, r in group.iterrows():
-            outcome = _realised_outcome(
-                price_df,
-                r["generated_at"],
-                int(r["horizon_hours"]),
-                str(r["direction"]),
-            )
-            if outcome is None:
-                continue
-            y_true.append(float(outcome))
-            y_prob.append(max(0.0, min(1.0, float(r["confidence"]) / 100.0)))
-
-        if len(y_true) < 10:
-            log.info(
-                "calibration: skipping %s/%s (n=%d)",
-                model_name,
-                market,
-                len(y_true),
-            )
+    # Resolve each signal's realised outcome ONCE (price_df cached per market),
+    # collecting (model_name, model_version, market, y_true, y_prob) rows. Only
+    # directional (BUY/SELL) signals resolve — HOLDs and unpriced windows yield
+    # None and are dropped.
+    price_cache: dict[str, pd.DataFrame] = {}
+    resolved_rows: list[dict[str, Any]] = []
+    for _, r in df.iterrows():
+        market = str(r["market"])
+        if market not in price_cache:
+            price_cache[market] = await _load_prices(session, market)
+        outcome = _realised_outcome(
+            price_cache[market],
+            r["generated_at"],
+            int(r["horizon_hours"]),
+            str(r["direction"]),
+        )
+        if outcome is None:
             continue
-
-        brier = compute_brier_score(y_true, y_prob)
-        ece = compute_ece(y_true, y_prob, n_bins=10)
-        sharp = sharpness(y_prob)
-        rel = reliability_diagram(y_true, y_prob, n_bins=10)
-        rel_dicts = [
+        resolved_rows.append(
             {
-                "lower": b.lower,
-                "upper": b.upper,
-                "predicted_mean": b.predicted_mean,
-                "observed_freq": b.observed_freq,
-                "count": b.count,
+                "model_name": str(r["model_name"]),
+                "model_version": str(r["model_version"]),
+                "market": market,
+                "y_true": float(outcome),
+                "y_prob": max(0.0, min(1.0, float(r["confidence"]) / 100.0)),
             }
-            for b in rel
-        ]
+        )
 
-        await _persist_report(
+    if not resolved_rows:
+        log.info("calibration: no resolved directional signals to score")
+        return []
+    rdf = pd.DataFrame(resolved_rows)
+
+    async def _score(model_name: str, market: str, sub: pd.DataFrame) -> None:
+        y_true = sub["y_true"].tolist()
+        y_prob = sub["y_prob"].tolist()
+        if len(y_true) < _MIN_SAMPLES:
+            log.info("calibration: skipping %s/%s (n=%d)", model_name, market, len(y_true))
+            return
+        model_version = str(sub.sort_values("model_version")["model_version"].iloc[-1])
+        report = await _score_and_persist(
             session,
-            model_name=str(model_name),
-            model_version=str(model_version),
-            market=str(market),
+            model_name=model_name,
+            model_version=model_version,
+            market=market,
+            y_true=y_true,
+            y_prob=y_prob,
             period_start=period_start,
             period_end=period_end,
-            brier=brier,
-            ece=ece,
-            sharp=sharp,
-            reliability=rel_dicts,
-            n_samples=len(y_true),
+            confidence_floor=confidence_floor,
         )
+        if report is not None:
+            reports.append(report)
 
-        ece_hist = await _ece_history(session, str(model_name), str(model_version), str(market))
-        # Compute the 65-bucket win rate (= calibrated hit-rate for the
-        # current month) to feed the confidence-floor rule.
-        bucket = [
-            yt for yt, yp in zip(y_true, y_prob, strict=False) if yp >= confidence_floor / 100.0
-        ]
-        bucket_win_rate = float(sum(bucket) / len(bucket)) if bucket else None
-
-        rule_result = evaluate_rules(
-            ece_history=ece_hist,
-            bucket_win_rates=[bucket_win_rate] if bucket_win_rate is not None else [],
-        )
-
-        if rule_result.suspend:
-            await _emit_event(
-                session,
-                model_name=str(model_name),
-                model_version=str(model_version),
-                event_type="suspend",
-                reason=rule_result.reason,
-                payload={"ece_history": ece_hist, "market": str(market)},
-            )
-
-        if rule_result.raise_floor_to is not None:
-            await _emit_event(
-                session,
-                model_name=str(model_name),
-                model_version=str(model_version),
-                event_type="raise_floor",
-                reason=rule_result.reason,
-                payload={"new_floor": rule_result.raise_floor_to, "market": str(market)},
-            )
-
-        reports.append(
-            CalibrationReport(
-                model_name=str(model_name),
-                model_version=str(model_version),
-                market=str(market),
-                period_start=period_start,
-                period_end=period_end,
-                brier=brier,
-                ece=ece,
-                sharpness=sharp,
-                n_samples=len(y_true),
-                rule_result=rule_result,
-            )
-        )
+    # Per-(model, market) reports (specific), AND a pooled model-level report
+    # (market="ALL") so the page shows overall model calibration even when each
+    # symbol alone is too thin — the common case with a mostly-HOLD model.
+    for (model_name, market), sub in rdf.groupby(["model_name", "market"]):
+        await _score(str(model_name), str(market), sub)
+    for model_name, sub in rdf.groupby("model_name"):
+        await _score(str(model_name), "ALL", sub)
 
     return reports
+
+
+# Minimum resolved directional signals for a calibration report to be meaningful.
+_MIN_SAMPLES = 10
+
+
+async def _score_and_persist(
+    session,
+    *,
+    model_name: str,
+    model_version: str,
+    market: str,
+    y_true: list[float],
+    y_prob: list[float],
+    period_start: datetime,
+    period_end: datetime,
+    confidence_floor: int,
+) -> CalibrationReport | None:
+    """Compute Brier/ECE/reliability for one bucket, persist it, run the rules."""
+    brier = compute_brier_score(y_true, y_prob)
+    ece = compute_ece(y_true, y_prob, n_bins=10)
+    sharp = sharpness(y_prob)
+    rel = reliability_diagram(y_true, y_prob, n_bins=10)
+    rel_dicts = [
+        {
+            "lower": b.lower,
+            "upper": b.upper,
+            "predicted_mean": b.predicted_mean,
+            "observed_freq": b.observed_freq,
+            "count": b.count,
+        }
+        for b in rel
+    ]
+    await _persist_report(
+        session,
+        model_name=model_name,
+        model_version=model_version,
+        market=market,
+        period_start=period_start,
+        period_end=period_end,
+        brier=brier,
+        ece=ece,
+        sharp=sharp,
+        reliability=rel_dicts,
+        n_samples=len(y_true),
+    )
+    ece_hist = await _ece_history(session, model_name, model_version, market)
+    bucket = [yt for yt, yp in zip(y_true, y_prob, strict=False) if yp >= confidence_floor / 100.0]
+    bucket_win_rate = float(sum(bucket) / len(bucket)) if bucket else None
+    rule_result = evaluate_rules(
+        ece_history=ece_hist,
+        bucket_win_rates=[bucket_win_rate] if bucket_win_rate is not None else [],
+    )
+    if rule_result.suspend:
+        await _emit_event(
+            session,
+            model_name=model_name,
+            model_version=model_version,
+            event_type="suspend",
+            reason=rule_result.reason,
+            payload={"ece_history": ece_hist, "market": market},
+        )
+    if rule_result.raise_floor_to is not None:
+        await _emit_event(
+            session,
+            model_name=model_name,
+            model_version=model_version,
+            event_type="raise_floor",
+            reason=rule_result.reason,
+            payload={"new_floor": rule_result.raise_floor_to, "market": market},
+        )
+    return CalibrationReport(
+        model_name=model_name,
+        model_version=model_version,
+        market=market,
+        period_start=period_start,
+        period_end=period_end,
+        brier=brier,
+        ece=ece,
+        sharpness=sharp,
+        n_samples=len(y_true),
+        rule_result=rule_result,
+    )
 
 
 async def _emit_event(

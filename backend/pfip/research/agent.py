@@ -283,12 +283,12 @@ async def build_research_dossier(session: Any, query: str) -> dict[str, Any]:
 
     peers_block: dict[str, Any] = {}
     try:
-        from pfip.diligence.peers import compare, load_key_metrics, peers_for
+        from pfip.diligence.peers import compare, ensure_peer_metrics, peers_for
 
         target_sym = matched or (candidates[0] if candidates else query)
         peer_syms = peers_for(target_sym)
         if peer_syms:
-            metrics_by = await load_key_metrics(session, [target_sym, *peer_syms])
+            metrics_by = await ensure_peer_metrics(session, [target_sym, *peer_syms])
             # Seed the target's own metrics from the fundamentals we just built.
             tgt_metrics = (fundamentals_section or {}).get("key_metrics") or {}
             if tgt_metrics:
