@@ -183,14 +183,41 @@ function Breadcrumbs({ crumbs, compact }: { crumbs: Crumb[]; compact?: boolean }
   );
 }
 
+/** One surfaced system event from `/notifications/recent`. */
+interface NotifItem {
+  kind: string;
+  severity: "INFO" | "WARN" | "CRITICAL";
+  title: string;
+  body: string;
+  at: string;
+}
+
+const SEV_DOT: Record<string, string> = {
+  CRITICAL: "bg-red-500",
+  WARN: "bg-amber-500",
+  INFO: "bg-muted-foreground/50",
+};
+
+/** Compact "time ago" for a notification timestamp. */
+function timeAgo(iso: string): string {
+  const d = new Date(iso).getTime();
+  if (Number.isNaN(d)) return "";
+  const s = Math.max(0, (Date.now() - d) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
 /**
- * Notifications bell. Tries to fetch from the backend mirror endpoint
- * `/notifications/recent`; gracefully degrades to a static "no notifications"
- * state if the endpoint isn't available.
+ * Notifications bell — mirrors the real persisted system events from
+ * `/notifications/recent` (signals, regime flips, source-health failures).
+ * The badge counts WARN/CRITICAL; the dropdown lists the actual items.
  */
 function NotificationBell() {
   const [open, setOpen] = React.useState(false);
   const [count, setCount] = React.useState(0);
+  const [items, setItems] = React.useState<NotifItem[]>([]);
   const ref = React.useRef<HTMLDivElement | null>(null);
   const triggerRef = React.useRef<HTMLButtonElement | null>(null);
 
@@ -235,8 +262,10 @@ function NotificationBell() {
           },
         });
         if (!resp.ok) return;
-        const data = (await resp.json()) as { unread?: number };
-        if (!cancelled && typeof data.unread === "number") setCount(data.unread);
+        const data = (await resp.json()) as { unread?: number; items?: NotifItem[] };
+        if (cancelled) return;
+        if (typeof data.unread === "number") setCount(data.unread);
+        if (Array.isArray(data.items)) setItems(data.items);
       } catch {
         // ignore — endpoint optional.
       }
@@ -274,25 +303,51 @@ function NotificationBell() {
           className="absolute right-0 top-[calc(100%+6px)] z-40 w-80 border border-border/70 bg-popover p-4 text-popover-foreground shadow-xl"
           role="dialog"
         >
-          <div className="mb-3 flex items-center justify-between border-b border-border/40 pb-2">
+          <div className="mb-2 flex items-center justify-between border-b border-border/40 pb-2">
             <div className="font-serif text-base tracking-tight">Notifications</div>
             <span className="font-label text-[10px] uppercase tracking-wider text-muted-foreground">
               {count} unread
             </span>
           </div>
-          {count === 0 ? (
+          {items.length === 0 ? (
             <div className="border border-dashed border-border/60 p-4 text-center text-xs text-muted-foreground">
-              You&apos;re all caught up. Critical alerts from Telegram will mirror
-              here when the backend wires the endpoint.
+              You&apos;re all caught up.
             </div>
           ) : (
-            <div className="text-xs text-muted-foreground">
-              {count} new alert{count === 1 ? "" : "s"} — see Telegram or
-              <Link href={"/settings" as never} className="ml-1 text-primary hover:underline">
-                Settings
-              </Link>
-              .
-            </div>
+            <>
+              <ul className="max-h-80 divide-y divide-border/40 overflow-y-auto">
+                {items.slice(0, 12).map((n, i) => (
+                  <li key={i} className="flex gap-2.5 py-2">
+                    <span
+                      className={cn(
+                        "mt-1 h-2 w-2 shrink-0 rounded-full",
+                        SEV_DOT[n.severity] ?? SEV_DOT.INFO,
+                      )}
+                      aria-hidden
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="truncate text-xs font-medium">{n.title}</span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                          {timeAgo(n.at)}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">
+                        {n.body}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-2 border-t border-border/40 pt-2 text-right">
+                <Link
+                  href={"/ops/sources" as never}
+                  className="text-[11px] text-primary hover:underline"
+                >
+                  View source health
+                </Link>
+              </div>
+            </>
           )}
         </div>
       ) : null}
