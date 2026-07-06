@@ -54,7 +54,7 @@ M (a session), L (multi-session).
 
 ## G. Testing & misc
 - [ ] **G1 · P1 · M** — **UI click-through testing of every page** (this session tested backend/data only — that's how the bell bug hid). Do a browser-driven pass.
-- [ ] **G2 · P2 · S** — Journal has no delete endpoint (minor).
+- [x] **G2 · P2 · S** — Journal **delete** — **DONE**. `DELETE /journal/entries/{id}` (204) + per-card trash button w/ confirm + 2 tests.
 - [ ] **G3 · P0 · S** — Commit the two audit docs to the repo so they're tracked.
 
 ---
