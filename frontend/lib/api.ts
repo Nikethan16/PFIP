@@ -3402,3 +3402,66 @@ export function useUploadBalanceSheet(): UseMutationResult<
     },
   });
 }
+
+// --- Screener (D4) ----------------------------------------------------------
+
+export interface ScreenerField {
+  key: string;
+  label: string;
+}
+const ScreenerFieldsSchema = z.object({
+  fields: z.array(z.object({ key: z.string(), label: z.string() })).default([]),
+  operators: z.array(z.string()).default([]),
+});
+export type ScreenerFields = z.infer<typeof ScreenerFieldsSchema>;
+
+export type ScreenOp = "gt" | "gte" | "lt" | "lte" | "eq";
+export interface ScreenCriterion {
+  field: string;
+  op: ScreenOp;
+  value: number;
+}
+
+const ScreenMatchSchema = z.object({
+  symbol: z.string(),
+  metrics: z.record(z.number()).default({}),
+});
+export type ScreenMatch = z.infer<typeof ScreenMatchSchema>;
+
+const ScreenResultSchema = z.object({
+  matches: z.array(ScreenMatchSchema).default([]),
+  n_universe: z.number().default(0),
+  n_evaluated: z.number().default(0),
+  fields_returned: z.array(z.string()).default([]),
+  disclaimer: z.string().default(""),
+});
+export type ScreenResult = z.infer<typeof ScreenResultSchema>;
+
+/** GET /screener/fields — fields + operators for building a screen. */
+export function useScreenerFields(): UseQueryResult<ScreenerFields> {
+  const token = useAuthToken();
+  return useQuery<ScreenerFields>({
+    queryKey: ["screener", "fields"],
+    queryFn: () =>
+      apiFetch<ScreenerFields>(`/screener/fields`, ScreenerFieldsSchema, { token }),
+    enabled: Boolean(token),
+    staleTime: 60 * 60 * 1000,
+  });
+}
+
+/** POST /screener/run — screen the stored-fundamentals universe. */
+export function useRunScreen(): UseMutationResult<
+  ScreenResult,
+  ApiError,
+  { criteria: ScreenCriterion[] }
+> {
+  const token = useAuthToken();
+  return useMutation({
+    mutationFn: ({ criteria }) =>
+      apiFetch<ScreenResult>(`/screener/run`, ScreenResultSchema, {
+        method: "POST",
+        body: { criteria },
+        token,
+      }),
+  });
+}

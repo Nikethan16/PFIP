@@ -19,6 +19,7 @@ import {
   PiggyBank,
   ScanSearch,
   Scissors,
+  SlidersHorizontal,
   ShieldAlert,
   Stars,
   Target,
@@ -88,6 +89,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Research", href: "/diligence", icon: ScanSearch, mobile: true, group: "research", shortcut: "G then R" },
   { label: "Deep research", href: "/research", icon: Microscope, group: "research" },
   { label: "Balance sheet", href: "/balance-sheet", icon: FileSpreadsheet, group: "research" },
+  { label: "Screener", href: "/screener", icon: SlidersHorizontal, group: "research" },
   { label: "Events", href: "/events", icon: Newspaper, group: "research" },
   { label: "Themes", href: "/themes", icon: Lightbulb, group: "research" },
 
