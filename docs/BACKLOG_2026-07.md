@@ -38,6 +38,7 @@ M (a session), L (multi-session).
 - [ ] **D6 · P1 · M** — **Corporate-actions + earnings calendar** (real, per-holding).
 - [ ] **D7 · P2 · L** — **Mobile PWA + web push**.
 - [ ] **D8 · P2 · L** — **Options / F&O (India)** — payoff + greeks.
+- [ ] **D9 · P1 · L** — **"Learn" module — teach an asset from scratch** (NEW, requested). Pick any asset (e.g. Bitcoin) and get a guided, explain-like-I'm-new view: interactive **price chart** + plain-English **"why did it move"** annotations on the notable dips/rallies (tie each swing to a real catalyst — news/macro/event, cited), a **fundamentals/what-is-it primer**, and a **strategies section** (DCA, hold, hedging, risk — educational, not advice). Progressive depth: beginner → intermediate. Reuses the events/news + OHLCV + research engines; the LLM narrates *grounded* explanations over real data (never invents catalysts). Ties into the agentic orchestration (E) as a `explain_asset` / `annotate_chart` tool. **Rule:** clearly labeled educational, disclaimers on strategies.
 
 ## E. Architecture — agentic orchestration (DECIDED: 3-layer hybrid)
 - [ ] **E1 · P1 · L** — Formalize a **tool layer**: expose each capability as a typed tool (`get_portfolio`, `run_backtest`, `research_company`, `screen_stocks`, `analyze_balance_sheet`, `get_tax_summary`, …).
