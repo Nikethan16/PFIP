@@ -1,5 +1,6 @@
 import {
   Activity,
+  BellRing,
   BookOpen,
   Briefcase,
   Calculator,
@@ -107,6 +108,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Goals", href: "/goals", icon: Target, group: "plan" },
   { label: "SIP", href: "/sip", icon: PiggyBank, group: "plan" },
   { label: "Watchlist", href: "/watchlist", icon: Eye, group: "plan", shortcut: "G then W" },
+  { label: "Alerts", href: "/alerts", icon: BellRing, group: "plan" },
   { label: "Journal", href: "/journal", icon: BookOpen, mobile: true, group: "plan", shortcut: "G then J" },
 
   // Lab — signals R&D + operations. Collapsed by default; experimental.

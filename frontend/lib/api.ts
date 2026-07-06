@@ -3465,3 +3465,71 @@ export function useRunScreen(): UseMutationResult<
       }),
   });
 }
+
+// --- User-defined alerts (D2) ----------------------------------------------
+
+export type AlertRuleKind = "price_above" | "price_below" | "pct_up_1d" | "pct_down_1d";
+
+export interface AlertRule {
+  id?: string;
+  symbol: string;
+  kind: AlertRuleKind;
+  threshold: number;
+  note?: string | null;
+}
+
+const AlertKindsSchema = z.object({
+  kinds: z.array(z.object({ key: z.string(), label: z.string() })).default([]),
+});
+export type AlertKinds = z.infer<typeof AlertKindsSchema>;
+
+const AlertEvalSchema = z.object({
+  rule: z.object({
+    id: z.string().nullable().optional(),
+    symbol: z.string(),
+    kind: z.string(),
+    threshold: z.number(),
+    note: z.string().nullable().optional(),
+  }),
+  triggered: z.boolean(),
+  current_value: z.number().nullable().default(null),
+  observed: z.string().default(""),
+  reason: z.string().default(""),
+});
+export type AlertEval = z.infer<typeof AlertEvalSchema>;
+
+const EvaluateAlertsSchema = z.object({
+  results: z.array(AlertEvalSchema).default([]),
+  n_triggered: z.number().default(0),
+  evaluated_at: z.string().default(""),
+  disclaimer: z.string().default(""),
+});
+export type EvaluateAlertsResponse = z.infer<typeof EvaluateAlertsSchema>;
+
+/** GET /alerts/kinds — supported alert rule kinds. */
+export function useAlertKinds(): UseQueryResult<AlertKinds> {
+  const token = useAuthToken();
+  return useQuery<AlertKinds>({
+    queryKey: ["alerts", "kinds"],
+    queryFn: () => apiFetch<AlertKinds>(`/alerts/kinds`, AlertKindsSchema, { token }),
+    enabled: Boolean(token),
+    staleTime: 60 * 60 * 1000,
+  });
+}
+
+/** POST /alerts/evaluate — live-check a set of rules against latest prices. */
+export function useEvaluateAlerts(): UseMutationResult<
+  EvaluateAlertsResponse,
+  ApiError,
+  { rules: AlertRule[] }
+> {
+  const token = useAuthToken();
+  return useMutation({
+    mutationFn: ({ rules }) =>
+      apiFetch<EvaluateAlertsResponse>(`/alerts/evaluate`, EvaluateAlertsSchema, {
+        method: "POST",
+        body: { rules },
+        token,
+      }),
+  });
+}

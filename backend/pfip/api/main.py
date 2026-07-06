@@ -16,6 +16,7 @@ from loguru import logger
 from pfip import __version__
 from pfip.api import (
     agent,
+    alerts,
     assets,
     auth,
     backtest,
@@ -145,6 +146,7 @@ def create_app() -> FastAPI:
     app.include_router(research.router, prefix=prefix)
     app.include_router(balance_sheet.router, prefix=prefix)
     app.include_router(screener.router, prefix=prefix)
+    app.include_router(alerts.router, prefix=prefix)
     app.include_router(notifications.router, prefix=prefix)
     app.include_router(schedules.router, prefix=prefix)
     app.include_router(settings_router.router, prefix=prefix)
