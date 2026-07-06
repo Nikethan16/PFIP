@@ -6,6 +6,7 @@ import {
   Cog,
   Copy,
   Eye,
+  FileSpreadsheet,
   FlaskConical,
   GitCompareArrows,
   Heart,
@@ -86,6 +87,7 @@ export const NAV_ITEMS: NavItem[] = [
   // Research — understand names and the market.
   { label: "Research", href: "/diligence", icon: ScanSearch, mobile: true, group: "research", shortcut: "G then R" },
   { label: "Deep research", href: "/research", icon: Microscope, group: "research" },
+  { label: "Balance sheet", href: "/balance-sheet", icon: FileSpreadsheet, group: "research" },
   { label: "Events", href: "/events", icon: Newspaper, group: "research" },
   { label: "Themes", href: "/themes", icon: Lightbulb, group: "research" },
 

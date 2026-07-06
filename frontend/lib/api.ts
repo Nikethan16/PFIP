@@ -3289,3 +3289,116 @@ export function useResearch(): UseMutationResult<ResearchDossier, unknown, { que
       }),
   });
 }
+
+// --- Balance-sheet insights (D3) -------------------------------------------
+
+export const BS_FIELDS = [
+  "total_current_assets",
+  "total_current_liabilities",
+  "inventory",
+  "total_assets",
+  "total_liabilities",
+  "total_equity",
+  "total_debt",
+  "retained_earnings",
+  "ebit",
+  "interest_expense",
+  "revenue",
+  "market_cap",
+] as const;
+export type BsField = (typeof BS_FIELDS)[number];
+
+/** Canonical line items — all optional, matches backend BalanceSheetInput. */
+export interface BalanceSheetInput {
+  company?: string | null;
+  currency?: string;
+  period?: string | null;
+  total_current_assets?: number | null;
+  total_current_liabilities?: number | null;
+  inventory?: number | null;
+  total_assets?: number | null;
+  total_liabilities?: number | null;
+  total_equity?: number | null;
+  total_debt?: number | null;
+  retained_earnings?: number | null;
+  ebit?: number | null;
+  interest_expense?: number | null;
+  revenue?: number | null;
+  market_cap?: number | null;
+}
+
+const RatioSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  value: z.number().nullable().default(null),
+  health: z.enum(["strong", "adequate", "weak", "unknown"]).default("unknown"),
+  interpretation: z.string().default(""),
+});
+export type Ratio = z.infer<typeof RatioSchema>;
+
+const AltmanZSchema = z.object({
+  score: z.number().nullable().default(null),
+  zone: z.enum(["safe", "grey", "distress", "unknown"]).default("unknown"),
+  used_market_value: z.boolean().default(false),
+  components: z.record(z.number()).default({}),
+  interpretation: z.string().default(""),
+});
+export type AltmanZ = z.infer<typeof AltmanZSchema>;
+
+const BalanceSheetMetricsSchema = z.object({
+  input: z.record(z.unknown()).default({}),
+  ratios: z.array(RatioSchema).default([]),
+  altman_z: AltmanZSchema,
+  missing_fields: z.array(z.string()).default([]),
+});
+export type BalanceSheetMetrics = z.infer<typeof BalanceSheetMetricsSchema>;
+
+const AnalyzeResponseSchema = z.object({
+  metrics: BalanceSheetMetricsSchema,
+  insight_markdown: z.string().default(""),
+  used_llm: z.boolean().default(false),
+  disclaimer: z.string().default(""),
+});
+export type AnalyzeResponse = z.infer<typeof AnalyzeResponseSchema>;
+
+const UploadResponseSchema = AnalyzeResponseSchema.extend({
+  parsed_fields: z.array(z.string()).default([]),
+});
+export type UploadResponse = z.infer<typeof UploadResponseSchema>;
+
+/** POST /balance-sheet/analyze — compute ratios + Altman Z from typed line items. */
+export function useAnalyzeBalanceSheet(): UseMutationResult<
+  AnalyzeResponse,
+  ApiError,
+  BalanceSheetInput
+> {
+  const token = useAuthToken();
+  return useMutation({
+    mutationFn: (input) =>
+      apiFetch<AnalyzeResponse>(`/balance-sheet/analyze`, AnalyzeResponseSchema, {
+        method: "POST",
+        body: input,
+        token,
+      }),
+  });
+}
+
+/** POST /balance-sheet/upload — extract line items from a CSV/PDF, then analyze. */
+export function useUploadBalanceSheet(): UseMutationResult<
+  UploadResponse,
+  ApiError,
+  { file: File }
+> {
+  const token = useAuthToken();
+  return useMutation({
+    mutationFn: ({ file }) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return apiFetch<UploadResponse>(`/balance-sheet/upload`, UploadResponseSchema, {
+        method: "POST",
+        body: fd,
+        token,
+      });
+    },
+  });
+}

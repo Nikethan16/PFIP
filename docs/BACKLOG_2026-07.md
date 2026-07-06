@@ -32,7 +32,7 @@ M (a session), L (multi-session).
 ## D. New features to build
 - [ ] **D1 · P0 · L** — **Broker/exchange auto-import** (Zerodha Kite, Binance, ICICIdirect / CSV). Unlocks real Holdings + Tax + XIRR + Harvest (all currently correct-but-empty).
 - [ ] **D2 · P0 · M** — **User-defined alerts** (price / % / threshold / drawdown / catalyst) → in-app (fixed bell) + Telegram + email. Half the plumbing exists.
-- [ ] **D3 · P1 · M** — **Balance-sheet upload → insights** (NEW, requested): upload PDF/Excel/image → extract line items → ratios (current, D/E, interest coverage, ROCE, **Altman Z**) → cited LLM insights + peer compare. Reuses the statements/peers engine.
+- [x] **D3 · P1 · M** — **Balance-sheet upload → insights** — **DONE**. Pure, unit-tested engine (`pfip/research/balance_sheet.py`): current/quick/D-E/interest-coverage/ROCE + **Altman Z** with zone; best-effort CSV/PDF extraction (echoes parsed fields). API `POST /balance-sheet/analyze` + `/upload`; grounded LLM narrative w/ deterministic fallback (never invents figures). Frontend page under **Research** (upload + manual entry, ratio cards, Z gauge, insights). 10 backend tests. _Follow-ups: xlsx (needs openpyxl), image OCR, peer-compare hookup._
 - [ ] **D4 · P1 · M** — **Screener** over stored fundamentals ("ROCE>20 & P/E<25 & D/E<0.5", save screens).
 - [ ] **D5 · P1 · M** — **Analyst estimates / forward numbers** in Research (FMP/Tickertape).
 - [ ] **D6 · P1 · M** — **Corporate-actions + earnings calendar** (real, per-holding).
