@@ -18,7 +18,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -93,6 +93,26 @@ async def create_entry(body: JournalEntryCreate, db: DbSession, _user: CurrentUs
     await db.commit()
     await db.refresh(row)
     return JournalEntry.model_validate(row)
+
+
+@router.delete(
+    "/entries/{entry_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+async def delete_entry(entry_id: UUID, db: DbSession, _user: CurrentUser) -> Response:
+    """Delete a journal entry outright.
+
+    Unlike close (which preserves the entry with a post-mortem), this removes
+    the row entirely — for entries logged in error. There is no soft-delete;
+    the journal is a personal, single-user log.
+    """
+    row = await db.get(JournalRow, entry_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    await db.delete(row)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/entries/{entry_id}/close", response_model=JournalEntry)

@@ -1221,6 +1221,24 @@ export function useCloseJournalEntry(): UseMutationResult<
   });
 }
 
+/** DELETE /journal/entries/{id} — remove an entry logged in error (204). */
+export function useDeleteJournalEntry(): UseMutationResult<
+  unknown,
+  unknown,
+  { id: string }
+> {
+  const token = useAuthToken();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }) =>
+      apiFetch<unknown>(`/journal/entries/${id}`, z.unknown(), {
+        method: "DELETE",
+        token,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["journal"] }),
+  });
+}
+
 /** Response from `GET /changes-today/`. */
 export interface ChangesToday {
   window_hours: number;

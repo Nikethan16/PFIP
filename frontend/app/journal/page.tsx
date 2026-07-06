@@ -20,12 +20,12 @@
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
-import { Check, NotebookPen, Plus, TrendingDown, X } from "lucide-react";
+import { Check, NotebookPen, Plus, Trash2, TrendingDown, X } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { PreTradeChecklistDialog } from "@/components/journal/pre-trade-checklist";
 import { PostMortemDialog } from "@/components/journal/post-mortem-dialog";
-import { useJournalEntries, useJournalPatterns } from "@/lib/api";
+import { useDeleteJournalEntry, useJournalEntries, useJournalPatterns } from "@/lib/api";
 import { cn, formatIST } from "@/lib/utils";
 import type { JournalEntry } from "@/lib/contracts";
 
@@ -61,6 +61,7 @@ export default function JournalPage() {
 
 function JournalPageInner() {
   const { data, isLoading, error } = useJournalEntries();
+  const deleteEntry = useDeleteJournalEntry();
   const params = useSearchParams();
   const deepLinkedNew = params?.get("new") === "1";
   const deepLinkedEntry = params?.get("entry");
@@ -162,6 +163,18 @@ function JournalPageInner() {
               entry={entry}
               highlighted={deepLinkedEntry === entry.id}
               onClose={() => setPostMortemFor(entry.id)}
+              onDelete={() => {
+                if (
+                  window.confirm(
+                    `Delete the ${entry.symbol} journal entry? This can't be undone.`,
+                  )
+                ) {
+                  deleteEntry.mutate({ id: entry.id });
+                }
+              }}
+              deleting={
+                deleteEntry.isPending && deleteEntry.variables?.id === entry.id
+              }
             />
           ))}
         </div>
@@ -194,10 +207,14 @@ function JournalEntryCard({
   entry,
   highlighted,
   onClose,
+  onDelete,
+  deleting,
 }: {
   entry: JournalEntry;
   highlighted: boolean;
   onClose: () => void;
+  onDelete: () => void;
+  deleting: boolean;
 }) {
   const items = Object.entries(entry.pre_trade_checklist);
   const passed = items.filter(([, v]) => v).length;
@@ -241,20 +258,32 @@ function JournalEntryCard({
               : ""}
           </div>
         </div>
-        {closed ? (
-          <span className="shrink-0 border border-border/60 px-2.5 py-1 font-label text-[10px] uppercase tracking-wider text-muted-foreground">
-            Closed
-          </span>
-        ) : (
+        <div className="flex shrink-0 items-center gap-1.5">
+          {closed ? (
+            <span className="border border-border/60 px-2.5 py-1 font-label text-[10px] uppercase tracking-wider text-muted-foreground">
+              Closed
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={onClose}
+              title="Close this position and write its post-mortem"
+              className="border border-border px-3 py-1.5 font-label text-[10px] uppercase tracking-wider text-foreground transition-colors hover:border-destructive/50 hover:text-destructive"
+            >
+              Close
+            </button>
+          )}
           <button
             type="button"
-            onClick={onClose}
-            title="Close this position and write its post-mortem"
-            className="shrink-0 border border-border px-3 py-1.5 font-label text-[10px] uppercase tracking-wider text-foreground transition-colors hover:border-destructive/50 hover:text-destructive"
+            onClick={onDelete}
+            disabled={deleting}
+            title="Delete this entry (logged in error)"
+            aria-label="Delete entry"
+            className="border border-border p-1.5 text-muted-foreground transition-colors hover:border-destructive/50 hover:text-destructive disabled:opacity-50"
           >
-            Close
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
-        )}
+        </div>
       </div>
 
       <div className="flex-1 space-y-4 p-5">
