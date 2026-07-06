@@ -23,9 +23,9 @@ M (a session), L (multi-session).
 
 ## C. Restructure / information architecture (25 menu items → 5)
 - [x] **C1 · P0 · M** — New IA: **Home · Research · Portfolio · Plan · Lab · Settings** — **DONE** this session. `nav-items.ts` regrouped into 6 sections; `sidebar.tsx` now renders **collapsible** sections (auto-expands the active one). Routes unchanged.
-- [ ] **C2 · P0 · M** — Merge **Research (`/diligence`) + Deep Research (`/research`)** into one page. *(Both now sit under the Research section; page-level merge still pending.)*
-- [ ] **C3 · P0 · M** — Make **Net-worth / Benchmark / What-if / Stress / Shadow / Tax** into **tabs under Portfolio**. *(All now grouped under Portfolio in the nav; tabbed page shell still pending.)*
-- [x] **C4 · P0 · S** — Fold **Perspectives** into **Chat** — *partial:* moved Perspectives into **Lab** to declutter; folding it into Chat as a mode still pending.
+- [x] **C2 · P0 · M** — Merge **Research (`/diligence`) + Deep Research (`/research`)** — **DONE** via `app/(research)/` route group + shared `SectionTabs` (Company research | Deep research). URLs unchanged.
+- [x] **C3 · P0 · M** — **Net-worth / Benchmark / What-if / Stress / Shadow / Tax as tabs under Portfolio** — **DONE** via `app/(portfolio)/` route group + `SectionTabs` (Holdings | Net worth | Benchmark | What-if | Stress | Shadow | Tax | Harvest). URLs unchanged.
+- [~] **C4 · P0 · S** — Fold **Perspectives** into **Chat** — *decluttered:* moved out of the main nav into **Lab**. Deep "mode inside the chat surface" integration deliberately deferred (lowest value, chat layout is height-constrained); page still works standalone.
 - [x] **C5 · P0 · S** — Merge **SIP + Goals + Watchlist + Journal** into a **"Plan"** section — **DONE** (grouping).
 - [x] **C6 · P0 · S** — Move **Signals / Calibration / Backtest / Perspectives / Source-health / Schedules / Models** into a collapsed **"Lab"** section — **DONE** (collapsed by default).
 
