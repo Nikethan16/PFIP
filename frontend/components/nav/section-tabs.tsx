@@ -93,4 +93,5 @@ export const RESEARCH_TABS: SectionTab[] = [
   { href: "/research", label: "Deep research" },
   { href: "/balance-sheet", label: "Balance sheet" },
   { href: "/screener", label: "Screener" },
+  { href: "/learn", label: "Learn" },
 ];

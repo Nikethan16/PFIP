@@ -3533,3 +3533,53 @@ export function useEvaluateAlerts(): UseMutationResult<
       }),
   });
 }
+
+// --- Learn module (D9) ------------------------------------------------------
+
+const PricePointSchema = z.object({ date: z.string(), close: z.number() });
+const CatalystSchema = z.object({
+  title: z.string(),
+  url: z.string().nullable().optional(),
+  at: z.string(),
+});
+const MoveWithCatalystSchema = z.object({
+  date: z.string(),
+  close: z.number(),
+  move_pct: z.number(),
+  direction: z.string(),
+  catalyst: CatalystSchema.nullable().default(null),
+  explanation: z.string().default(""),
+});
+const StrategySchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  when_it_helps: z.string(),
+});
+const LearnResponseSchema = z.object({
+  symbol: z.string(),
+  is_crypto: z.boolean().default(false),
+  series: z.array(PricePointSchema).default([]),
+  notable_moves: z.array(MoveWithCatalystSchema).default([]),
+  primer_markdown: z.string().default(""),
+  strategies: z.array(StrategySchema).default([]),
+  used_llm: z.boolean().default(false),
+  disclaimer: z.string().default(""),
+});
+export type LearnResponse = z.infer<typeof LearnResponseSchema>;
+export type LearnMove = z.infer<typeof MoveWithCatalystSchema>;
+export type LearnStrategy = z.infer<typeof StrategySchema>;
+
+/** GET /learn/{symbol} — chart + why-it-moved + primer + strategies. */
+export function useLearn(symbol: string): UseQueryResult<LearnResponse> {
+  const token = useAuthToken();
+  return useQuery<LearnResponse>({
+    queryKey: ["learn", symbol],
+    queryFn: () =>
+      apiFetch<LearnResponse>(
+        `/learn/${encodeURIComponent(symbol)}`,
+        LearnResponseSchema,
+        { token },
+      ),
+    enabled: Boolean(token) && Boolean(symbol),
+  });
+}

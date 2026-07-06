@@ -10,6 +10,7 @@ import {
   FileSpreadsheet,
   FlaskConical,
   GitCompareArrows,
+  GraduationCap,
   Heart,
   LayoutDashboard,
   LineChart,
@@ -91,6 +92,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Deep research", href: "/research", icon: Microscope, group: "research" },
   { label: "Balance sheet", href: "/balance-sheet", icon: FileSpreadsheet, group: "research" },
   { label: "Screener", href: "/screener", icon: SlidersHorizontal, group: "research" },
+  { label: "Learn", href: "/learn", icon: GraduationCap, group: "research" },
   { label: "Events", href: "/events", icon: Newspaper, group: "research" },
   { label: "Themes", href: "/themes", icon: Lightbulb, group: "research" },
 
