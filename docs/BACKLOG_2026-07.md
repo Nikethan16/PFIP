@@ -22,12 +22,12 @@ M (a session), L (multi-session).
 - [ ] **B5 · P1 · S** — India fundamentals: consider **Tickertape/Trendlyne** or **Kite Connect** for full statements (screener scrape is top-ratios only).
 
 ## C. Restructure / information architecture (25 menu items → 5)
-- [ ] **C1 · P0 · M** — New IA: **Home · Research · Portfolio · Plan · Lab · Settings** (see audit §8).
-- [ ] **C2 · P0 · M** — Merge **Research (`/diligence`) + Deep Research (`/research`)** into one page.
-- [ ] **C3 · P0 · M** — Make **Net-worth / Benchmark / What-if / Stress / Shadow** into **tabs under Portfolio** (not 5 menu items); add **Tax** as a Portfolio tab.
-- [ ] **C4 · P0 · S** — Fold **Perspectives** into **Chat** (a mode, not a page).
-- [ ] **C5 · P0 · S** — Merge **SIP + Goals** into a "Plan" section (with Journal, Watchlist).
-- [ ] **C6 · P0 · S** — Move **Signals / Calibration / Backtest / Source-health / Schedules / Models** into a collapsed **"Lab"** (power-user) section.
+- [x] **C1 · P0 · M** — New IA: **Home · Research · Portfolio · Plan · Lab · Settings** — **DONE** this session. `nav-items.ts` regrouped into 6 sections; `sidebar.tsx` now renders **collapsible** sections (auto-expands the active one). Routes unchanged.
+- [ ] **C2 · P0 · M** — Merge **Research (`/diligence`) + Deep Research (`/research`)** into one page. *(Both now sit under the Research section; page-level merge still pending.)*
+- [ ] **C3 · P0 · M** — Make **Net-worth / Benchmark / What-if / Stress / Shadow / Tax** into **tabs under Portfolio**. *(All now grouped under Portfolio in the nav; tabbed page shell still pending.)*
+- [x] **C4 · P0 · S** — Fold **Perspectives** into **Chat** — *partial:* moved Perspectives into **Lab** to declutter; folding it into Chat as a mode still pending.
+- [x] **C5 · P0 · S** — Merge **SIP + Goals + Watchlist + Journal** into a **"Plan"** section — **DONE** (grouping).
+- [x] **C6 · P0 · S** — Move **Signals / Calibration / Backtest / Perspectives / Source-health / Schedules / Models** into a collapsed **"Lab"** section — **DONE** (collapsed by default).
 
 ## D. New features to build
 - [ ] **D1 · P0 · L** — **Broker/exchange auto-import** (Zerodha Kite, Binance, ICICIdirect / CSV). Unlocks real Holdings + Tax + XIRR + Harvest (all currently correct-but-empty).

@@ -1,6 +1,5 @@
 import {
   Activity,
-  BarChart3,
   BookOpen,
   Briefcase,
   Calculator,
@@ -10,15 +9,15 @@ import {
   FlaskConical,
   GitCompareArrows,
   Heart,
-  Home,
   LayoutDashboard,
-  Lightbulb,
   LineChart,
+  Lightbulb,
   MessageSquare,
   Microscope,
   Newspaper,
   PiggyBank,
   ScanSearch,
+  Scissors,
   ShieldAlert,
   Stars,
   Target,
@@ -38,70 +37,85 @@ export interface NavItem {
   shortcut?: string;
 }
 
-export type NavGroup =
-  | "overview"
-  | "markets"
-  | "trading"
-  | "tax"
-  | "tools"
-  | "ops"
-  | "system";
-
-export const NAV_GROUP_LABELS: Record<NavGroup, string> = {
-  overview: "Overview",
-  markets: "Markets",
-  trading: "Portfolio",
-  tax: "Tax (India)",
-  tools: "Tools",
-  ops: "Operations",
-  system: "Settings",
-};
-
-/** Single source of truth for sidebar + mobile bar + command palette.
- *
- * Eight top-level groups matching the Stitch ("PFIP Terminal · Institutional
- * Grade") shell. Each group expands into one or more pages.
+/**
+ * Six top-level sections (was 25 flat items across 8 groups). The old menu
+ * surfaced every page at once; this collapses them into task-oriented
+ * sections so the daily surface stays small and the power-user tools live in
+ * a collapsed "Lab". Routes are unchanged — only the grouping moved.
  */
+export type NavGroup =
+  | "home"
+  | "research"
+  | "portfolio"
+  | "plan"
+  | "lab"
+  | "settings";
+
+export interface NavGroupDef {
+  id: NavGroup;
+  label: string;
+  /** Sections start expanded except Lab (power-user tools, kept out of the way). */
+  defaultOpen: boolean;
+}
+
+/** Section order + default open/closed state for the sidebar. */
+export const NAV_GROUPS: NavGroupDef[] = [
+  { id: "home", label: "Home", defaultOpen: true },
+  { id: "research", label: "Research", defaultOpen: true },
+  { id: "portfolio", label: "Portfolio", defaultOpen: true },
+  { id: "plan", label: "Plan", defaultOpen: true },
+  { id: "lab", label: "Lab", defaultOpen: false },
+  { id: "settings", label: "Settings", defaultOpen: true },
+];
+
+/** Back-compat label lookup (used anywhere that references a group by id). */
+export const NAV_GROUP_LABELS: Record<NavGroup, string> = NAV_GROUPS.reduce(
+  (acc, g) => {
+    acc[g.id] = g.label;
+    return acc;
+  },
+  {} as Record<NavGroup, string>,
+);
+
+/** Single source of truth for sidebar + mobile bar + breadcrumbs. */
 export const NAV_ITEMS: NavItem[] = [
-  // Overview
-  { label: "Dashboard", href: "/", icon: LayoutDashboard, mobile: true, group: "overview", shortcut: "G then D" },
+  // Home — daily landing + the assistant.
+  { label: "Dashboard", href: "/", icon: LayoutDashboard, mobile: true, group: "home", shortcut: "G then D" },
+  { label: "Chat", href: "/chat", icon: MessageSquare, mobile: true, group: "home", shortcut: "G then C" },
 
-  // Markets
-  { label: "Watchlist", href: "/watchlist", icon: Eye, group: "markets", shortcut: "G then W" },
-  { label: "Signals", href: "/signals", icon: Stars, group: "markets", shortcut: "G then S" },
-  { label: "Events", href: "/events", icon: Newspaper, group: "markets" },
-  { label: "Themes", href: "/themes", icon: Lightbulb, group: "markets" },
-  { label: "Research", href: "/diligence", icon: ScanSearch, group: "markets", shortcut: "G then R" },
-  { label: "Deep Research", href: "/research", icon: Microscope, group: "markets" },
+  // Research — understand names and the market.
+  { label: "Research", href: "/diligence", icon: ScanSearch, mobile: true, group: "research", shortcut: "G then R" },
+  { label: "Deep research", href: "/research", icon: Microscope, group: "research" },
+  { label: "Events", href: "/events", icon: Newspaper, group: "research" },
+  { label: "Themes", href: "/themes", icon: Lightbulb, group: "research" },
 
-  // Portfolio
-  { label: "Holdings", href: "/portfolio", icon: Briefcase, mobile: true, group: "trading", shortcut: "G then P" },
-  { label: "Net worth", href: "/net-worth", icon: Wallet, group: "trading" },
-  { label: "Benchmark", href: "/benchmark", icon: Trophy, group: "trading" },
-  { label: "What-if", href: "/what-if", icon: GitCompareArrows, group: "trading" },
-  { label: "Stress test", href: "/stress-test", icon: ShieldAlert, group: "trading" },
-  { label: "Shadow", href: "/shadow", icon: Copy, group: "trading" },
+  // Portfolio — holdings, analytics, and tax (India).
+  { label: "Holdings", href: "/portfolio", icon: Briefcase, mobile: true, group: "portfolio", shortcut: "G then P" },
+  { label: "Net worth", href: "/net-worth", icon: Wallet, group: "portfolio" },
+  { label: "Benchmark", href: "/benchmark", icon: Trophy, group: "portfolio" },
+  { label: "What-if", href: "/what-if", icon: GitCompareArrows, group: "portfolio" },
+  { label: "Stress test", href: "/stress-test", icon: ShieldAlert, group: "portfolio" },
+  { label: "Shadow", href: "/shadow", icon: Copy, group: "portfolio" },
+  { label: "Tax", href: "/tax", icon: Calculator, group: "portfolio", shortcut: "G then T" },
+  { label: "Loss harvesting", href: "/tax/harvest", icon: Scissors, group: "portfolio" },
 
-  // Tax
-  { label: "Tax", href: "/tax", icon: Calculator, mobile: true, group: "tax", shortcut: "G then T" },
-  { label: "Loss harvesting", href: "/tax/harvest", icon: Calculator, group: "tax" },
+  // Plan — goals, SIPs, watchlist, and the decision journal.
+  { label: "Goals", href: "/goals", icon: Target, group: "plan" },
+  { label: "SIP", href: "/sip", icon: PiggyBank, group: "plan" },
+  { label: "Watchlist", href: "/watchlist", icon: Eye, group: "plan", shortcut: "G then W" },
+  { label: "Journal", href: "/journal", icon: BookOpen, mobile: true, group: "plan", shortcut: "G then J" },
 
-  // Tools
-  { label: "Goals", href: "/goals", icon: Target, group: "tools" },
-  { label: "SIP", href: "/sip", icon: PiggyBank, group: "tools" },
-  { label: "Journal", href: "/journal", icon: BookOpen, mobile: true, group: "tools", shortcut: "G then J" },
-  { label: "Chat", href: "/chat", icon: MessageSquare, mobile: true, group: "tools", shortcut: "G then C" },
-  { label: "Perspectives", href: "/perspectives", icon: Users, group: "tools" },
-  { label: "Calibration", href: "/calibration", icon: LineChart, group: "tools" },
-  { label: "Backtest", href: "/backtest", icon: FlaskConical, group: "tools" },
-
-  // Operations
-  { label: "Source health", href: "/ops/sources", icon: Heart, group: "ops" },
-  { label: "Schedules", href: "/ops/schedules", icon: Activity, group: "ops" },
-  { label: "Models", href: "/ops/models", icon: Wrench, group: "ops" },
+  // Lab — signals R&D + operations. Collapsed by default; experimental.
+  { label: "Signals", href: "/signals", icon: Stars, group: "lab", shortcut: "G then S" },
+  { label: "Calibration", href: "/calibration", icon: LineChart, group: "lab" },
+  { label: "Backtest", href: "/backtest", icon: FlaskConical, group: "lab" },
+  { label: "Perspectives", href: "/perspectives", icon: Users, group: "lab" },
+  { label: "Source health", href: "/ops/sources", icon: Heart, group: "lab" },
+  { label: "Schedules", href: "/ops/schedules", icon: Activity, group: "lab" },
+  { label: "Models", href: "/ops/models", icon: Wrench, group: "lab" },
 
   // Settings
-  { label: "Settings", href: "/settings", icon: Cog, group: "system" },
+  { label: "Settings", href: "/settings", icon: Cog, group: "settings" },
 ];
 
 /** Used in topbar to render breadcrumb labels. */

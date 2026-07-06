@@ -4,13 +4,13 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import { ChevronsUpDown, LogOut, Settings as SettingsIcon, UserCircle2 } from "lucide-react";
+import { ChevronDown, ChevronsUpDown, LogOut, Settings as SettingsIcon, UserCircle2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { NetworkStatus } from "@/components/shared/network-status";
 import { useUIStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { NAV_ITEMS, NAV_GROUP_LABELS, type NavGroup } from "./nav-items";
+import { NAV_ITEMS, NAV_GROUPS, type NavGroup } from "./nav-items";
 
 /**
  * Desktop sidebar — "Sahara" institutional terminal. Hidden on mobile; mobile
@@ -35,18 +35,29 @@ export function Sidebar() {
   const { data: session } = useSession();
 
   const itemsByGroup = React.useMemo(() => {
-    const map: Record<NavGroup, typeof NAV_ITEMS> = {
-      overview: [],
-      markets: [],
-      trading: [],
-      tax: [],
-      tools: [],
-      ops: [],
-      system: [],
-    };
-    NAV_ITEMS.forEach((i) => map[i.group].push(i));
+    const map = {} as Record<NavGroup, typeof NAV_ITEMS>;
+    NAV_GROUPS.forEach((g) => (map[g.id] = []));
+    NAV_ITEMS.forEach((i) => map[i.group]?.push(i));
     return map;
   }, []);
+
+  const isActive = React.useCallback(
+    (href: string) =>
+      href === "/" ? pathname === "/" : Boolean(pathname?.startsWith(href)),
+    [pathname],
+  );
+
+  // Collapsible sections: start at each group's default, but always expand the
+  // section that contains the current route so the active link is never hidden.
+  const [open, setOpen] = React.useState<Record<NavGroup, boolean>>(() => {
+    const init = {} as Record<NavGroup, boolean>;
+    NAV_GROUPS.forEach((g) => (init[g.id] = g.defaultOpen));
+    return init;
+  });
+  React.useEffect(() => {
+    const activeGroup = NAV_ITEMS.find((i) => isActive(i.href))?.group;
+    if (activeGroup) setOpen((prev) => (prev[activeGroup] ? prev : { ...prev, [activeGroup]: true }));
+  }, [isActive]);
 
   return (
     <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-border/70 bg-[hsl(var(--sidebar))] text-[hsl(var(--sidebar-foreground))] md:flex">
@@ -79,47 +90,62 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-3">
-        {(Object.keys(itemsByGroup) as NavGroup[]).map((g, idx) => {
-          const items = itemsByGroup[g];
-          if (!items.length) return null;
+        {NAV_GROUPS.map((group, idx) => {
+          const items = itemsByGroup[group.id];
+          if (!items?.length) return null;
+          const isOpen = open[group.id];
+          const hasActive = items.some((i) => isActive(i.href));
           return (
-            <div key={g} className={cn(idx > 0 && "mt-5")}>
-              <div className="px-1 pb-1.5 eyebrow !text-[9px]">
-                {NAV_GROUP_LABELS[g]}
-              </div>
-              <ul className="space-y-px">
-                {items.map((item) => {
-                  const active =
-                    item.href === "/"
-                      ? pathname === "/"
-                      : pathname?.startsWith(item.href);
-                  const Icon = item.icon;
-                  return (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href as never}
-                        aria-current={active ? "page" : undefined}
-                        className={cn(
-                          "group relative flex items-center gap-2.5 border-l-2 py-1.5 pl-3 pr-2 font-label text-[12px] uppercase tracking-[0.08em] transition-colors",
-                          active
-                            ? "border-l-primary bg-accent/50 text-primary"
-                            : "border-l-transparent text-muted-foreground hover:bg-accent/40 hover:text-foreground",
-                        )}
-                      >
-                        <Icon
+            <div key={group.id} className={cn(idx > 0 && "mt-4")}>
+              <button
+                type="button"
+                onClick={() => setOpen((prev) => ({ ...prev, [group.id]: !prev[group.id] }))}
+                aria-expanded={isOpen}
+                className="flex w-full items-center justify-between px-1 pb-1.5 pt-1 text-left transition-colors hover:text-foreground"
+              >
+                <span className={cn("eyebrow !text-[9px]", hasActive && !isOpen && "text-primary")}>
+                  {group.label}
+                </span>
+                <ChevronDown
+                  className={cn(
+                    "h-3 w-3 text-muted-foreground/60 transition-transform",
+                    !isOpen && "-rotate-90",
+                  )}
+                  aria-hidden
+                />
+              </button>
+              {isOpen ? (
+                <ul className="space-y-px">
+                  {items.map((item) => {
+                    const active = isActive(item.href);
+                    const Icon = item.icon;
+                    return (
+                      <li key={item.href}>
+                        <Link
+                          href={item.href as never}
+                          aria-current={active ? "page" : undefined}
                           className={cn(
-                            "h-[15px] w-[15px] shrink-0 transition-colors",
+                            "group relative flex items-center gap-2.5 border-l-2 py-1.5 pl-3 pr-2 font-label text-[12px] uppercase tracking-[0.08em] transition-colors",
                             active
-                              ? "text-primary"
-                              : "text-muted-foreground group-hover:text-foreground",
+                              ? "border-l-primary bg-accent/50 text-primary"
+                              : "border-l-transparent text-muted-foreground hover:bg-accent/40 hover:text-foreground",
                           )}
-                        />
-                        <span className="flex-1 truncate">{item.label}</span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
+                        >
+                          <Icon
+                            className={cn(
+                              "h-[15px] w-[15px] shrink-0 transition-colors",
+                              active
+                                ? "text-primary"
+                                : "text-muted-foreground group-hover:text-foreground",
+                            )}
+                          />
+                          <span className="flex-1 truncate">{item.label}</span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
             </div>
           );
         })}
