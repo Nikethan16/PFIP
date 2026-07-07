@@ -222,6 +222,131 @@ async def get_tax_summary(session: Any, *, fy: str) -> dict[str, Any]:
         return {"ok": False, "error": f"tax engine failed: {exc}"}
 
 
+async def explain_asset(session: Any, *, symbol: str, days: int = 180) -> dict[str, Any]:
+    """Teach an asset: latest price + its biggest recent moves (Learn engine)."""
+    sym = (symbol or "").strip()
+    if not sym:
+        return {"ok": False, "error": "symbol is required"}
+    try:
+        from sqlalchemy import select
+
+        from pfip.models.ohlcv import OHLCVRow
+        from pfip.research.learn import PricePoint, detect_notable_moves, is_crypto_symbol
+
+        freshest = (
+            select(OHLCVRow.source)
+            .where(OHLCVRow.symbol == sym, OHLCVRow.timeframe == "1d")
+            .order_by(OHLCVRow.time.desc())
+            .limit(1)
+            .scalar_subquery()
+        )
+        since = datetime.now(tz=UTC) - timedelta(days=days)
+        rows = (
+            await session.execute(
+                select(OHLCVRow.time, OHLCVRow.close)
+                .where(
+                    OHLCVRow.symbol == sym,
+                    OHLCVRow.timeframe == "1d",
+                    OHLCVRow.source == freshest,
+                    OHLCVRow.time >= since,
+                )
+                .order_by(OHLCVRow.time.asc())
+            )
+        ).all()
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"explain_asset failed: {exc}"}
+    series = [PricePoint(date=t.date(), close=float(c)) for t, c in rows if c is not None]
+    if not series:
+        return {"ok": True, "symbol": sym, "found": False, "note": "no price history"}
+    moves = detect_notable_moves(series)
+    return {
+        "ok": True,
+        "symbol": sym,
+        "found": True,
+        "is_crypto": is_crypto_symbol(sym),
+        "last_close": series[-1].close,
+        "n_points": len(series),
+        "notable_moves": [
+            {"date": m.date.isoformat(), "move_pct": m.move_pct, "direction": m.direction}
+            for m in moves
+        ],
+    }
+
+
+async def get_calendar(session: Any, *, days: int = 45) -> dict[str, Any]:
+    """Recent corporate announcements + filings, grouped by date."""
+    try:
+        from sqlalchemy import select
+
+        from pfip.models.news import NewsRow
+        from pfip.research.calendar import CalendarEvent, group_by_date
+
+        since = datetime.now(tz=UTC) - timedelta(days=max(1, days))
+        rows = (
+            (
+                await session.execute(
+                    select(NewsRow)
+                    .where(
+                        NewsRow.category.in_(("corp_announcement", "sec_filing")),
+                        NewsRow.time >= since,
+                    )
+                    .order_by(NewsRow.time.desc())
+                    .limit(100)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"calendar failed: {exc}"}
+    events = [
+        CalendarEvent(symbol=r.symbol, title=r.title, category=r.category, url=r.url, at=r.time)
+        for r in rows
+    ]
+    days_grouped = group_by_date(events)
+    return {
+        "ok": True,
+        "n_events": len(events),
+        "days": [
+            {
+                "date": d.date.isoformat(),
+                "events": [
+                    {"symbol": e.symbol, "title": e.title, "category": e.category} for e in d.events
+                ],
+            }
+            for d in days_grouped[:10]
+        ],
+    }
+
+
+async def screen_stocks(session: Any, *, criteria: list[dict[str, Any]]) -> dict[str, Any]:
+    """Screen the stored-fundamentals universe by numeric criteria."""
+    try:
+        from pfip.diligence.peers import load_key_metrics
+        from pfip.research.screener import Criterion, apply_screen, validate_criteria
+
+        parsed = [Criterion(**c) for c in criteria]
+        errors = validate_criteria(parsed)
+        if errors:
+            return {"ok": False, "error": " ".join(errors)}
+        from sqlalchemy import text as _t
+
+        syms = [
+            r[0]
+            for r in (await session.execute(_t("SELECT DISTINCT symbol FROM fundamentals"))).all()
+            if r[0]
+        ]
+        metrics = await load_key_metrics(session, syms)
+        result = apply_screen(metrics, parsed)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"screen failed: {exc}"}
+    return {
+        "ok": True,
+        "n_matches": len(result.matches),
+        "matches": [{"symbol": m.symbol, "metrics": m.metrics} for m in result.matches[:25]],
+    }
+
+
 # Registry — name → callable. The agent looks up by name when dispatching.
 ToolFn = Callable[..., Awaitable[dict[str, Any]]]
 
@@ -232,7 +357,52 @@ REGISTRY: dict[str, ToolFn] = {
     "get_open_signals": get_open_signals,
     "get_tax_summary": get_tax_summary,
     "get_diligence": get_diligence,
+    "explain_asset": explain_asset,
+    "get_calendar": get_calendar,
+    "screen_stocks": screen_stocks,
 }
+
+
+class ToolSpec:
+    """Lightweight description of a tool for listing + NL selection."""
+
+    def __init__(self, name: str, description: str, params: dict[str, str]):
+        self.name = name
+        self.description = description
+        self.params = params  # param name → human description
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"name": self.name, "description": self.description, "params": self.params}
+
+
+# Human/LLM-facing catalogue of what each tool does (E1 tool layer).
+TOOL_SPECS: list[ToolSpec] = [
+    ToolSpec(
+        "get_holdings", "Your current portfolio holdings.", {"asset_class": "optional filter"}
+    ),
+    ToolSpec("get_current_price", "Latest close price for a symbol.", {"symbol": "e.g. AAPL"}),
+    ToolSpec(
+        "get_recent_pnl", "Realized P&L from recently closed trades.", {"days": "lookback window"}
+    ),
+    ToolSpec("get_open_signals", "Recent model signals (experimental).", {"limit": "max rows"}),
+    ToolSpec(
+        "get_tax_summary", "Capital-gains tax summary for a financial year.", {"fy": "e.g. 2024-25"}
+    ),
+    ToolSpec(
+        "get_diligence", "Full due-diligence dossier for a company.", {"symbol": "e.g. TCS.NS"}
+    ),
+    ToolSpec(
+        "explain_asset", "Teach an asset: price story + biggest moves.", {"symbol": "e.g. BTC-USD"}
+    ),
+    ToolSpec(
+        "get_calendar", "Recent corporate announcements + filings.", {"days": "lookback window"}
+    ),
+    ToolSpec(
+        "screen_stocks",
+        "Filter fundamentals by numeric criteria.",
+        {"criteria": "list of {field,op,value}"},
+    ),
+]
 
 
 def dispatch(name: str) -> ToolFn | None:
@@ -240,4 +410,4 @@ def dispatch(name: str) -> ToolFn | None:
     return REGISTRY.get(name)
 
 
-__all__ = ["REGISTRY", "dispatch", "ToolFn"]
+__all__ = ["REGISTRY", "TOOL_SPECS", "ToolSpec", "dispatch", "ToolFn"]

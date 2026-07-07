@@ -2,14 +2,15 @@
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
-import { MessageSquare, Plus, Sparkles, Trash2, Users } from "lucide-react";
+import { MessageSquare, Plus, Sparkles, Trash2, Users, Wrench } from "lucide-react";
 
 import { MessageStream } from "@/components/agent/message-stream";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/shared/page-header";
 import { useConversations } from "@/lib/sse";
-import { usePerspectives } from "@/lib/api";
+import { usePerspectives, useAgentTools, useOrchestrate } from "@/lib/api";
 import { cn, formatIST } from "@/lib/utils";
 
 /**
@@ -19,7 +20,7 @@ import { cn, formatIST } from "@/lib/utils";
  *
  * Conversation history is client-side (localStorage via `useConversations`).
  */
-type Mode = "chat" | "panel";
+type Mode = "chat" | "panel" | "tools";
 
 export default function ChatPage() {
   return (
@@ -32,18 +33,21 @@ export default function ChatPage() {
 function ChatPageInner() {
   const { conversations, newChat, load, remove } = useConversations();
   const params = useSearchParams();
+  const initialMode = params?.get("mode");
   const [mode, setMode] = React.useState<Mode>(
-    params?.get("mode") === "panel" ? "panel" : "chat",
+    initialMode === "panel" ? "panel" : initialMode === "tools" ? "tools" : "chat",
   );
 
   return (
     <div className="flex h-[calc(100dvh-9rem)] flex-col md:h-[calc(100dvh-7rem)]">
       <PageHeader
-        title={mode === "chat" ? "Chat" : "Perspectives"}
+        title={mode === "chat" ? "Chat" : mode === "panel" ? "Perspectives" : "Tools"}
         description={
           mode === "chat"
             ? "Ask PFIP anything. Responses cite the portfolio, knowledge base, and live news."
-            : "One question, three independent expert lenses — value, macro, and risk. Advisory only."
+            : mode === "panel"
+              ? "One question, three independent expert lenses — value, macro, and risk. Advisory only."
+              : "Type a request and the orchestrator routes it to a typed tool — e.g. “explain bitcoin”, “show my holdings”, “my calendar”."
         }
         flat
         actions={
@@ -73,7 +77,7 @@ function ChatPageInner() {
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border bg-card p-5">
-          <PerspectivesPanel />
+          {mode === "panel" ? <PerspectivesPanel /> : <ToolsPanel />}
         </div>
       )}
     </div>
@@ -91,6 +95,7 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
         [
           { id: "chat" as Mode, label: "Chat", icon: MessageSquare },
           { id: "panel" as Mode, label: "Perspectives", icon: Users },
+          { id: "tools" as Mode, label: "Tools", icon: Wrench },
         ]
       ).map(({ id, label, icon: Icon }) => (
         <button
@@ -161,6 +166,100 @@ function PerspectivesPanel() {
       ) : (
         <p className="text-sm text-muted-foreground">
           Ask a question above to get three independent expert takes.
+        </p>
+      )}
+    </div>
+  );
+}
+
+const TOOL_EXAMPLES = [
+  "explain bitcoin",
+  "show my holdings",
+  "what's on my calendar",
+  "research TCS.NS",
+  "tax summary for 2024-25",
+  "how's my p&l",
+];
+
+function ToolsPanel() {
+  const [q, setQ] = React.useState("");
+  const orchestrate = useOrchestrate();
+  const { data: tools } = useAgentTools();
+
+  const run = (message: string) => {
+    if (message.trim()) orchestrate.mutate({ message: message.trim() });
+  };
+
+  const res = orchestrate.data;
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-5">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          run(q);
+        }}
+        className="flex flex-wrap items-center gap-2"
+      >
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="e.g. explain bitcoin"
+          className="min-w-[14rem] flex-1"
+        />
+        <Button type="submit" disabled={orchestrate.isPending || !q.trim()}>
+          {orchestrate.isPending ? "Routing…" : "Run"}
+        </Button>
+      </form>
+
+      <div className="flex flex-wrap gap-1.5">
+        {TOOL_EXAMPLES.map((ex) => (
+          <button
+            key={ex}
+            type="button"
+            onClick={() => {
+              setQ(ex);
+              run(ex);
+            }}
+            className="border border-border/60 bg-secondary/40 px-2.5 py-1 text-xs transition-colors hover:border-primary/50 hover:text-primary"
+          >
+            {ex}
+          </button>
+        ))}
+      </div>
+
+      {orchestrate.isError ? (
+        <div className="border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+          {(orchestrate.error as Error).message}
+        </div>
+      ) : res ? (
+        res.matched ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="eyebrow">Tool</span>
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-primary">
+                {res.tool}
+              </code>
+              {Object.keys(res.args ?? {}).length ? (
+                <span className="font-mono text-xs text-muted-foreground">
+                  {JSON.stringify(res.args)}
+                </span>
+              ) : null}
+            </div>
+            <pre className="max-h-[420px] overflow-auto border border-border/60 bg-secondary/20 p-3 text-xs leading-relaxed">
+              {JSON.stringify(res.result, null, 2)}
+            </pre>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {res.note ?? "No tool matched — try the Chat tab for open-ended questions."}
+          </p>
+        )
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          {tools?.length
+            ? `${tools.length} tools available. Type a request or pick an example.`
+            : "Type a request or pick an example above."}
         </p>
       )}
     </div>

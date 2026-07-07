@@ -24,11 +24,51 @@ from sse_starlette.sse import EventSourceResponse
 from pfip.agent.arxiv_digest import build_arxiv_digest
 from pfip.agent.graph import run_agent_stream
 from pfip.agent.morning_brief import build_morning_brief
+from pfip.agent.orchestrator import run_orchestration
 from pfip.agent.post_mortem import draft_post_mortem
+from pfip.agent.tools import TOOL_SPECS
 from pfip.agent.weekly_review import build_weekly_review
 from pfip.api.deps import CurrentUser, DbSession
 
 router = APIRouter(prefix="/agent", tags=["agent"])
+
+
+# ---------------------------------------------------------------------------
+# Tool layer + NL orchestrator (E1/E2)
+# ---------------------------------------------------------------------------
+
+
+class ToolInfo(BaseModel):
+    name: str
+    description: str
+    params: dict[str, str]
+
+
+class OrchestrateRequest(BaseModel):
+    message: str
+
+
+class OrchestrateResponse(BaseModel):
+    matched: bool
+    tool: str | None = None
+    args: dict[str, Any] = {}
+    result: Any = None
+    note: str | None = None
+
+
+@router.get("/tools", response_model=list[ToolInfo])
+async def list_tools(_user: CurrentUser) -> list[ToolInfo]:
+    """The typed capability catalogue the orchestrator can call."""
+    return [ToolInfo(**spec.as_dict()) for spec in TOOL_SPECS]
+
+
+@router.post("/orchestrate", response_model=OrchestrateResponse)
+async def orchestrate(
+    body: OrchestrateRequest, db: DbSession, _user: CurrentUser
+) -> OrchestrateResponse:
+    """Route a natural-language request to a tool, run it, return the result."""
+    out = await run_orchestration(db, body.message)
+    return OrchestrateResponse(**out)
 
 
 # ---------------------------------------------------------------------------

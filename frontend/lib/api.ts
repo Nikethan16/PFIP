@@ -3619,3 +3619,49 @@ export function useCalendar(days = 45): UseQueryResult<CalendarResponse> {
     enabled: Boolean(token),
   });
 }
+
+// --- Agent tool layer + orchestrator (E1/E2) --------------------------------
+
+const ToolInfoSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  params: z.record(z.string()).default({}),
+});
+export type ToolInfo = z.infer<typeof ToolInfoSchema>;
+
+const OrchestrateResponseSchema = z.object({
+  matched: z.boolean(),
+  tool: z.string().nullable().default(null),
+  args: z.record(z.unknown()).default({}),
+  result: z.unknown().nullable().default(null),
+  note: z.string().nullable().default(null),
+});
+export type OrchestrateResponse = z.infer<typeof OrchestrateResponseSchema>;
+
+/** GET /agent/tools — the capability catalogue the orchestrator can call. */
+export function useAgentTools(): UseQueryResult<ToolInfo[]> {
+  const token = useAuthToken();
+  return useQuery<ToolInfo[]>({
+    queryKey: ["agent", "tools"],
+    queryFn: () => apiFetch<ToolInfo[]>(`/agent/tools`, z.array(ToolInfoSchema), { token }),
+    enabled: Boolean(token),
+    staleTime: 60 * 60 * 1000,
+  });
+}
+
+/** POST /agent/orchestrate — route an NL request to a tool and run it. */
+export function useOrchestrate(): UseMutationResult<
+  OrchestrateResponse,
+  ApiError,
+  { message: string }
+> {
+  const token = useAuthToken();
+  return useMutation({
+    mutationFn: ({ message }) =>
+      apiFetch<OrchestrateResponse>(`/agent/orchestrate`, OrchestrateResponseSchema, {
+        method: "POST",
+        body: { message },
+        token,
+      }),
+  });
+}
