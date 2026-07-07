@@ -3583,3 +3583,39 @@ export function useLearn(symbol: string): UseQueryResult<LearnResponse> {
     enabled: Boolean(token) && Boolean(symbol),
   });
 }
+
+// --- Corporate calendar (D6) ------------------------------------------------
+
+const CalendarEventSchema = z.object({
+  symbol: z.string().nullable().default(null),
+  title: z.string(),
+  category: z.string(),
+  url: z.string().nullable().default(null),
+  at: z.string(),
+});
+export type CalendarEvent = z.infer<typeof CalendarEventSchema>;
+
+const CalendarDaySchema = z.object({
+  date: z.string(),
+  events: z.array(CalendarEventSchema).default([]),
+});
+export type CalendarDay = z.infer<typeof CalendarDaySchema>;
+
+const CalendarResponseSchema = z.object({
+  days: z.array(CalendarDaySchema).default([]),
+  n_events: z.number().default(0),
+  scoped_to_holdings: z.boolean().default(false),
+  disclaimer: z.string().default(""),
+});
+export type CalendarResponse = z.infer<typeof CalendarResponseSchema>;
+
+/** GET /calendar — corporate announcements + filings for your names, by date. */
+export function useCalendar(days = 45): UseQueryResult<CalendarResponse> {
+  const token = useAuthToken();
+  return useQuery<CalendarResponse>({
+    queryKey: ["calendar", days],
+    queryFn: () =>
+      apiFetch<CalendarResponse>(`/calendar?days=${days}`, CalendarResponseSchema, { token }),
+    enabled: Boolean(token),
+  });
+}

@@ -21,6 +21,7 @@ from pfip.api import (
     auth,
     backtest,
     balance_sheet,
+    calendar,
     calibration,
     changes_today,
     diligence,
@@ -149,6 +150,7 @@ def create_app() -> FastAPI:
     app.include_router(screener.router, prefix=prefix)
     app.include_router(alerts.router, prefix=prefix)
     app.include_router(learn.router, prefix=prefix)
+    app.include_router(calendar.router, prefix=prefix)
     app.include_router(notifications.router, prefix=prefix)
     app.include_router(schedules.router, prefix=prefix)
     app.include_router(settings_router.router, prefix=prefix)

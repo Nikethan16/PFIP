@@ -2,6 +2,7 @@ import {
   Activity,
   BellRing,
   BookOpen,
+  CalendarDays,
   Briefcase,
   Calculator,
   Cog,
@@ -93,6 +94,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Screener", href: "/screener", icon: SlidersHorizontal, group: "research" },
   { label: "Learn", href: "/learn", icon: GraduationCap, group: "research" },
   { label: "Events", href: "/events", icon: Newspaper, group: "research" },
+  { label: "Calendar", href: "/calendar", icon: CalendarDays, group: "research" },
   { label: "Themes", href: "/themes", icon: Lightbulb, group: "research" },
 
   // Portfolio — holdings, analytics, and tax (India).
