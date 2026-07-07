@@ -873,6 +873,8 @@ async def check_data_freshness() -> dict[str, Any]:
     Turns silent source staleness (the kind a green pipeline run hides) into a
     visible WARN alert + log line. Best-effort; never raises.
     """
+    from datetime import datetime, timezone
+
     from sqlalchemy import func, select
 
     from pfip.models.ohlcv import OHLCVRow
