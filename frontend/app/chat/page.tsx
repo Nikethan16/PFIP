@@ -1,56 +1,168 @@
 "use client";
 
 import * as React from "react";
-import { MessageSquare, Plus, Sparkles, Trash2 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { MessageSquare, Plus, Sparkles, Trash2, Users } from "lucide-react";
 
 import { MessageStream } from "@/components/agent/message-stream";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/shared/page-header";
 import { useConversations } from "@/lib/sse";
+import { usePerspectives } from "@/lib/api";
 import { cn, formatIST } from "@/lib/utils";
 
 /**
- * Chat page. We give chat its own full-bleed surface (no inner card border)
- * so it feels like a dedicated workspace rather than a widget on a page.
+ * Chat page — the primary assistant surface, plus a "Perspectives" mode that
+ * folds in the old three-lens panel (value / macro / risk) as a mode rather
+ * than a separate nav page (C4). Deep-linkable via `?mode=panel`.
  *
- * Conversation history is fully client-side: the active thread lives in
- * localStorage (managed by `useAgentChat`), and prior threads are archived
- * locally via `useConversations`. There is no backend persistence endpoint
- * yet, so the sidebar is honest about where this data lives.
+ * Conversation history is client-side (localStorage via `useConversations`).
  */
+type Mode = "chat" | "panel";
+
 export default function ChatPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <ChatPageInner />
+    </React.Suspense>
+  );
+}
+
+function ChatPageInner() {
   const { conversations, newChat, load, remove } = useConversations();
+  const params = useSearchParams();
+  const [mode, setMode] = React.useState<Mode>(
+    params?.get("mode") === "panel" ? "panel" : "chat",
+  );
 
   return (
     <div className="flex h-[calc(100dvh-9rem)] flex-col md:h-[calc(100dvh-7rem)]">
       <PageHeader
-        title="Chat"
-        description="Ask PFIP anything. Responses cite the portfolio, knowledge base, and live news."
+        title={mode === "chat" ? "Chat" : "Perspectives"}
+        description={
+          mode === "chat"
+            ? "Ask PFIP anything. Responses cite the portfolio, knowledge base, and live news."
+            : "One question, three independent expert lenses — value, macro, and risk. Advisory only."
+        }
         flat
         actions={
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1"
-            onClick={newChat}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            New chat
-          </Button>
+          <div className="flex items-center gap-2">
+            <ModeToggle mode={mode} onChange={setMode} />
+            {mode === "chat" ? (
+              <Button variant="outline" size="sm" className="gap-1" onClick={newChat}>
+                <Plus className="h-3.5 w-3.5" />
+                New chat
+              </Button>
+            ) : null}
+          </div>
         }
       />
 
-      <div className="flex min-h-0 flex-1 gap-3">
-        <ConversationSidebar
-          conversations={conversations}
-          onNewChat={newChat}
-          onLoad={load}
-          onRemove={remove}
-        />
-        <div className="flex min-w-0 flex-1 flex-col rounded-xl border bg-card">
-          <MessageStream />
+      {mode === "chat" ? (
+        <div className="flex min-h-0 flex-1 gap-3">
+          <ConversationSidebar
+            conversations={conversations}
+            onNewChat={newChat}
+            onLoad={load}
+            onRemove={remove}
+          />
+          <div className="flex min-w-0 flex-1 flex-col rounded-xl border bg-card">
+            <MessageStream />
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border bg-card p-5">
+          <PerspectivesPanel />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
+  return (
+    <div
+      className="flex items-center gap-1 border border-border bg-secondary/40 p-1"
+      role="tablist"
+      aria-label="Chat mode"
+    >
+      {(
+        [
+          { id: "chat" as Mode, label: "Chat", icon: MessageSquare },
+          { id: "panel" as Mode, label: "Perspectives", icon: Users },
+        ]
+      ).map(({ id, label, icon: Icon }) => (
+        <button
+          key={id}
+          type="button"
+          role="tab"
+          aria-selected={mode === id}
+          onClick={() => onChange(id)}
+          className={cn(
+            "inline-flex items-center gap-1.5 px-3 py-1.5 font-label text-xs uppercase tracking-wider transition-colors",
+            mode === id ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Icon className="h-3.5 w-3.5" />
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const PERSONA_LABEL: Record<string, string> = {
+  value: "Value investor",
+  macro: "Macro strategist",
+  risk: "Risk manager",
+};
+
+function PerspectivesPanel() {
+  const [q, setQ] = React.useState("");
+  const ask = usePerspectives();
+
+  const onAsk = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (q.trim()) ask.mutate({ question: q.trim() });
+  };
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-6">
+      <form onSubmit={onAsk} className="space-y-3">
+        <Textarea
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="e.g. Is now a good time to add to Indian IT, or wait?"
+          rows={3}
+          aria-label="Question"
+        />
+        <Button type="submit" disabled={ask.isPending || !q.trim()}>
+          {ask.isPending ? "Consulting the panel…" : "Ask the panel"}
+        </Button>
+      </form>
+
+      {ask.isError ? (
+        <div className="border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+          {(ask.error as Error).message}
+        </div>
+      ) : ask.data ? (
+        <div className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            {ask.data.perspectives.map((p) => (
+              <div key={p.persona} className="border border-border/60 bg-background p-4">
+                <div className="eyebrow mb-2">{PERSONA_LABEL[p.persona] ?? p.persona}</div>
+                <p className="text-sm leading-relaxed">{p.view}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground">{ask.data.disclaimer}</p>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Ask a question above to get three independent expert takes.
+        </p>
+      )}
     </div>
   );
 }

@@ -26,7 +26,6 @@ import {
   Stars,
   Target,
   Trophy,
-  Users,
   Wallet,
   Wrench,
 } from "lucide-react";
@@ -117,7 +116,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Signals", href: "/signals", icon: Stars, group: "lab", shortcut: "G then S" },
   { label: "Calibration", href: "/calibration", icon: LineChart, group: "lab" },
   { label: "Backtest", href: "/backtest", icon: FlaskConical, group: "lab" },
-  { label: "Perspectives", href: "/perspectives", icon: Users, group: "lab" },
   { label: "Source health", href: "/ops/sources", icon: Heart, group: "lab" },
   { label: "Schedules", href: "/ops/schedules", icon: Activity, group: "lab" },
   { label: "Models", href: "/ops/models", icon: Wrench, group: "lab" },
