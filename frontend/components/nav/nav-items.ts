@@ -116,6 +116,7 @@ export const NAV_ITEMS: NavItem[] = [
 
   // Lab — signals R&D + operations. Collapsed by default; experimental.
   { label: "Signals", href: "/signals", icon: Stars, group: "lab", shortcut: "G then S" },
+  { label: "Volatility", href: "/vol", icon: Activity, group: "lab" },
   { label: "Calibration", href: "/calibration", icon: LineChart, group: "lab" },
   { label: "Backtest", href: "/backtest", icon: FlaskConical, group: "lab" },
   { label: "Source health", href: "/ops/sources", icon: Heart, group: "lab" },

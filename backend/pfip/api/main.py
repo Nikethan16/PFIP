@@ -42,6 +42,7 @@ from pfip.api import (
     signals,
     tax,
     themes,
+    vol,
     watchlist,
 )
 from pfip.core.config import get_settings
@@ -151,6 +152,7 @@ def create_app() -> FastAPI:
     app.include_router(alerts.router, prefix=prefix)
     app.include_router(learn.router, prefix=prefix)
     app.include_router(calendar.router, prefix=prefix)
+    app.include_router(vol.router, prefix=prefix)
     app.include_router(notifications.router, prefix=prefix)
     app.include_router(schedules.router, prefix=prefix)
     app.include_router(settings_router.router, prefix=prefix)

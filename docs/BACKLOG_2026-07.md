@@ -47,10 +47,10 @@ M (a session), L (multi-session).
 - [ ] **E4 · (rule)** — **NEVER agentize the money math** — marking/tax/backtest/XIRR stay deterministic, unit-tested services (the valuation bug is why). Agents *call* them; they don't *replace* them.
 
 ## F. Model / signals R&D (no demonstrated edge today)
-- [ ] **F1 · P1 · S** — Demote Signals (below coin-flip, all HOLD). Keep honest label.
-- [ ] **F2 · P1 · L** — Change the ML target: daily direction → **volatility / regime forecasting** (vol-cone exists) or **event-reaction**. More signal there.
-- [ ] **F3 · P1 · M** — Fix **bear-regime data starvation** (models train on ~1k rows) — pool wider universe + longer history.
-- [ ] **F4 · P1 · M** — Gate the **ML model through the backtest engine with costs** (economic value, not hit-rate) before surfacing it.
+- [x] **F1 · P1 · S** — Demote Signals — **DONE** (honest banner + moved to Lab).
+- [x] **F2 · P1 · L** — Volatility pivot — **DONE (surface)**. `pfip/vol/analytics.py` realized-vol **cone** (current vs p10/p50/p90 per horizon) + `GET /vol/{symbol}` (cone + Chronos/historical forward forecast from existing `vol/cone.py`); Lab **Volatility** page. 8 tests. _Remaining: retrain a model *on* the vol target (needs the training run)._
+- [ ] **F3 · P1 · M** — Fix **bear-regime data starvation** (models train on ~1k rows) — pool wider universe + longer history. _(Training-pipeline work; needs a VM training run.)_
+- [x] **F4 · P1 · M** — Cost gate — **DONE (engine)**. `pfip/backtest/cost_gate.py`: nets any strategy after per-turnover costs, compares to buy-and-hold, `passes` only if net>0 AND beats baseline. 6 tests. _Remaining: wire the ML model's backtest through it before any signal surfaces._
 
 ## G. Testing & misc
 - [ ] **G1 · P1 · M** — **UI click-through testing of every page** (this session tested backend/data only — that's how the bell bug hid). Do a browser-driven pass.

@@ -3665,3 +3665,44 @@ export function useOrchestrate(): UseMutationResult<
       }),
   });
 }
+
+// --- Volatility cone (F2) ---------------------------------------------------
+
+const ConeBucketSchema = z.object({
+  window_days: z.number(),
+  current: z.number().nullable().default(null),
+  p10: z.number().nullable().default(null),
+  p50: z.number().nullable().default(null),
+  p90: z.number().nullable().default(null),
+  min: z.number().nullable().default(null),
+  max: z.number().nullable().default(null),
+  percentile: z.number().nullable().default(null),
+});
+export type ConeBucket = z.infer<typeof ConeBucketSchema>;
+
+const VolResponseSchema = z.object({
+  symbol: z.string(),
+  n_points: z.number().default(0),
+  cone: z.array(ConeBucketSchema).default([]),
+  forecast: z
+    .object({
+      annual_vol: z.number(),
+      horizon_days: z.number(),
+      source: z.string(),
+    })
+    .nullable()
+    .default(null),
+  disclaimer: z.string().default(""),
+});
+export type VolResponse = z.infer<typeof VolResponseSchema>;
+
+/** GET /vol/{symbol} — realized-vol cone + forward forecast. */
+export function useVol(symbol: string): UseQueryResult<VolResponse> {
+  const token = useAuthToken();
+  return useQuery<VolResponse>({
+    queryKey: ["vol", symbol],
+    queryFn: () =>
+      apiFetch<VolResponse>(`/vol/${encodeURIComponent(symbol)}`, VolResponseSchema, { token }),
+    enabled: Boolean(token) && Boolean(symbol),
+  });
+}
